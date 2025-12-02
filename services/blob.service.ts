@@ -41,17 +41,19 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
       addRandomSuffix
     });
 
+    const uploadSize = Buffer.isBuffer(data) ? data.length : data.length;
+    
     logger.info("Blob storage'a yüklendi", {
       url: blob.url,
       pathname: blob.pathname,
-      size: blob.size
+      size: uploadSize
     });
 
     return {
       url: blob.url,
       pathname: blob.pathname,
       contentType: blob.contentType || contentType || 'application/octet-stream',
-      size: blob.size,
+      size: uploadSize,
       uploadedAt: new Date()
     };
 
@@ -62,8 +64,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
     });
 
     throw new BlobStorageError(
-      `Dosya yüklenemedi: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { path }
+      `Dosya yüklenemedi (${path}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -159,8 +160,7 @@ export async function deleteFile(url: string): Promise<void> {
     });
 
     throw new BlobStorageError(
-      `Dosya silinemedi: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { url }
+      `Dosya silinemedi (${url}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -193,8 +193,7 @@ export async function deleteStoryFiles(storyId: string): Promise<void> {
     });
 
     throw new BlobStorageError(
-      `Hikaye dosyaları silinemedi: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { storyId }
+      `Hikaye dosyaları silinemedi (${storyId}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -220,8 +219,7 @@ export async function getFileInfo(url: string) {
     });
 
     throw new BlobStorageError(
-      `Dosya bilgisi alınamadı: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { url }
+      `Dosya bilgisi alınamadı (${url}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -254,8 +252,7 @@ export async function listStoryFiles(storyId: string) {
     });
 
     throw new BlobStorageError(
-      `Dosyalar listelenemedi: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { storyId }
+      `Dosyalar listelenemedi (${storyId}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }

@@ -18,6 +18,7 @@ export interface IStory {
   
   // AI Ayarları
   openaiModel: string;
+  elevenlabsModel: string;
   voiceId: string;
   voiceName: string;
   
@@ -62,6 +63,7 @@ export interface CreateStoryInput {
   targetLanguage: string;
   targetCountry: string;
   openaiModel: string;
+  elevenlabsModel?: string;
   voiceId: string;
   voiceName: string;
   imagefxModel?: string;

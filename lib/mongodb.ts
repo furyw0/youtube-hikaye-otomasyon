@@ -1,12 +1,6 @@
 import mongoose from 'mongoose';
 import { logger } from './logger';
 
-const MONGODB_URI = process.env.MONGODB_URI || '';
-
-if (!MONGODB_URI) {
-  throw new Error('MONGODB_URI environment variable is not defined');
-}
-
 let cached = global.mongoose;
 
 if (!cached) {
@@ -14,6 +8,12 @@ if (!cached) {
 }
 
 async function dbConnect() {
+  const MONGODB_URI = process.env.MONGODB_URI;
+  
+  if (!MONGODB_URI) {
+    throw new Error('MONGODB_URI environment variable is not defined');
+  }
+
   if (cached.conn) {
     return cached.conn;
   }
@@ -44,9 +44,10 @@ export default dbConnect;
 
 // Type for global mongoose cache
 declare global {
+  // eslint-disable-next-line no-var
   var mongoose: {
-    conn: typeof mongoose | null;
-    promise: Promise<typeof mongoose> | null;
+    conn: any;
+    promise: any;
   };
 }
 

@@ -222,8 +222,7 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
     });
 
     throw new OpenAIError(
-      `Kültürel adaptasyon başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { targetCountry, targetLanguage }
+      `Kültürel adaptasyon başarısız (${targetCountry}/${targetLanguage}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }

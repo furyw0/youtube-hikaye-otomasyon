@@ -203,8 +203,7 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
     });
 
     throw new OpenAIError(
-      `Çeviri başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { sourceLang, targetLang }
+      `Çeviri başarısız (${sourceLang} -> ${targetLang}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }

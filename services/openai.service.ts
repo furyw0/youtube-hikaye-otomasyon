@@ -6,30 +6,53 @@
 import OpenAI from 'openai';
 import logger from '@/lib/logger';
 import { OpenAIError } from '@/lib/errors';
+import dbConnect from '@/lib/mongodb';
+import Settings from '@/models/Settings';
 
-// OpenAI istemcisi
+// OpenAI istemcisi ve kullanılan API key (cache için)
 let openaiClient: OpenAI | null = null;
+let cachedApiKey: string | null = null;
 
 /**
- * OpenAI istemcisini başlat
+ * Settings'den OpenAI API Key'i al
  */
-export function getOpenAIClient(): OpenAI {
-  if (openaiClient) {
-    return openaiClient;
+async function getApiKeyFromSettings(): Promise<string | null> {
+  try {
+    await dbConnect();
+    const settings = await Settings.findOne().select('+openaiApiKey');
+    return settings?.openaiApiKey || null;
+  } catch (error) {
+    logger.warn('Settings\'den OpenAI API key alınamadı', { error });
+    return null;
   }
+}
 
-  const apiKey = process.env.OPENAI_API_KEY;
+/**
+ * OpenAI istemcisini başlat (async - Settings'den okur)
+ */
+export async function getOpenAIClient(): Promise<OpenAI> {
+  // Önce Settings'den API key'i kontrol et
+  const settingsApiKey = await getApiKeyFromSettings();
+  const apiKey = settingsApiKey || process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
-    throw new OpenAIError('OPENAI_API_KEY ortam değişkeni tanımlanmamış');
+    throw new OpenAIError('OpenAI API Key tanımlanmamış. Lütfen Ayarlar sayfasından veya OPENAI_API_KEY ortam değişkeninden girin.');
+  }
+
+  // API key değişmişse yeni client oluştur
+  if (openaiClient && cachedApiKey === apiKey) {
+    return openaiClient;
   }
 
   openaiClient = new OpenAI({
     apiKey,
     maxRetries: 0, // Retry'ı manuel olarak yönetiyoruz
   });
+  cachedApiKey = apiKey;
 
-  logger.info('OpenAI istemcisi başlatıldı');
+  logger.info('OpenAI istemcisi başlatıldı', { 
+    source: settingsApiKey ? 'settings' : 'env' 
+  });
   
   return openaiClient;
 }
@@ -107,8 +130,7 @@ export function parseJSONResponse<T>(content: string, expectedFields?: string[])
       for (const field of expectedFields) {
         if (!(field in parsed)) {
           throw new OpenAIError(
-            `JSON yanıtında beklenen alan bulunamadı: ${field}`,
-            { parsed, expectedFields }
+            `JSON yanıtında beklenen alan bulunamadı: ${field}. Beklenen alanlar: ${expectedFields.join(', ')}`
           );
         }
       }
@@ -127,8 +149,7 @@ export function parseJSONResponse<T>(content: string, expectedFields?: string[])
     });
     
     throw new OpenAIError(
-      'OpenAI yanıtı geçerli JSON formatında değil',
-      { content: content.substring(0, 500) }
+      `OpenAI yanıtı geçerli JSON formatında değil: ${content.substring(0, 200)}...`
     );
   }
 }
@@ -143,7 +164,7 @@ export async function createChatCompletion(params: {
   maxTokens?: number;
   responseFormat?: 'text' | 'json_object';
 }): Promise<string> {
-  const client = getOpenAIClient();
+  const client = await getOpenAIClient();
   
   try {
     logger.debug('Chat completion başlatılıyor', {
@@ -188,12 +209,7 @@ export async function createChatCompletion(params: {
       });
       
       throw new OpenAIError(
-        `OpenAI API hatası: ${error.message}`,
-        { 
-          status: error.status,
-          type: error.type,
-          code: error.code 
-        }
+        `OpenAI API hatası (${error.status}/${error.code}): ${error.message}`
       );
     }
     

@@ -8,6 +8,8 @@ import logger from '@/lib/logger';
 import dbConnect from '@/lib/mongodb';
 import Story from '@/models/Story';
 import Scene from '@/models/Scene';
+import type { IStory } from '@/types/story.types';
+import type { IScene } from '@/types/scene.types';
 
 // Servisler
 import { detectLanguage } from '@/services/language-detection.service';
@@ -51,7 +53,7 @@ export const processStory = inngest.createFunction(
 
     try {
       // --- 1. DİL ALGILAMA (5%) ---
-      const story = await step.run('detect-language', async () => {
+      const story = await step.run('detect-language', async (): Promise<any> => {
         await updateProgress(5, 'Dil algılanıyor...');
         
         const story = await Story.findById(storyId);
@@ -170,7 +172,7 @@ export const processStory = inngest.createFunction(
       });
 
       // --- 5. GÖRSEL PROMPTLARI (60%) ---
-      const visualPrompts = await step.run('generate-visual-prompts', async () => {
+      const visualPrompts = await step.run('generate-visual-prompts', async (): Promise<Map<number, string>> => {
         await updateProgress(55, 'Görsel promptları hazırlanıyor...');
 
         const storyContext = `${story.adaptedTitle}\n\n${story.adaptedContent?.substring(0, 1000)}`;
@@ -207,7 +209,7 @@ export const processStory = inngest.createFunction(
         let completedImages = 0;
 
         for (const scene of imageScenes) {
-          const prompt = visualPrompts.get(scene.sceneNumber);
+          const prompt = (visualPrompts as Map<number, string>).get(scene.sceneNumber);
           
           if (!prompt) {
             logger.warn('Görsel prompt bulunamadı', {

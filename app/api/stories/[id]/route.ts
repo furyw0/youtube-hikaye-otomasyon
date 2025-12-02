@@ -102,7 +102,6 @@ export async function DELETE(
 
   } catch (error) {
     logger.error('Hikaye silme hatası', {
-      storyId: params.id,
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     });
 

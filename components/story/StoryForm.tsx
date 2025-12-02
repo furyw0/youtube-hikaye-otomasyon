@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
-import { TARGET_LANGUAGES, TARGET_COUNTRIES, IMAGEFX_ASPECT_RATIOS } from '@/lib/constants';
+import { TARGET_LANGUAGES, TARGET_COUNTRIES, IMAGEFX_ASPECT_RATIOS, ELEVENLABS_MODELS } from '@/lib/constants';
 
 interface Voice {
   voice_id: string;
@@ -33,6 +33,7 @@ export function StoryForm() {
     targetLanguage: 'en',
     targetCountry: 'USA',
     openaiModel: 'gpt-4o-mini',
+    elevenlabsModel: 'eleven_flash_v2_5',
     voiceId: '',
     voiceName: '',
     imagefxModel: 'IMAGEN_4',
@@ -43,10 +44,42 @@ export function StoryForm() {
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<Array<{ field: string; message: string }> | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [loadingModels, setLoadingModels] = useState(true);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+
+  // Load default settings from Settings API
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        
+        if (data.success && data.settings) {
+          const settings = data.settings;
+          setFormData(prev => ({
+            ...prev,
+            openaiModel: settings.defaultOpenaiModel || prev.openaiModel,
+            elevenlabsModel: settings.defaultElevenlabsModel || prev.elevenlabsModel,
+            imagefxModel: settings.defaultImagefxModel || prev.imagefxModel,
+            imagefxAspectRatio: settings.defaultImagefxAspectRatio || prev.imagefxAspectRatio,
+            // Ses ayarlardan gelirse, voices yüklendikten sonra kontrol edilecek
+            voiceId: settings.defaultVoiceId || prev.voiceId,
+            voiceName: settings.defaultVoiceName || prev.voiceName
+          }));
+        }
+      } catch (err) {
+        console.error('Ayarlar yüklenemedi:', err);
+      } finally {
+        setLoadingSettings(false);
+      }
+    }
+
+    fetchSettings();
+  }, []);
 
   // Load voices
   useEffect(() => {
@@ -57,14 +90,22 @@ export function StoryForm() {
         
         if (data.success) {
           setVoices(data.voices);
-          // İlk ses'i varsayılan olarak seç
-          if (data.voices.length > 0) {
-            setFormData(prev => ({
-              ...prev,
-              voiceId: data.voices[0].voice_id,
-              voiceName: data.voices[0].name
-            }));
-          }
+          // Eğer ayarlardan ses seçilmediyse, ilk sesi varsayılan olarak seç
+          setFormData(prev => {
+            // Ayarlardan gelen ses geçerliyse onu koru
+            if (prev.voiceId && data.voices.some((v: Voice) => v.voice_id === prev.voiceId)) {
+              return prev;
+            }
+            // Yoksa ilk sesi seç
+            if (data.voices.length > 0) {
+              return {
+                ...prev,
+                voiceId: data.voices[0].voice_id,
+                voiceName: data.voices[0].name
+              };
+            }
+            return prev;
+          });
         }
       } catch (err) {
         console.error('Sesler yüklenemedi:', err);
@@ -100,6 +141,7 @@ export function StoryForm() {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setErrorDetails(null);
 
     try {
       // 1. Hikaye oluştur
@@ -112,6 +154,10 @@ export function StoryForm() {
       const createData = await createResponse.json();
 
       if (!createData.success) {
+        // Hata detaylarını kaydet
+        if (createData.details) {
+          setErrorDetails(createData.details);
+        }
         throw new Error(createData.error || 'Hikaye oluşturulamadı');
       }
 
@@ -163,7 +209,16 @@ export function StoryForm() {
       {/* Error Alert */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800 text-sm">{error}</p>
+          <p className="text-red-800 font-medium">{error}</p>
+          {errorDetails && errorDetails.length > 0 && (
+            <ul className="mt-2 text-red-700 text-sm list-disc list-inside">
+              {errorDetails.map((detail, index) => (
+                <li key={index}>
+                  <strong>{detail.field}:</strong> {detail.message}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -176,7 +231,7 @@ export function StoryForm() {
           type="text"
           value={formData.title}
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder:text-gray-400"
           placeholder={t('fields.titlePlaceholder')}
           required
           minLength={3}
@@ -192,7 +247,7 @@ export function StoryForm() {
         <textarea
           value={formData.content}
           onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-64 font-mono text-sm"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-64 font-mono text-sm bg-white text-gray-900 placeholder:text-gray-400"
           placeholder={t('fields.contentPlaceholder')}
           required
           minLength={1000}
@@ -212,7 +267,7 @@ export function StoryForm() {
           <select
             value={formData.targetLanguage}
             onChange={(e) => setFormData({ ...formData, targetLanguage: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
             required
           >
             {TARGET_LANGUAGES.map(lang => (
@@ -230,7 +285,7 @@ export function StoryForm() {
           <select
             value={formData.targetCountry}
             onChange={(e) => setFormData({ ...formData, targetCountry: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
             required
           >
             {TARGET_COUNTRIES.map(country => (
@@ -253,7 +308,7 @@ export function StoryForm() {
           <select
             value={formData.openaiModel}
             onChange={(e) => setFormData({ ...formData, openaiModel: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
             required
           >
             {models.map(model => (
@@ -265,27 +320,48 @@ export function StoryForm() {
         )}
       </div>
 
-      {/* Voice */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          {t('fields.voice')}
-        </label>
-        {loadingVoices ? (
-          <div className="text-sm text-gray-500">{tCommon('loading')}</div>
-        ) : (
+      {/* ElevenLabs Settings */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ElevenLabs Model */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {t('fields.elevenlabsModel')}
+          </label>
           <select
-            value={formData.voiceId}
-            onChange={(e) => handleVoiceChange(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            required
+            value={formData.elevenlabsModel}
+            onChange={(e) => setFormData({ ...formData, elevenlabsModel: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
           >
-            {voices.map(voice => (
-              <option key={voice.voice_id} value={voice.voice_id}>
-                {voice.name}
+            {ELEVENLABS_MODELS.map(model => (
+              <option key={model.id} value={model.id}>
+                {model.name}
               </option>
             ))}
           </select>
-        )}
+        </div>
+
+        {/* Voice */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {t('fields.voice')}
+          </label>
+          {loadingVoices ? (
+            <div className="text-sm text-gray-500">{tCommon('loading')}</div>
+          ) : (
+            <select
+              value={formData.voiceId}
+              onChange={(e) => handleVoiceChange(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+              required
+            >
+              {voices.map(voice => (
+                <option key={voice.voice_id} value={voice.voice_id}>
+                  {voice.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* ImageFX Settings */}
@@ -297,7 +373,7 @@ export function StoryForm() {
           <select
             value={formData.imagefxModel}
             onChange={(e) => setFormData({ ...formData, imagefxModel: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
           >
             <option value="IMAGEN_4">Imagen 4 (En Yeni)</option>
             <option value="IMAGEN_3_5">Imagen 3.5</option>
@@ -311,7 +387,7 @@ export function StoryForm() {
           <select
             value={formData.imagefxAspectRatio}
             onChange={(e) => setFormData({ ...formData, imagefxAspectRatio: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
           >
             {IMAGEFX_ASPECT_RATIOS.map(ratio => (
               <option key={ratio.id} value={ratio.id}>
@@ -334,8 +410,8 @@ export function StoryForm() {
             ...formData, 
             imagefxSeed: e.target.value ? parseInt(e.target.value) : undefined 
           })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          placeholder="0-2147483647"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 placeholder:text-gray-400"
+          placeholder="0-2147483647 (boş bırakılırsa rastgele)"
           min={0}
           max={2147483647}
         />
@@ -344,7 +420,7 @@ export function StoryForm() {
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={isSubmitting || loadingVoices || loadingModels}
+        disabled={isSubmitting || loadingVoices || loadingModels || loadingSettings}
         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isSubmitting ? t('submitting') : t('submit')}

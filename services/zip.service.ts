@@ -8,7 +8,7 @@ import { Readable } from 'stream';
 import logger from '@/lib/logger';
 import { AppError } from '@/lib/errors';
 import type { IStory } from '@/types/story.types';
-import type { IScene } from '@/models/Scene';
+import type { IScene } from '@/types/scene.types';
 
 /**
  * ZIP dosyası oluşturur

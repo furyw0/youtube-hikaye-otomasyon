@@ -8,16 +8,35 @@ import logger from '@/lib/logger';
 import { ImageFXError } from '@/lib/errors';
 import { retryImageFX } from './retry.service';
 import { IMAGEFX_SETTINGS } from '@/lib/constants';
+import dbConnect from '@/lib/mongodb';
+import Settings from '@/models/Settings';
 
-// ImageFX kütüphanesi (dinamik import - sadece gerektiğinde yükle)
-let ImageFX: any = null;
-
-async function getImageFXClient() {
-  if (!ImageFX) {
-    const module = await import('@rohitaryal/imagefx-api');
-    ImageFX = module.default || module;
+/**
+ * Settings'den ImageFX Cookie'yi al
+ */
+async function getCookieFromSettings(): Promise<string | null> {
+  try {
+    await dbConnect();
+    const settings = await Settings.findOne().select('+imagefxCookie');
+    return settings?.imagefxCookie || null;
+  } catch (error) {
+    logger.warn('Settings\'den ImageFX cookie alınamadı', { error });
+    return null;
   }
-  return ImageFX;
+}
+
+/**
+ * ImageFX cookie'yi al (önce Settings, sonra env)
+ */
+async function getImageFXCookie(): Promise<string> {
+  const settingsCookie = await getCookieFromSettings();
+  const cookie = settingsCookie || process.env.GOOGLE_COOKIE;
+  
+  if (!cookie) {
+    throw new ImageFXError('ImageFX Google Cookie tanımlanmamış. Lütfen Ayarlar sayfasından veya GOOGLE_COOKIE ortam değişkeninden girin.');
+  }
+  
+  return cookie;
 }
 
 export interface GenerateImageOptions {
@@ -25,6 +44,7 @@ export interface GenerateImageOptions {
   model?: 'IMAGEN_4' | 'IMAGEN_3_5';
   aspectRatio?: 'SQUARE' | 'LANDSCAPE' | 'PORTRAIT';
   seed?: number;
+  cookie?: string; // Opsiyonel: Settings'den gelen cookie
 }
 
 export interface GeneratedImage {
@@ -39,24 +59,22 @@ export interface GeneratedImage {
 /**
  * Aspect ratio değerini ImageFX formatına çevirir
  */
-function getAspectRatioValue(ratio: string): string {
-  const mapping: Record<string, string> = {
-    'SQUARE': 'IMAGE_ASPECT_RATIO_SQUARE',
-    'LANDSCAPE': 'IMAGE_ASPECT_RATIO_LANDSCAPE',
-    'PORTRAIT': 'IMAGE_ASPECT_RATIO_PORTRAIT'
+function getAspectRatioValue(ratio: string): 'IMAGE_ASPECT_RATIO_SQUARE' | 'IMAGE_ASPECT_RATIO_LANDSCAPE' | 'IMAGE_ASPECT_RATIO_PORTRAIT' {
+  const mapping = {
+    'SQUARE': 'IMAGE_ASPECT_RATIO_SQUARE' as const,
+    'LANDSCAPE': 'IMAGE_ASPECT_RATIO_LANDSCAPE' as const,
+    'PORTRAIT': 'IMAGE_ASPECT_RATIO_PORTRAIT' as const
   };
-  return mapping[ratio] || mapping['LANDSCAPE'];
+  return mapping[ratio as keyof typeof mapping] || mapping['LANDSCAPE'];
 }
 
 /**
  * Model değerini ImageFX formatına çevirir
+ * Not: ImageFX API şu an sadece 'IMAGEN_3_5' destekliyor
  */
-function getModelValue(model: string): string {
-  const mapping: Record<string, string> = {
-    'IMAGEN_4': 'IMAGEN_4',
-    'IMAGEN_3_5': 'IMAGEN_3_5'
-  };
-  return mapping[model] || 'IMAGEN_4';
+function getModelValue(): 'IMAGEN_3_5' {
+  // ImageFX API şu an sadece IMAGEN_3_5 destekliyor
+  return 'IMAGEN_3_5';
 }
 
 /**
@@ -67,7 +85,8 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     prompt,
     model = 'IMAGEN_4',
     aspectRatio = 'LANDSCAPE',
-    seed
+    seed = 0,
+    cookie
   } = options;
 
   logger.info('Görsel üretimi başlatılıyor', {
@@ -78,59 +97,54 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   });
 
   try {
-    // Google Cookie kontrolü
-    const googleCookie = process.env.GOOGLE_COOKIE;
-    if (!googleCookie) {
-      throw new ImageFXError('GOOGLE_COOKIE ortam değişkeni tanımlanmamış');
-    }
+    // Google Cookie al (önce parametre, sonra Settings, sonra env)
+    const googleCookie = cookie || await getImageFXCookie();
 
-    // ImageFX istemcisini al
-    const ImageFXClient = await getImageFXClient();
-    const client = new ImageFXClient(googleCookie);
+    // ImageFX kütüphanesini yükle
+    const { ImageFX, Prompt } = await import('@rohitaryal/imagefx-api');
+    const client = new ImageFX(googleCookie);
 
-    // Parametreleri hazırla
-    const imagefxParams = {
+    // Prompt objesi oluştur
+    const imagefxPrompt = new Prompt({
       prompt,
-      model: getModelValue(model),
+      generationModel: getModelValue(),
       aspectRatio: getAspectRatioValue(aspectRatio),
       numberOfImages: IMAGEFX_SETTINGS.NUMBER_OF_IMAGES,
-      ...(seed && { seed })
-    };
+      seed: seed || 0
+    });
 
-    logger.debug('ImageFX çağrısı yapılıyor', imagefxParams);
+    logger.debug('ImageFX çağrısı yapılıyor', { prompt: prompt.substring(0, 100), model, aspectRatio });
 
-    // Retry ile görsel üret
-    const result = await retryImageFX(
-      async () => await client.generateImages(imagefxParams),
+    // Retry ile görsel üret - generateImage metodu kullanılıyor
+    // Ref: https://github.com/rohitaryal/imageFX-api
+    const images = await retryImageFX(
+      async () => await client.generateImage(imagefxPrompt, 2),
       `Görsel üretimi: ${prompt.substring(0, 50)}...`
     );
 
     // Sonucu kontrol et
-    if (!result || !result.images || result.images.length === 0) {
-      throw new ImageFXError('ImageFX yanıtında görsel bulunamadı', { result });
+    if (!images || images.length === 0) {
+      throw new ImageFXError('ImageFX yanıtında görsel bulunamadı');
     }
 
-    const firstImage = result.images[0];
+    const firstImage = images[0];
 
-    // Buffer'a çevir
-    let imageBuffer: Buffer;
-    if (Buffer.isBuffer(firstImage.buffer)) {
-      imageBuffer = firstImage.buffer;
-    } else if (firstImage.buffer instanceof ArrayBuffer) {
-      imageBuffer = Buffer.from(firstImage.buffer);
-    } else if (typeof firstImage.buffer === 'string') {
-      // Base64 string olabilir
-      imageBuffer = Buffer.from(firstImage.buffer, 'base64');
-    } else {
-      throw new ImageFXError('Görsel buffer formatı tanınamadı', {
-        bufferType: typeof firstImage.buffer
-      });
+    // Image nesnesinden base64 encoded PNG al
+    // encodedImage private olduğu için any cast gerekli
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const encodedImage = (firstImage as any).encodedImage;
+    
+    if (!encodedImage) {
+      throw new ImageFXError('Görsel verisi alınamadı');
     }
+
+    // Base64'ü Buffer'a çevir
+    const imageBuffer = Buffer.from(encodedImage, 'base64');
 
     logger.info('Görsel başarıyla üretildi', {
       model,
       aspectRatio,
-      seed: firstImage.seed || seed,
+      seed: firstImage.seed,
       bufferSize: imageBuffer.length,
       promptPreview: prompt.substring(0, 100)
     });
@@ -156,21 +170,18 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     if (error instanceof Error) {
       if (error.message.includes('cookie')) {
         throw new ImageFXError(
-          'Google Cookie geçersiz veya süresi dolmuş',
-          { originalError: error.message }
+          `Google Cookie geçersiz veya süresi dolmuş: ${error.message}`
         );
       }
       if (error.message.includes('rate limit') || error.message.includes('quota')) {
         throw new ImageFXError(
-          'ImageFX rate limit aşıldı, lütfen bekleyin',
-          { originalError: error.message }
+          `ImageFX rate limit aşıldı, lütfen bekleyin: ${error.message}`
         );
       }
     }
 
     throw new ImageFXError(
-      `Görsel üretimi başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { prompt: prompt.substring(0, 200) }
+      `Görsel üretimi başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -237,7 +248,7 @@ export async function generateImages(
   }
 
   if (results.size === 0) {
-    throw new ImageFXError('Hiçbir görsel üretilemedi', { errors });
+    throw new ImageFXError(`Hiçbir görsel üretilemedi. Hatalar: ${JSON.stringify(errors)}`);
   }
 
   return results;
@@ -248,9 +259,10 @@ export async function generateImages(
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const googleCookie = process.env.GOOGLE_COOKIE;
+    // Cookie kontrolü (Settings veya env'den)
+    const googleCookie = await getImageFXCookie();
     if (!googleCookie) {
-      logger.error('GOOGLE_COOKIE tanımlanmamış');
+      logger.error('ImageFX cookie tanımlanmamış');
       return false;
     }
 

@@ -8,32 +8,55 @@ import logger from '@/lib/logger';
 import { ElevenLabsError } from '@/lib/errors';
 import { retryElevenLabs } from './retry.service';
 import { streamToBuffer } from '@/lib/utils';
+import dbConnect from '@/lib/mongodb';
+import Settings from '@/models/Settings';
 
-// ElevenLabs istemcisi
+// ElevenLabs istemcisi ve kullanılan API key (cache için)
 let elevenlabsClient: ElevenLabsClient | null = null;
+let cachedApiKey: string | null = null;
 
 /**
- * ElevenLabs istemcisini başlat
+ * Settings'den ElevenLabs API Key'i al
  */
-function getElevenLabsClient(): ElevenLabsClient {
-  if (elevenlabsClient) {
+async function getApiKeyFromSettings(): Promise<string | null> {
+  try {
+    await dbConnect();
+    const settings = await Settings.findOne().select('+elevenlabsApiKey');
+    return settings?.elevenlabsApiKey || null;
+  } catch (error) {
+    logger.warn('Settings\'den API key alınamadı', { error });
+    return null;
+  }
+}
+
+/**
+ * ElevenLabs istemcisini başlat (async - Settings'den okur)
+ */
+async function getElevenLabsClient(): Promise<ElevenLabsClient> {
+  // Önce Settings'den API key'i kontrol et
+  const settingsApiKey = await getApiKeyFromSettings();
+  const apiKey = settingsApiKey || process.env.ELEVENLABS_API_KEY;
+  
+  if (!apiKey) {
+    throw new ElevenLabsError('ElevenLabs API Key tanımlanmamış. Lütfen Ayarlar sayfasından veya ELEVENLABS_API_KEY ortam değişkeninden girin.');
+  }
+
+  // API key değişmişse yeni client oluştur
+  if (elevenlabsClient && cachedApiKey === apiKey) {
     return elevenlabsClient;
   }
 
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  
-  if (!apiKey) {
-    throw new ElevenLabsError('ELEVENLABS_API_KEY ortam değişkeni tanımlanmamış');
-  }
-
   elevenlabsClient = new ElevenLabsClient({ apiKey });
+  cachedApiKey = apiKey;
   
-  logger.info('ElevenLabs istemcisi başlatıldı');
+  logger.info('ElevenLabs istemcisi başlatıldı', { 
+    source: settingsApiKey ? 'settings' : 'env' 
+  });
   
   return elevenlabsClient;
 }
 
-export interface Voice {
+export interface ElevenLabsVoice {
   voice_id: string;
   name: string;
   description?: string;
@@ -63,21 +86,21 @@ export interface GeneratedAudio {
 /**
  * Tüm sesleri listeler
  */
-export async function listVoices(): Promise<Voice[]> {
-  const client = getElevenLabsClient();
-  
+export async function listVoices(): Promise<ElevenLabsVoice[]> {
   try {
+    const client = await getElevenLabsClient();
+    
     logger.debug('ElevenLabs sesleri çekiliyor...');
     
     const response = await client.voices.getAll();
     
-    const voices: Voice[] = response.voices.map(v => ({
-      voice_id: v.voice_id,
-      name: v.name,
-      description: v.description,
-      preview_url: v.preview_url,
-      category: v.category,
-      labels: v.labels
+    const voices: ElevenLabsVoice[] = response.voices.map(v => ({
+      voice_id: v.voiceId,
+      name: v.name || 'Unknown Voice',
+      description: v.description || '',
+      preview_url: v.previewUrl,
+      category: v.category as string,
+      labels: v.labels || {}
     }));
     
     logger.info('ElevenLabs sesleri çekildi', { count: voices.length });
@@ -98,19 +121,19 @@ export async function listVoices(): Promise<Voice[]> {
 /**
  * Tek bir sesin detaylarını getirir
  */
-export async function getVoice(voiceId: string): Promise<Voice> {
-  const client = getElevenLabsClient();
-  
+export async function getVoice(voiceId: string): Promise<ElevenLabsVoice> {
   try {
+    const client = await getElevenLabsClient();
+    
     const voice = await client.voices.get(voiceId);
     
     return {
-      voice_id: voice.voice_id,
-      name: voice.name,
-      description: voice.description,
-      preview_url: voice.preview_url,
-      category: voice.category,
-      labels: voice.labels
+      voice_id: voice.voiceId,
+      name: voice.name || 'Unknown Voice',
+      description: voice.description || '',
+      preview_url: voice.previewUrl,
+      category: voice.category as string,
+      labels: voice.labels || {}
     };
     
   } catch (error) {
@@ -120,8 +143,7 @@ export async function getVoice(voiceId: string): Promise<Voice> {
     });
     
     throw new ElevenLabsError(
-      `Ses detayı alınamadı: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { voiceId }
+      `Ses detayı alınamadı (${voiceId}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -151,7 +173,7 @@ export async function generateAudio(options: GenerateAudioOptions): Promise<Gene
   const {
     text,
     voiceId,
-    modelId = 'eleven_multilingual_v2',
+    modelId = 'eleven_flash_v2_5', // Default: En hızlı model (~75ms)
     stability = 0.5,
     similarityBoost = 0.75,
     style = 0,
@@ -166,19 +188,19 @@ export async function generateAudio(options: GenerateAudioOptions): Promise<Gene
   });
 
   try {
-    const client = getElevenLabsClient();
+    const client = await getElevenLabsClient();
 
     // Retry ile ses üret
     const audioStream = await retryElevenLabs(
       async () => {
         return await client.textToSpeech.convert(voiceId, {
           text,
-          model_id: modelId,
-          voice_settings: {
+          modelId: modelId,
+          voiceSettings: {
             stability,
-            similarity_boost: similarityBoost,
+            similarityBoost: similarityBoost,
             style,
-            use_speaker_boost: useSpeakerBoost
+            useSpeakerBoost: useSpeakerBoost
           }
         });
       },
@@ -217,21 +239,18 @@ export async function generateAudio(options: GenerateAudioOptions): Promise<Gene
     if (error instanceof Error) {
       if (error.message.includes('quota') || error.message.includes('limit')) {
         throw new ElevenLabsError(
-          'ElevenLabs quota veya limit aşıldı',
-          { originalError: error.message }
+          `ElevenLabs quota veya limit aşıldı: ${error.message}`
         );
       }
       if (error.message.includes('voice')) {
         throw new ElevenLabsError(
-          'Geçersiz ses ID',
-          { voiceId, originalError: error.message }
+          `Geçersiz ses ID (${voiceId}): ${error.message}`
         );
       }
     }
 
     throw new ElevenLabsError(
-      `Ses üretimi başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`,
-      { voiceId, textPreview: text.substring(0, 200) }
+      `Ses üretimi başarısız (${voiceId}): ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
     );
   }
 }
@@ -300,7 +319,7 @@ export async function generateAudios(
   }
 
   if (results.size === 0) {
-    throw new ElevenLabsError('Hiçbir ses üretilemedi', { errors });
+    throw new ElevenLabsError(`Hiçbir ses üretilemedi. Hatalar: ${JSON.stringify(errors)}`);
   }
 
   return results;

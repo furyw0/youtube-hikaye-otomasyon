@@ -58,8 +58,7 @@ export async function retryWithBackoff<T>(
           error: lastError.message
         });
         throw new MaxRetriesExceededError(
-          `${opts.maxRetries} denemeden sonra başarısız: ${lastError.message}`,
-          { originalError: lastError }
+          `${opts.maxRetries} denemeden sonra başarısız: ${lastError.message}`
         );
       }
       

@@ -152,6 +152,80 @@
     "unauthorized": "Unauthorized access",
     "tryAgain": "Try again",
     "goHome": "Go to Home"
+  },
+
+  "settings": {
+    "title": "Settings",
+    "back": "Back",
+    "apiKeys": "API Keys",
+    "defaults": "Default Settings",
+    "configured": "Configured",
+    "defaultModel": "Default Model",
+    "defaultVoice": "Default Voice",
+    "selectVoice": "Select voice",
+    "imagefxModel": "ImageFX Model",
+    "aspectRatio": "Aspect Ratio",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Settings saved successfully",
+    "error": "Failed to save settings"
+  },
+
+  "stories": {
+    "title": "My Stories",
+    "back": "Back",
+    "empty": "No stories yet",
+    "createFirst": "Create your first story",
+    "createNew": "New Story",
+    "filter": {
+      "all": "All",
+      "completed": "Completed",
+      "processing": "Processing",
+      "failed": "Failed"
+    },
+    "sort": {
+      "newest": "Newest",
+      "oldest": "Oldest"
+    },
+    "card": {
+      "scenes": "scenes",
+      "images": "images",
+      "view": "View",
+      "download": "Download",
+      "delete": "Delete"
+    }
+  },
+
+  "storyDetail": {
+    "title": "Story Detail",
+    "back": "Back",
+    "downloadAll": "Download All",
+    "tabs": {
+      "overview": "Overview",
+      "scenes": "Scenes",
+      "files": "Files"
+    },
+    "overview": {
+      "originalTitle": "Original Title",
+      "adaptedTitle": "Adapted Title",
+      "originalLanguage": "Original Language",
+      "targetLanguage": "Target Language",
+      "targetCountry": "Target Country",
+      "totalScenes": "Total Scenes",
+      "totalImages": "Total Images",
+      "totalDuration": "Total Duration",
+      "status": "Status"
+    },
+    "scene": {
+      "original": "Original Text",
+      "adapted": "Adapted Text",
+      "turkish": "Turkish Text",
+      "image": "Image",
+      "audio": "Audio",
+      "download": "Download",
+      "noImage": "No image",
+      "noAudio": "No audio"
+    }
   }
 }
 

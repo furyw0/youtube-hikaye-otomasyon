@@ -6,7 +6,10 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
+import { Navigation } from '@/components/layout/Navigation';
 import '../globals.css';
+
+export const dynamic = 'force-dynamic';
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -33,6 +36,7 @@ export default async function LocaleLayout({
     <html lang={locale}>
       <body className="min-h-screen bg-gray-50">
         <NextIntlClientProvider messages={messages}>
+          <Navigation />
           {children}
         </NextIntlClientProvider>
       </body>

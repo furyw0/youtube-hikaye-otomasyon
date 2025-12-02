@@ -18,6 +18,12 @@ const createStorySchema = z.object({
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
   openaiModel: z.string(),
+  elevenlabsModel: z.enum([
+    'eleven_flash_v2_5', 
+    'eleven_turbo_v2_5', 
+    'eleven_multilingual_v2', 
+    'eleven_v3'
+  ]).optional().default('eleven_flash_v2_5'),
   voiceId: z.string(),
   voiceName: z.string(),
   imagefxModel: z.enum(['IMAGEN_4', 'IMAGEN_3_5']).optional().default('IMAGEN_4'),
@@ -74,6 +80,7 @@ export async function POST(request: NextRequest) {
       targetLanguage: validated.targetLanguage,
       targetCountry: validated.targetCountry,
       openaiModel: validated.openaiModel,
+      elevenlabsModel: validated.elevenlabsModel,
       voiceId: validated.voiceId,
       voiceName: validated.voiceName,
       imagefxModel: validated.imagefxModel,

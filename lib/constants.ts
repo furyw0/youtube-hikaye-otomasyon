@@ -26,28 +26,82 @@ export const OPENAI_MODELS = [
 ];
 
 export const TARGET_LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español' },
-  { code: 'fr', name: 'Français' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'ar', name: 'العربية' },
-  { code: 'tr', name: 'Türkçe' },
-  { code: 'it', name: 'Italiano' },
-  { code: 'pt', name: 'Português' },
-  { code: 'ru', name: 'Русский' }
+  { code: 'en', name: '🇬🇧 English (İngilizce)' },
+  { code: 'es', name: '🇪🇸 Español (İspanyolca)' },
+  { code: 'fr', name: '🇫🇷 Français (Fransızca)' },
+  { code: 'de', name: '🇩🇪 Deutsch (Almanca)' },
+  { code: 'ar', name: '🇸🇦 العربية (Arapça)' },
+  { code: 'tr', name: '🇹🇷 Türkçe' },
+  { code: 'it', name: '🇮🇹 Italiano (İtalyanca)' },
+  { code: 'pt', name: '🇵🇹 Português (Portekizce)' },
+  { code: 'ru', name: '🇷🇺 Русский (Rusça)' },
+  { code: 'ja', name: '🇯🇵 日本語 (Japonca)' },
+  { code: 'ko', name: '🇰🇷 한국어 (Korece)' },
+  { code: 'zh', name: '🇨🇳 中文 (Çince)' },
+  { code: 'hi', name: '🇮🇳 हिन्दी (Hintçe)' },
+  { code: 'nl', name: '🇳🇱 Nederlands (Hollandaca)' },
+  { code: 'pl', name: '🇵🇱 Polski (Lehçe)' },
+  { code: 'sv', name: '🇸🇪 Svenska (İsveççe)' },
+  { code: 'da', name: '🇩🇰 Dansk (Danca)' },
+  { code: 'no', name: '🇳🇴 Norsk (Norveççe)' },
+  { code: 'fi', name: '🇫🇮 Suomi (Fince)' },
+  { code: 'el', name: '🇬🇷 Ελληνικά (Yunanca)' },
+  { code: 'cs', name: '🇨🇿 Čeština (Çekçe)' },
+  { code: 'ro', name: '🇷🇴 Română (Romence)' },
+  { code: 'hu', name: '🇭🇺 Magyar (Macarca)' },
+  { code: 'th', name: '🇹🇭 ไทย (Tayca)' },
+  { code: 'vi', name: '🇻🇳 Tiếng Việt (Vietnamca)' },
+  { code: 'id', name: '🇮🇩 Bahasa Indonesia (Endonezce)' },
+  { code: 'ms', name: '🇲🇾 Bahasa Melayu (Malayca)' },
+  { code: 'uk', name: '🇺🇦 Українська (Ukraynaca)' },
+  { code: 'he', name: '🇮🇱 עברית (İbranice)' },
+  { code: 'fa', name: '🇮🇷 فارسی (Farsça)' }
 ];
 
 export const TARGET_COUNTRIES = [
-  { code: 'USA', name: 'United States' },
-  { code: 'UK', name: 'United Kingdom' },
-  { code: 'Spain', name: 'Spain' },
-  { code: 'Germany', name: 'Germany' },
-  { code: 'France', name: 'France' },
-  { code: 'UAE', name: 'UAE' },
-  { code: 'Turkey', name: 'Türkiye' },
-  { code: 'Italy', name: 'Italy' },
-  { code: 'Brazil', name: 'Brazil' },
-  { code: 'Russia', name: 'Russia' }
+  { code: 'USA', name: '🇺🇸 United States (ABD)' },
+  { code: 'UK', name: '🇬🇧 United Kingdom (İngiltere)' },
+  { code: 'Turkey', name: '🇹🇷 Türkiye' },
+  { code: 'Germany', name: '🇩🇪 Germany (Almanya)' },
+  { code: 'France', name: '🇫🇷 France (Fransa)' },
+  { code: 'Spain', name: '🇪🇸 Spain (İspanya)' },
+  { code: 'Italy', name: '🇮🇹 Italy (İtalya)' },
+  { code: 'Netherlands', name: '🇳🇱 Netherlands (Hollanda)' },
+  { code: 'Belgium', name: '🇧🇪 Belgium (Belçika)' },
+  { code: 'Switzerland', name: '🇨🇭 Switzerland (İsviçre)' },
+  { code: 'Austria', name: '🇦🇹 Austria (Avusturya)' },
+  { code: 'Poland', name: '🇵🇱 Poland (Polonya)' },
+  { code: 'Sweden', name: '🇸🇪 Sweden (İsveç)' },
+  { code: 'Norway', name: '🇳🇴 Norway (Norveç)' },
+  { code: 'Denmark', name: '🇩🇰 Denmark (Danimarka)' },
+  { code: 'Finland', name: '🇫🇮 Finland (Finlandiya)' },
+  { code: 'Russia', name: '🇷🇺 Russia (Rusya)' },
+  { code: 'Ukraine', name: '🇺🇦 Ukraine (Ukrayna)' },
+  { code: 'Greece', name: '🇬🇷 Greece (Yunanistan)' },
+  { code: 'Portugal', name: '🇵🇹 Portugal (Portekiz)' },
+  { code: 'Brazil', name: '🇧🇷 Brazil (Brezilya)' },
+  { code: 'Mexico', name: '🇲🇽 Mexico (Meksika)' },
+  { code: 'Argentina', name: '🇦🇷 Argentina (Arjantin)' },
+  { code: 'Canada', name: '🇨🇦 Canada (Kanada)' },
+  { code: 'Australia', name: '🇦🇺 Australia (Avustralya)' },
+  { code: 'NewZealand', name: '🇳🇿 New Zealand (Yeni Zelanda)' },
+  { code: 'Japan', name: '🇯🇵 Japan (Japonya)' },
+  { code: 'SouthKorea', name: '🇰🇷 South Korea (Güney Kore)' },
+  { code: 'China', name: '🇨🇳 China (Çin)' },
+  { code: 'India', name: '🇮🇳 India (Hindistan)' },
+  { code: 'Indonesia', name: '🇮🇩 Indonesia (Endonezya)' },
+  { code: 'Malaysia', name: '🇲🇾 Malaysia (Malezya)' },
+  { code: 'Thailand', name: '🇹🇭 Thailand (Tayland)' },
+  { code: 'Vietnam', name: '🇻🇳 Vietnam' },
+  { code: 'Philippines', name: '🇵🇭 Philippines (Filipinler)' },
+  { code: 'Singapore', name: '🇸🇬 Singapore (Singapur)' },
+  { code: 'UAE', name: '🇦🇪 UAE (Birleşik Arap Emirlikleri)' },
+  { code: 'SaudiArabia', name: '🇸🇦 Saudi Arabia (Suudi Arabistan)' },
+  { code: 'Egypt', name: '🇪🇬 Egypt (Mısır)' },
+  { code: 'Israel', name: '🇮🇱 Israel (İsrail)' },
+  { code: 'SouthAfrica', name: '🇿🇦 South Africa (Güney Afrika)' },
+  { code: 'Nigeria', name: '🇳🇬 Nigeria (Nijerya)' },
+  { code: 'Iran', name: '🇮🇷 Iran' }
 ];
 
 export const STORY_LIMITS = {
@@ -87,4 +141,33 @@ export const IMAGEFX_SETTINGS = {
 export const RETRY_SETTINGS = {
   MAX_RETRIES: 3,
   BACKOFF_MS: 1000
+};
+
+// ElevenLabs Modelleri - https://elevenlabs.io/docs/models
+export const ELEVENLABS_MODELS = [
+  { 
+    id: 'eleven_flash_v2_5', 
+    name: 'Flash v2.5 (Önerilen)', 
+    description: 'Ultra hızlı (~75ms), 32 dil, 40K karakter'
+  },
+  { 
+    id: 'eleven_turbo_v2_5', 
+    name: 'Turbo v2.5', 
+    description: 'Yüksek kalite, düşük gecikme (~250ms), 32 dil'
+  },
+  { 
+    id: 'eleven_multilingual_v2', 
+    name: 'Multilingual v2', 
+    description: 'En doğal ses, 29 dil, 10K karakter'
+  },
+  { 
+    id: 'eleven_v3', 
+    name: 'Eleven v3 (Alpha)', 
+    description: 'En yeni model, 70+ dil, dramatik ifade'
+  }
+];
+
+export const ELEVENLABS_SETTINGS = {
+  MODELS: ELEVENLABS_MODELS,
+  DEFAULT_MODEL: 'eleven_flash_v2_5'
 };

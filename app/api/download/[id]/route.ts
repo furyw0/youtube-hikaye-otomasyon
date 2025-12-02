@@ -91,7 +91,6 @@ export async function GET(
 
   } catch (error) {
     logger.error('ZIP indirme hatası', {
-      storyId: params.id,
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     });
 

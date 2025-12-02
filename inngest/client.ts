@@ -16,10 +16,10 @@ export const inngest = new Inngest({
   
   // Logger entegrasyonu
   logger: {
-    info: (msg, data) => logger.info(msg, data),
-    error: (msg, data) => logger.error(msg, data),
-    warn: (msg, data) => logger.warn(msg, data),
-    debug: (msg, data) => logger.debug(msg, data)
+    info: (msg: string, data?: unknown) => logger.info(msg, data),
+    error: (msg: string, data?: unknown) => logger.error(msg, data),
+    warn: (msg: string, data?: unknown) => logger.warn(msg, data),
+    debug: (msg: string, data?: unknown) => logger.debug(msg, data)
   }
 });
 

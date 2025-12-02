@@ -52,6 +52,7 @@
       "targetLanguage": "Hedef Dil",
       "targetCountry": "Hedef Ülke",
       "openaiModel": "OpenAI Modeli",
+      "elevenlabsModel": "ElevenLabs Modeli",
       "voice": "Ses",
       "imagefxModel": "ImageFX Modeli",
       "aspectRatio": "Görsel Oranı",
@@ -152,6 +153,80 @@
     "unauthorized": "Yetkisiz erişim",
     "tryAgain": "Tekrar deneyin",
     "goHome": "Ana Sayfaya Dön"
+  },
+
+  "settings": {
+    "title": "Ayarlar",
+    "back": "Geri",
+    "apiKeys": "API Anahtarları",
+    "defaults": "Varsayılan Ayarlar",
+    "configured": "Ayarlandı",
+    "defaultModel": "Varsayılan Model",
+    "defaultVoice": "Varsayılan Ses",
+    "selectVoice": "Ses seçin",
+    "imagefxModel": "ImageFX Modeli",
+    "aspectRatio": "Görsel Oranı",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor...",
+    "saved": "Ayarlar başarıyla kaydedildi",
+    "error": "Ayarlar kaydedilemedi"
+  },
+
+  "stories": {
+    "title": "Hikayelerim",
+    "back": "Geri",
+    "empty": "Henüz hikaye yok",
+    "createFirst": "İlk hikayenizi oluşturun",
+    "createNew": "Yeni Hikaye",
+    "filter": {
+      "all": "Tümü",
+      "completed": "Tamamlanan",
+      "processing": "İşleniyor",
+      "failed": "Başarısız"
+    },
+    "sort": {
+      "newest": "En Yeni",
+      "oldest": "En Eski"
+    },
+    "card": {
+      "scenes": "sahne",
+      "images": "görsel",
+      "view": "Görüntüle",
+      "download": "İndir",
+      "delete": "Sil"
+    }
+  },
+
+  "storyDetail": {
+    "title": "Hikaye Detayı",
+    "back": "Geri",
+    "downloadAll": "Tümünü İndir",
+    "tabs": {
+      "overview": "Genel Bakış",
+      "scenes": "Sahneler",
+      "files": "Dosyalar"
+    },
+    "overview": {
+      "originalTitle": "Orijinal Başlık",
+      "adaptedTitle": "Adapte Başlık",
+      "originalLanguage": "Orijinal Dil",
+      "targetLanguage": "Hedef Dil",
+      "targetCountry": "Hedef Ülke",
+      "totalScenes": "Toplam Sahne",
+      "totalImages": "Toplam Görsel",
+      "totalDuration": "Toplam Süre",
+      "status": "Durum"
+    },
+    "scene": {
+      "original": "Orijinal Metin",
+      "adapted": "Adapte Metin",
+      "turkish": "Türkçe Metin",
+      "image": "Görsel",
+      "audio": "Ses",
+      "download": "İndir",
+      "noImage": "Görsel yok",
+      "noAudio": "Ses yok"
+    }
   }
 }
 

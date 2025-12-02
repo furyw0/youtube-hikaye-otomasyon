@@ -43,6 +43,10 @@ const StorySchema = new Schema<IStory>(
       required: true,
       default: 'gpt-4o-mini'
     },
+    elevenlabsModel: {
+      type: String,
+      default: 'eleven_flash_v2_5'
+    },
     voiceId: {
       type: String,
       required: true
