@@ -16,7 +16,7 @@
     "react-dom": "^19.0.0",
     "mongoose": "^8.8.4",
     "inngest": "^3.24.3",
-    "elevenlabs": "^0.8.0",
+    "@elevenlabs/elevenlabs-js": "^2.26.0",
     "@rohitaryal/imagefx-api": "latest",
     "@vercel/blob": "^0.27.0",
     "openai": "^4.77.3",

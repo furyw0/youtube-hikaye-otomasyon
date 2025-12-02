@@ -11,10 +11,10 @@ import logger from '@/lib/logger';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const storyId = params.id;
+    const { id: storyId } = await params;
 
     logger.debug('Hikaye detayları istendi', { storyId });
 
@@ -53,7 +53,6 @@ export async function GET(
 
   } catch (error) {
     logger.error('Hikaye detayları getirme hatası', {
-      storyId: params.id,
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     });
 
@@ -67,10 +66,10 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const storyId = params.id;
+    const { id: storyId } = await params;
 
     logger.info('Hikaye silme isteği', { storyId });
 

@@ -137,7 +137,7 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
     // 2. İçeriği chunk'lara böl
     const chunks = chunkByTokenLimit(content, model, 2000); // 2000 token reserve (çeviri için)
     
-    logger.info('İçerik chunk'lara bölündü', {
+    logger.info("İçerik chunk'lara bölündü", {
       totalChunks: chunks.length,
       avgChunkSize: Math.round(content.length / chunks.length)
     });

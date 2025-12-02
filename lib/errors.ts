@@ -67,3 +67,31 @@ export class AudioGenerationError extends AppError {
   }
 }
 
+// OpenAI Error
+export class OpenAIError extends AppError {
+  constructor(message: string) {
+    super(message, 500, 'OPENAI_ERROR');
+  }
+}
+
+// ImageFX Error
+export class ImageFXError extends AppError {
+  constructor(message: string) {
+    super(message, 500, 'IMAGEFX_ERROR');
+  }
+}
+
+// BlobStorage Error
+export class BlobStorageError extends AppError {
+  constructor(message: string) {
+    super(message, 500, 'BLOB_STORAGE_ERROR');
+  }
+}
+
+// ElevenLabs Error
+export class ElevenLabsError extends AppError {
+  constructor(message: string) {
+    super(message, 500, 'ELEVENLABS_ERROR');
+  }
+}
+

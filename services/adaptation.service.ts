@@ -153,7 +153,7 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
     // 2. İçeriği chunk'lara böl
     const chunks = chunkByTokenLimit(content, model, 2000);
     
-    logger.info('İçerik chunk'lara bölündü', {
+    logger.info("İçerik chunk'lara bölündü", {
       totalChunks: chunks.length,
       avgChunkSize: Math.round(content.length / chunks.length)
     });

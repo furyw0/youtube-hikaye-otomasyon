@@ -178,7 +178,7 @@ Video editörünüzde kullanabilirsiniz.
     // Tüm indirmeleri bekle, sonra finalize et
     Promise.all(downloadPromises)
       .then(() => {
-        logger.debug('Tüm dosyalar ZIP\'e eklendi, finalize ediliyor...');
+        logger.debug("Tüm dosyalar ZIP'e eklendi, finalize ediliyor...");
         archive.finalize();
       })
       .catch((error) => {
@@ -211,7 +211,7 @@ async function downloadAndAppendToArchive(
 
     archive.append(buffer, { name: filename });
 
-    logger.debug('Dosya ZIP\'e eklendi', {
+    logger.debug("Dosya ZIP'e eklendi", {
       filename,
       size: buffer.length
     });

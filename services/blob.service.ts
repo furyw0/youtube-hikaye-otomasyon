@@ -28,7 +28,7 @@ export interface UploadResult {
 export async function uploadFile(options: UploadOptions): Promise<UploadResult> {
   const { path, data, contentType, addRandomSuffix = true } = options;
 
-  logger.debug('Blob storage'a yükleniyor', {
+  logger.debug("Blob storage'a yükleniyor", {
     path,
     size: Buffer.isBuffer(data) ? data.length : data.length,
     contentType
@@ -41,7 +41,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
       addRandomSuffix
     });
 
-    logger.info('Blob storage'a yüklendi', {
+    logger.info("Blob storage'a yüklendi", {
       url: blob.url,
       pathname: blob.pathname,
       size: blob.size
@@ -145,12 +145,12 @@ export async function uploadZip(
  * Dosya siler
  */
 export async function deleteFile(url: string): Promise<void> {
-  logger.debug('Blob storage\'dan siliniyor', { url });
+  logger.debug("Blob storage'dan siliniyor", { url });
 
   try {
     await del(url);
     
-    logger.info('Blob storage\'dan silindi', { url });
+    logger.info("Blob storage'dan silindi", { url });
 
   } catch (error) {
     logger.error('Blob storage silme hatası', {
