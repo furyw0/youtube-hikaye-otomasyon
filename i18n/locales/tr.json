@@ -1,0 +1,157 @@
+{
+  "common": {
+    "appName": "YouTube Hikaye Otomasyon",
+    "loading": "Yükleniyor...",
+    "error": "Hata",
+    "success": "Başarılı",
+    "cancel": "İptal",
+    "save": "Kaydet",
+    "delete": "Sil",
+    "download": "İndir",
+    "back": "Geri",
+    "next": "İleri",
+    "submit": "Gönder",
+    "processing": "İşleniyor...",
+    "completed": "Tamamlandı",
+    "failed": "Başarısız"
+  },
+  
+  "nav": {
+    "home": "Ana Sayfa",
+    "dashboard": "Dashboard",
+    "history": "Geçmiş",
+    "newStory": "Yeni Hikaye"
+  },
+
+  "home": {
+    "title": "YouTube Hikaye Otomasyon",
+    "subtitle": "Hikayelerinizi otomatik olarak çevirin, adapte edin, görselleştirin ve seslendirin",
+    "features": {
+      "title": "Özellikler",
+      "translation": "Akıllı Çeviri",
+      "translationDesc": "GPT-4o-mini ile profesyonel çeviri",
+      "adaptation": "Kültürel Adaptasyon",
+      "adaptationDesc": "Hedef ülkeye özel içerik",
+      "visuals": "AI Görseller",
+      "visualsDesc": "Google ImageFX ile 10 görsel",
+      "audio": "Seslendirme",
+      "audioDesc": "ElevenLabs ile profesyonel ses"
+    },
+    "cta": "Hemen Başla"
+  },
+
+  "storyForm": {
+    "title": "Yeni Hikaye Oluştur",
+    "subtitle": "Hikayenizi girin ve otomatik işleme başlayın",
+    
+    "fields": {
+      "title": "Başlık",
+      "titlePlaceholder": "Hikaye başlığını girin",
+      "content": "Hikaye İçeriği",
+      "contentPlaceholder": "Hikayenizi buraya yapıştırın... (min 1000 karakter)",
+      "targetLanguage": "Hedef Dil",
+      "targetCountry": "Hedef Ülke",
+      "openaiModel": "OpenAI Modeli",
+      "voice": "Ses",
+      "imagefxModel": "ImageFX Modeli",
+      "aspectRatio": "Görsel Oranı",
+      "seed": "Seed (Opsiyonel)"
+    },
+
+    "hints": {
+      "characters": "karakter",
+      "detectedLanguage": "Algılanan dil:",
+      "estimatedCost": "Tahmini maliyet:",
+      "estimatedTokens": "Tahmini token:"
+    },
+
+    "errors": {
+      "titleRequired": "Başlık gerekli",
+      "titleTooShort": "Başlık çok kısa (min 3 karakter)",
+      "titleTooLong": "Başlık çok uzun (max 200 karakter)",
+      "contentRequired": "İçerik gerekli",
+      "contentTooShort": "İçerik çok kısa (min 1000 karakter)",
+      "contentTooLong": "İçerik çok uzun (max 100000 karakter)",
+      "targetLanguageRequired": "Hedef dil seçin",
+      "targetCountryRequired": "Hedef ülke seçin",
+      "voiceRequired": "Ses seçin"
+    },
+
+    "submit": "İşleme Başla",
+    "submitting": "Oluşturuluyor..."
+  },
+
+  "progress": {
+    "title": "İşlem Durumu",
+    "status": {
+      "created": "Oluşturuldu",
+      "queued": "Sıraya Alındı",
+      "processing": "İşleniyor",
+      "completed": "Tamamlandı",
+      "failed": "Başarısız"
+    },
+    "steps": {
+      "detectingLanguage": "Dil algılanıyor...",
+      "translating": "Çeviri yapılıyor...",
+      "adapting": "Kültürel adaptasyon...",
+      "generatingScenes": "Sahneler oluşturuluyor...",
+      "generatingPrompts": "Görsel promptları hazırlanıyor...",
+      "generatingImages": "Görseller üretiliyor...",
+      "generatingAudio": "Seslendirme yapılıyor...",
+      "creatingZip": "ZIP dosyası oluşturuluyor...",
+      "completed": "İşlem tamamlandı!"
+    }
+  },
+
+  "scenes": {
+    "title": "Sahneler",
+    "sceneNumber": "Sahne",
+    "original": "Orijinal",
+    "adapted": "Adapte",
+    "image": "Görsel",
+    "audio": "Ses",
+    "duration": "Süre",
+    "firstThreeMinutes": "İlk 3 Dakika",
+    "visualDescription": "Görsel Betimleme",
+    "visualPrompt": "Görsel Prompt",
+    "showOriginal": "Orijinali Göster",
+    "hideOriginal": "Orijinali Gizle"
+  },
+
+  "dashboard": {
+    "title": "Dashboard",
+    "myStories": "Hikayelerim",
+    "recentStories": "Son Hikayeler",
+    "stats": {
+      "totalStories": "Toplam Hikaye",
+      "completed": "Tamamlanan",
+      "processing": "İşleniyor",
+      "failed": "Başarısız"
+    },
+    "noStories": "Henüz hikaye yok",
+    "createFirst": "İlk hikayenizi oluşturun"
+  },
+
+  "storyCard": {
+    "createdAt": "Oluşturulma",
+    "updatedAt": "Güncellenme",
+    "scenes": "sahne",
+    "images": "görsel",
+    "duration": "Süre",
+    "view": "Görüntüle",
+    "download": "İndir",
+    "delete": "Sil",
+    "deleteConfirm": "Bu hikayeyi silmek istediğinizden emin misiniz?"
+  },
+
+  "errors": {
+    "general": "Bir hata oluştu",
+    "networkError": "Bağlantı hatası",
+    "serverError": "Sunucu hatası",
+    "notFound": "Bulunamadı",
+    "unauthorized": "Yetkisiz erişim",
+    "tryAgain": "Tekrar deneyin",
+    "goHome": "Ana Sayfaya Dön"
+  }
+}
+
