@@ -1,6 +1,7 @@
 /**
  * API Endpoint: Hikaye Detayları
  * GET /api/stories/[id]
+ * DELETE /api/stories/[id]
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -8,26 +9,37 @@ import dbConnect from '@/lib/mongodb';
 import Story from '@/models/Story';
 import Scene from '@/models/Scene';
 import logger from '@/lib/logger';
+import { auth } from '@/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Auth kontrolü
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Yetkisiz erişim'
+      }, { status: 401 });
+    }
+
+    const userId = session.user.id;
     const { id: storyId } = await params;
 
-    logger.debug('Hikaye detayları istendi', { storyId });
+    logger.debug('Hikaye detayları istendi', { storyId, userId });
 
     // MongoDB bağlantısı
     await dbConnect();
 
-    // Story ve scenes'leri getir
-    const story = await Story.findById(storyId)
+    // Story ve scenes'leri getir - userId kontrolü ile
+    const story = await Story.findOne({ _id: storyId, userId })
       .populate('scenes')
       .lean();
 
     if (!story) {
-      logger.warn('Hikaye bulunamadı', { storyId });
+      logger.warn('Hikaye bulunamadı veya yetkisiz', { storyId, userId });
       
       return NextResponse.json({
         success: false,
@@ -69,14 +81,24 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Auth kontrolü
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Yetkisiz erişim'
+      }, { status: 401 });
+    }
+
+    const userId = session.user.id;
     const { id: storyId } = await params;
 
-    logger.info('Hikaye silme isteği', { storyId });
+    logger.info('Hikaye silme isteği', { storyId, userId });
 
     await dbConnect();
 
-    // Story kontrol
-    const story = await Story.findById(storyId);
+    // Story kontrol - userId ile
+    const story = await Story.findOne({ _id: storyId, userId });
     
     if (!story) {
       return NextResponse.json({
@@ -93,7 +115,7 @@ export async function DELETE(
 
     // TODO: Blob storage'dan dosyaları sil
 
-    logger.info('Hikaye silindi', { storyId });
+    logger.info('Hikaye silindi', { storyId, userId });
 
     return NextResponse.json({
       success: true,
@@ -111,4 +133,3 @@ export async function DELETE(
     }, { status: 500 });
   }
 }
-

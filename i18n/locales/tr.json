@@ -20,7 +20,53 @@
     "home": "Ana Sayfa",
     "dashboard": "Dashboard",
     "history": "Geçmiş",
-    "newStory": "Yeni Hikaye"
+    "newStory": "Yeni Hikaye",
+    "login": "Giriş Yap",
+    "register": "Kayıt Ol",
+    "logout": "Çıkış Yap",
+    "profile": "Profil",
+    "myStories": "Hikayelerim",
+    "settings": "Ayarlar"
+  },
+
+  "auth": {
+    "login": {
+      "title": "Giriş Yap",
+      "subtitle": "Hesabınıza giriş yapın",
+      "submit": "Giriş Yap",
+      "submitting": "Giriş yapılıyor...",
+      "noAccount": "Hesabınız yok mu?",
+      "registerLink": "Kayıt olun"
+    },
+    "register": {
+      "title": "Kayıt Ol",
+      "subtitle": "Yeni bir hesap oluşturun",
+      "submit": "Kayıt Ol",
+      "submitting": "Kayıt yapılıyor...",
+      "hasAccount": "Zaten hesabınız var mı?",
+      "loginLink": "Giriş yapın"
+    },
+    "fields": {
+      "name": "Ad Soyad",
+      "namePlaceholder": "Adınızı girin",
+      "email": "E-posta",
+      "emailPlaceholder": "E-posta adresinizi girin",
+      "password": "Şifre",
+      "passwordPlaceholder": "Şifrenizi girin",
+      "confirmPassword": "Şifre Tekrar",
+      "confirmPasswordPlaceholder": "Şifrenizi tekrar girin"
+    },
+    "errors": {
+      "general": "Bir hata oluştu",
+      "invalidCredentials": "E-posta veya şifre hatalı",
+      "emailExists": "Bu e-posta adresi zaten kayıtlı",
+      "passwordMismatch": "Şifreler eşleşmiyor",
+      "weakPassword": "Şifre en az 6 karakter olmalı"
+    },
+    "user": {
+      "welcome": "Hoş geldiniz",
+      "account": "Hesabım"
+    }
   },
 
   "home": {

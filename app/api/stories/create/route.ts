@@ -10,6 +10,7 @@ import Story from '@/models/Story';
 import logger from '@/lib/logger';
 import { detectLanguage } from '@/services/language-detection.service';
 import { validateCreateStoryRequest } from '@/services/validation.service';
+import { auth } from '@/auth';
 
 // Validation schema
 const createStorySchema = z.object({
@@ -33,10 +34,21 @@ const createStorySchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth kontrolü
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Yetkisiz erişim'
+      }, { status: 401 });
+    }
+
+    const userId = session.user.id;
+    
     // Rate limiting kontrolü (basit IP kontrolü)
     const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     
-    logger.info('Hikaye oluşturma isteği alındı', { ip });
+    logger.info('Hikaye oluşturma isteği alındı', { ip, userId });
 
     // Parse request body
     const body = await request.json();
@@ -50,7 +62,8 @@ export async function POST(request: NextRequest) {
     if (!validationResult.valid) {
       logger.warn('Validasyon hatası', {
         errors: validationResult.errors,
-        ip
+        ip,
+        userId
       });
       
       return NextResponse.json({
@@ -74,6 +87,7 @@ export async function POST(request: NextRequest) {
 
     // Story oluştur
     const story = await Story.create({
+      userId, // Kullanıcı ID'si
       originalTitle: validated.title,
       originalContent: validated.content,
       originalLanguage: detection.language,
@@ -100,6 +114,7 @@ export async function POST(request: NextRequest) {
 
     logger.info('Hikaye oluşturuldu', {
       storyId: story._id,
+      userId,
       detectedLanguage: detection.language,
       estimatedTokens: validationResult.estimatedTokens,
       estimatedCost: validationResult.estimatedCost
@@ -144,4 +159,3 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
-

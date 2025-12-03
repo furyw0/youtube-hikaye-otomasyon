@@ -20,7 +20,53 @@
     "home": "Home",
     "dashboard": "Dashboard",
     "history": "History",
-    "newStory": "New Story"
+    "newStory": "New Story",
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout",
+    "profile": "Profile",
+    "myStories": "My Stories",
+    "settings": "Settings"
+  },
+
+  "auth": {
+    "login": {
+      "title": "Login",
+      "subtitle": "Sign in to your account",
+      "submit": "Sign In",
+      "submitting": "Signing in...",
+      "noAccount": "Don't have an account?",
+      "registerLink": "Register"
+    },
+    "register": {
+      "title": "Register",
+      "subtitle": "Create a new account",
+      "submit": "Register",
+      "submitting": "Registering...",
+      "hasAccount": "Already have an account?",
+      "loginLink": "Sign in"
+    },
+    "fields": {
+      "name": "Full Name",
+      "namePlaceholder": "Enter your name",
+      "email": "Email",
+      "emailPlaceholder": "Enter your email",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "confirmPassword": "Confirm Password",
+      "confirmPasswordPlaceholder": "Re-enter your password"
+    },
+    "errors": {
+      "general": "An error occurred",
+      "invalidCredentials": "Invalid email or password",
+      "emailExists": "This email is already registered",
+      "passwordMismatch": "Passwords do not match",
+      "weakPassword": "Password must be at least 6 characters"
+    },
+    "user": {
+      "welcome": "Welcome",
+      "account": "My Account"
+    }
   },
 
   "home": {

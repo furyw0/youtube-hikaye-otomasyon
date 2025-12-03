@@ -3,6 +3,9 @@ import { Types } from 'mongoose';
 export interface IStory {
   _id: Types.ObjectId;
   
+  // Kullanıcı ilişkisi
+  userId: Types.ObjectId;
+  
   // Orijinal hikaye
   originalTitle: string;
   originalContent: string;

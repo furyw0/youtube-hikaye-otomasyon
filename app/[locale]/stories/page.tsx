@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface Story {
   _id: string;
@@ -26,6 +27,14 @@ interface Story {
 }
 
 export default function StoriesPage() {
+  return (
+    <AuthGuard>
+      <StoriesContent />
+    </AuthGuard>
+  );
+}
+
+function StoriesContent() {
   const t = useTranslations('stories');
   
   const [stories, setStories] = useState<Story[]>([]);

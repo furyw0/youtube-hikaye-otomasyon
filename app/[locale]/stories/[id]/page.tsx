@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface Scene {
   _id: string;
@@ -51,6 +52,14 @@ interface Story {
 type TabType = 'overview' | 'scenes' | 'files';
 
 export default function StoryDetailPage() {
+  return (
+    <AuthGuard>
+      <StoryDetailContent />
+    </AuthGuard>
+  );
+}
+
+function StoryDetailContent() {
   const t = useTranslations('storyDetail');
   const params = useParams();
   const storyId = params.id as string;

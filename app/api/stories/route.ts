@@ -1,16 +1,28 @@
 /**
  * API Endpoint: Hikaye Listesi
- * GET /api/stories - Tüm hikayeleri listele
+ * GET /api/stories - Kullanıcının hikayelerini listele
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Story from '@/models/Story';
 import logger from '@/lib/logger';
+import { auth } from '@/auth';
 
-// GET - Tüm hikayeleri listele
+// GET - Kullanıcının hikayelerini listele
 export async function GET(request: NextRequest) {
   try {
+    // Auth kontrolü
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Yetkisiz erişim'
+      }, { status: 401 });
+    }
+
+    const userId = session.user.id;
+
     await dbConnect();
 
     // Query parametreleri
@@ -20,8 +32,8 @@ export async function GET(request: NextRequest) {
     const skip = parseInt(searchParams.get('skip') || '0');
     const sort = searchParams.get('sort') || 'newest';
 
-    // Filter
-    const filter: Record<string, any> = {};
+    // Filter - sadece kullanıcının hikayeleri
+    const filter: Record<string, unknown> = { userId };
     if (status && status !== 'all') {
       filter.status = status;
     }
@@ -63,4 +75,3 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
 }
-

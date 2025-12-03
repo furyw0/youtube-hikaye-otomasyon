@@ -7,6 +7,7 @@ import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import { Navigation } from '@/components/layout/Navigation';
+import { SessionProvider } from '@/components/providers/SessionProvider';
 import '../globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -35,10 +36,12 @@ export default async function LocaleLayout({
   return (
     <html lang={locale}>
       <body className="min-h-screen bg-gray-50">
-        <NextIntlClientProvider messages={messages}>
-          <Navigation />
-          {children}
-        </NextIntlClientProvider>
+        <SessionProvider>
+          <NextIntlClientProvider messages={messages}>
+            <Navigation />
+            {children}
+          </NextIntlClientProvider>
+        </SessionProvider>
       </body>
     </html>
   );

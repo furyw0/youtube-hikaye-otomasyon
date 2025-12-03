@@ -3,6 +3,14 @@ import { IStory } from '@/types/story.types';
 
 const StorySchema = new Schema<IStory>(
   {
+    // Kullanıcı ilişkisi
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true
+    },
+    
     // Orijinal hikaye
     originalTitle: {
       type: String,
@@ -140,6 +148,7 @@ const StorySchema = new Schema<IStory>(
 );
 
 // Indexes
+StorySchema.index({ userId: 1, createdAt: -1 });
 StorySchema.index({ status: 1, createdAt: -1 });
 StorySchema.index({ originalLanguage: 1 });
 StorySchema.index({ targetLanguage: 1 });

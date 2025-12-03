@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface Settings {
   defaultOpenaiModel: string;
@@ -33,6 +34,14 @@ interface Voice {
 }
 
 export default function SettingsPage() {
+  return (
+    <AuthGuard>
+      <SettingsContent />
+    </AuthGuard>
+  );
+}
+
+function SettingsContent() {
   const t = useTranslations('settings');
   
   const [settings, setSettings] = useState<Settings | null>(null);

@@ -10,6 +10,7 @@ import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { ProgressTracker } from '@/components/ui/ProgressTracker';
 import { SceneViewer } from '@/components/scene/SceneViewer';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface Story {
   _id: string;
@@ -32,6 +33,14 @@ interface Story {
 }
 
 export default function DashboardPage() {
+  return (
+    <AuthGuard>
+      <DashboardContent />
+    </AuthGuard>
+  );
+}
+
+function DashboardContent() {
   const t = useTranslations('dashboard');
   const tCommon = useTranslations('common');
   const searchParams = useSearchParams();
