@@ -134,20 +134,24 @@ async function generateRemainingScenes(
 ): Promise<SceneData[]> {
   const remainingContent = content.substring(firstThreeMinutesEndPosition);
   
-  const estimatedScenes = Math.ceil(remainingContent.length / 1200); // ~1200 karakter/sahne
+  // Kalan içerik çok kısa ise minimum sahne sayısını ayarla
+  const contentLength = remainingContent.length;
+  const estimatedScenes = Math.max(5, Math.ceil(contentLength / 1200)); // ~1200 karakter/sahne, minimum 5
+  const minScenes = Math.max(5, Math.min(estimatedScenes, 10)); // Minimum 5, maksimum 10 zorunlu
   
   const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin KALAN KISMINI sahnelere ayırıyorsun.
 
-HEDEF: Hikayenin kalan kısmını ${estimatedScenes}-${estimatedScenes + 10} sahneye böl, 5 tanesine görsel ekle.
+HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes + 10} sahneye böl, 5 tanesine görsel ekle.
 
 KURALLAR:
 1. Her sahne 15-20 saniye seslendirme (~150-200 kelime)
-2. Toplam ${estimatedScenes}-${estimatedScenes + 10} sahne oluştur
+2. Minimum ${minScenes} sahne oluştur (içerik kısa ise daha az olabilir)
 3. Bu sahnelerden tam 5 tanesine görsel ekle
 4. Görselli sahneleri EŞIT ARALIKLARLA dağıt
 5. Görselli sahneler için DETAYLI görsel betimleme yap
 6. Hikaye akışını koru, hiçbir şeyi atlama
 7. Her sahne akıcı ve tutarlı olmalı
+8. İçerik kısa ise daha az sahne oluşturabilirsin
 
 Her sahne için (JSON):
 - sceneNumber: Sahne numarası (6'dan başla)
@@ -185,7 +189,7 @@ JSON FORMAT:
       model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: remainingContent }
+        { role: 'user', content: remainingContent || 'Hikaye burada sona eriyor. Son 5 sahneyi oluştur.' }
       ],
       temperature: 0.3,
       responseFormat: 'json_object'
@@ -195,10 +199,10 @@ JSON FORMAT:
 
   const parsed = parseJSONResponse<{ scenes: SceneData[] }>(response, ['scenes']);
 
-  // Validasyon
-  if (!parsed.scenes || parsed.scenes.length < 10) {
+  // Validasyon - minimum 5 sahne (5 görsel için)
+  if (!parsed.scenes || parsed.scenes.length < 5) {
     throw new SceneValidationError(
-      `En az 10 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
+      `En az 5 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
     );
   }
 

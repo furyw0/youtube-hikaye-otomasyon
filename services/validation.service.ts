@@ -89,6 +89,27 @@ export function validateStoryContent(content: string): ValidationResult {
   };
 }
 
+interface StoryValidationResult {
+  valid: boolean;
+  error?: string;
+  details?: string[];
+  estimatedTokens: number;
+}
+
+/**
+ * Hikaye doğrulama - API route'ları için basit arayüz
+ */
+export async function validateStory(content: string): Promise<StoryValidationResult> {
+  const result = validateStoryContent(content);
+  
+  return {
+    valid: result.valid,
+    error: result.errors.length > 0 ? result.errors[0] : undefined,
+    details: result.errors.length > 0 ? result.errors : undefined,
+    estimatedTokens: result.estimatedTokens
+  };
+}
+
 /**
  * Başlık doğrular
  */

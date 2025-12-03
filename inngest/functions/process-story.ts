@@ -8,8 +8,6 @@ import logger from '@/lib/logger';
 import dbConnect from '@/lib/mongodb';
 import Story from '@/models/Story';
 import Scene from '@/models/Scene';
-import type { IStory } from '@/types/story.types';
-import type { IScene } from '@/types/scene.types';
 
 // Servisler
 import { detectLanguage } from '@/services/language-detection.service';
@@ -18,7 +16,7 @@ import { adaptStory } from '@/services/adaptation.service';
 import { generateScenes, generateVisualPrompts } from '@/services/scene.service';
 import { generateImage } from '@/services/imagefx.service';
 import { generateAudio } from '@/services/elevenlabs.service';
-import { uploadImage, uploadAudio, uploadSceneMetadata, uploadZip } from '@/services/blob.service';
+import { uploadImage, uploadAudio, uploadZip } from '@/services/blob.service';
 import { createZipArchive } from '@/services/zip.service';
 
 export const processStory = inngest.createFunction(
@@ -32,8 +30,6 @@ export const processStory = inngest.createFunction(
 
     logger.info('Hikaye işleme pipeline başlatıldı', { storyId });
 
-    await dbConnect();
-
     /**
      * Helper: Progress güncelleme
      */
@@ -42,6 +38,7 @@ export const processStory = inngest.createFunction(
       currentStep: string, 
       status: string = 'processing'
     ) => {
+      await dbConnect();
       await Story.findByIdAndUpdate(storyId, {
         progress,
         currentStep,
@@ -51,19 +48,32 @@ export const processStory = inngest.createFunction(
       logger.info('Progress güncellendi', { storyId, progress, currentStep });
     };
 
+    /**
+     * Helper: Story'yi yeniden fetch et (Mongoose document olarak)
+     */
+    const getStory = async () => {
+      await dbConnect();
+      const story = await Story.findById(storyId);
+      if (!story) {
+        throw new Error('Hikaye bulunamadı');
+      }
+      return story;
+    };
+
     try {
       // --- 1. DİL ALGILAMA (5%) ---
-      const story = await step.run('detect-language', async (): Promise<any> => {
+      const storyData = await step.run('detect-language', async () => {
+        await dbConnect();
         await updateProgress(5, 'Dil algılanıyor...');
         
-        const story = await Story.findById(storyId);
-        if (!story) {
-          throw new Error('Hikaye bulunamadı');
-        }
+        const story = await getStory();
 
         const detection = await detectLanguage(story.originalContent);
-        story.originalLanguage = detection.language;
-        await story.save();
+        
+        // findByIdAndUpdate kullan (save() yerine)
+        await Story.findByIdAndUpdate(storyId, {
+          originalLanguage: detection.language
+        });
 
         logger.info('Dil algılandı', {
           storyId,
@@ -71,24 +81,40 @@ export const processStory = inngest.createFunction(
           confidence: detection.confidence
         });
 
-        return story;
+        // Plain object olarak dön (Inngest serialize edebilsin)
+        return {
+          _id: story._id.toString(),
+          originalContent: story.originalContent,
+          originalTitle: story.originalTitle,
+          originalLanguage: detection.language,
+          targetLanguage: story.targetLanguage,
+          targetCountry: story.targetCountry,
+          openaiModel: story.openaiModel,
+          voiceId: story.voiceId,
+          imagefxModel: story.imagefxModel,
+          imagefxAspectRatio: story.imagefxAspectRatio,
+          imagefxSeed: story.imagefxSeed
+        };
       });
 
       // --- 2. ÇEVİRİ (20%) ---
-      await step.run('translate-story', async () => {
+      const translationData = await step.run('translate-story', async () => {
+        await dbConnect();
         await updateProgress(10, 'Hikaye çevriliyor...');
 
         const result = await translateStory({
-          content: story.originalContent,
-          title: story.originalTitle,
-          sourceLang: story.originalLanguage,
-          targetLang: story.targetLanguage,
-          model: story.openaiModel
+          content: storyData.originalContent,
+          title: storyData.originalTitle,
+          sourceLang: storyData.originalLanguage,
+          targetLang: storyData.targetLanguage,
+          model: storyData.openaiModel
         });
 
-        story.adaptedTitle = result.title;
-        story.adaptedContent = result.content;
-        await story.save();
+        // findByIdAndUpdate kullan
+        await Story.findByIdAndUpdate(storyId, {
+          adaptedTitle: result.title,
+          adaptedContent: result.content
+        });
 
         await updateProgress(20, 'Çeviri tamamlandı');
 
@@ -98,23 +124,31 @@ export const processStory = inngest.createFunction(
           translatedLength: result.translatedLength,
           chunks: result.chunksUsed
         });
+
+        return {
+          adaptedTitle: result.title,
+          adaptedContent: result.content
+        };
       });
 
       // --- 3. KÜLTÜREL UYARLAMA (30%) ---
-      await step.run('adapt-story', async () => {
+      const adaptationData = await step.run('adapt-story', async () => {
+        await dbConnect();
         await updateProgress(25, 'Kültürel adaptasyon yapılıyor...');
 
         const result = await adaptStory({
-          content: story.adaptedContent!,
-          title: story.adaptedTitle!,
-          targetCountry: story.targetCountry,
-          targetLanguage: story.targetLanguage,
-          model: story.openaiModel
+          content: translationData.adaptedContent,
+          title: translationData.adaptedTitle,
+          targetCountry: storyData.targetCountry,
+          targetLanguage: storyData.targetLanguage,
+          model: storyData.openaiModel
         });
 
-        story.adaptedTitle = result.title;
-        story.adaptedContent = result.content;
-        await story.save();
+        // findByIdAndUpdate kullan
+        await Story.findByIdAndUpdate(storyId, {
+          adaptedTitle: result.title,
+          adaptedContent: result.content
+        });
 
         await updateProgress(30, 'Kültürel adaptasyon tamamlandı');
 
@@ -122,27 +156,28 @@ export const processStory = inngest.createFunction(
           storyId,
           adaptations: result.adaptations.length
         });
+
+        return {
+          adaptedTitle: result.title,
+          adaptedContent: result.content
+        };
       });
 
       // --- 4. SAHNE OLUŞTURMA (50%) ---
       const scenesData = await step.run('generate-scenes', async () => {
+        await dbConnect();
         await updateProgress(35, 'Sahneler oluşturuluyor...');
 
         const result = await generateScenes({
-          originalContent: story.originalContent,
-          adaptedContent: story.adaptedContent!,
-          model: story.openaiModel
+          originalContent: storyData.originalContent,
+          adaptedContent: adaptationData.adaptedContent,
+          model: storyData.openaiModel
         });
-
-        story.totalScenes = result.totalScenes;
-        story.totalImages = result.totalImages;
-        story.firstMinuteImages = result.firstThreeMinutesScenes;
-        await story.save();
 
         // Sahneleri MongoDB'ye kaydet
         const scenePromises = result.scenes.map(sceneData =>
           Scene.create({
-            storyId: story._id,
+            storyId: storyId,
             sceneNumber: sceneData.sceneNumber,
             sceneTextOriginal: sceneData.text,
             sceneTextAdapted: (sceneData as any).textAdapted,
@@ -157,8 +192,14 @@ export const processStory = inngest.createFunction(
         );
 
         const scenes = await Promise.all(scenePromises);
-        story.scenes = scenes.map(s => s._id);
-        await story.save();
+        
+        // findByIdAndUpdate kullan
+        await Story.findByIdAndUpdate(storyId, {
+          totalScenes: result.totalScenes,
+          totalImages: result.totalImages,
+          firstMinuteImages: result.firstThreeMinutesScenes,
+          scenes: scenes.map(s => s._id)
+        });
 
         await updateProgress(50, 'Sahneler oluşturuldu');
 
@@ -168,25 +209,35 @@ export const processStory = inngest.createFunction(
           totalImages: result.totalImages
         });
 
-        return result.scenes;
+        // Plain array olarak dön
+        return result.scenes.map(s => ({
+          sceneNumber: s.sceneNumber,
+          text: s.text,
+          hasImage: s.hasImage,
+          imageIndex: s.imageIndex,
+          visualDescription: s.visualDescription,
+          isFirstThreeMinutes: s.isFirstThreeMinutes,
+          estimatedDuration: s.estimatedDuration
+        }));
       });
 
       // --- 5. GÖRSEL PROMPTLARI (60%) ---
-      const visualPrompts = await step.run('generate-visual-prompts', async (): Promise<Map<number, string>> => {
+      const visualPromptsData = await step.run('generate-visual-prompts', async () => {
+        await dbConnect();
         await updateProgress(55, 'Görsel promptları hazırlanıyor...');
 
-        const storyContext = `${story.adaptedTitle}\n\n${story.adaptedContent?.substring(0, 1000)}`;
+        const storyContext = `${adaptationData.adaptedTitle}\n\n${adaptationData.adaptedContent?.substring(0, 1000)}`;
         
         const prompts = await generateVisualPrompts(
           scenesData,
           storyContext,
-          story.openaiModel
+          storyData.openaiModel
         );
 
         // Promptları sahnelere kaydet
         for (const [sceneNumber, prompt] of prompts.entries()) {
           await Scene.findOneAndUpdate(
-            { storyId: story._id, sceneNumber },
+            { storyId: storyId, sceneNumber },
             { visualPrompt: prompt }
           );
         }
@@ -198,18 +249,24 @@ export const processStory = inngest.createFunction(
           totalPrompts: prompts.size
         });
 
-        return prompts;
+        // Map'i plain object'e çevir
+        const promptsObj: Record<number, string> = {};
+        for (const [key, value] of prompts.entries()) {
+          promptsObj[key] = value;
+        }
+        return promptsObj;
       });
 
       // --- 6. GÖRSELLER ÜRET (80%) ---
       await step.run('generate-images', async () => {
+        await dbConnect();
         await updateProgress(65, 'Görseller üretiliyor...');
 
         const imageScenes = scenesData.filter(s => s.hasImage);
         let completedImages = 0;
 
         for (const scene of imageScenes) {
-          const prompt = (visualPrompts as Map<number, string>).get(scene.sceneNumber);
+          const prompt = visualPromptsData[scene.sceneNumber];
           
           if (!prompt) {
             logger.warn('Görsel prompt bulunamadı', {
@@ -223,9 +280,9 @@ export const processStory = inngest.createFunction(
             // Görsel üret
             const image = await generateImage({
               prompt,
-              model: story.imagefxModel as any,
-              aspectRatio: story.imagefxAspectRatio as any,
-              seed: story.imagefxSeed
+              model: storyData.imagefxModel as any,
+              aspectRatio: storyData.imagefxAspectRatio as any,
+              seed: storyData.imagefxSeed
             });
 
             // Blob'a yükle
@@ -236,9 +293,9 @@ export const processStory = inngest.createFunction(
               scene.imageIndex!
             );
 
-            // Scene'i güncelle
+            // Scene'i güncelle (findOneAndUpdate kullan)
             await Scene.findOneAndUpdate(
-              { storyId: story._id, sceneNumber: scene.sceneNumber },
+              { storyId: storyId, sceneNumber: scene.sceneNumber },
               { 
                 'blobUrls.image': uploaded.url,
                 status: 'processing'
@@ -279,17 +336,19 @@ export const processStory = inngest.createFunction(
 
       // --- 7. SESLENDİRME (95%) ---
       await step.run('generate-audio', async () => {
+        await dbConnect();
         await updateProgress(85, 'Seslendirme yapılıyor...');
 
-        const scenes = await Scene.find({ storyId: story._id }).sort({ sceneNumber: 1 });
+        const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 });
         let completedAudios = 0;
+        let totalDuration = 0;
 
         for (const scene of scenes) {
           try {
             // Ses üret
             const audio = await generateAudio({
               text: scene.sceneTextAdapted,
-              voiceId: story.voiceId
+              voiceId: storyData.voiceId
             });
 
             // Blob'a yükle
@@ -299,13 +358,17 @@ export const processStory = inngest.createFunction(
               audio.audioBuffer
             );
 
-            // Scene'i güncelle
-            scene.blobUrls = scene.blobUrls || {};
-            scene.blobUrls.audio = uploaded.url;
-            scene.actualDuration = audio.duration;
-            scene.status = 'completed';
-            await scene.save();
+            // Scene'i güncelle (findOneAndUpdate kullan)
+            await Scene.findOneAndUpdate(
+              { storyId: storyId, sceneNumber: scene.sceneNumber },
+              {
+                'blobUrls.audio': uploaded.url,
+                actualDuration: audio.duration,
+                status: 'completed'
+              }
+            );
 
+            totalDuration += audio.duration;
             completedAudios++;
             const audioProgress = 85 + (completedAudios / scenes.length) * 10;
             await updateProgress(
@@ -329,10 +392,10 @@ export const processStory = inngest.createFunction(
           }
         }
 
-        // Toplam süreyi hesapla
-        const totalDuration = scenes.reduce((sum, s) => sum + (s.actualDuration || 0), 0);
-        story.actualDuration = totalDuration;
-        await story.save();
+        // Toplam süreyi güncelle
+        await Story.findByIdAndUpdate(storyId, {
+          actualDuration: totalDuration
+        });
 
         await updateProgress(95, 'Seslendirme tamamlandı');
 
@@ -346,18 +409,24 @@ export const processStory = inngest.createFunction(
 
       // --- 8. ZIP OLUŞTUR (98%) ---
       await step.run('create-zip', async () => {
+        await dbConnect();
         await updateProgress(97, 'ZIP dosyası oluşturuluyor...');
 
         const fullStory = await Story.findById(storyId).populate('scenes');
+        if (!fullStory) {
+          throw new Error('Hikaye bulunamadı');
+        }
+        
         const zipBuffer = await createZipArchive(fullStory as any);
 
         // Blob'a yükle
-        const filename = `${story.adaptedTitle?.replace(/[^a-z0-9]/gi, '-') || 'story'}`;
+        const filename = `${adaptationData.adaptedTitle?.replace(/[^a-z0-9]/gi, '-') || 'story'}`;
         const uploaded = await uploadZip(storyId, zipBuffer, filename);
 
-        story.blobUrls = story.blobUrls || {};
-        story.blobUrls.zipFile = uploaded.url;
-        await story.save();
+        // findByIdAndUpdate kullan
+        await Story.findByIdAndUpdate(storyId, {
+          'blobUrls.zipFile': uploaded.url
+        });
 
         await updateProgress(98, 'ZIP dosyası oluşturuldu');
 
@@ -370,10 +439,14 @@ export const processStory = inngest.createFunction(
 
       // --- 9. TAMAMLANDI (100%) ---
       await step.run('complete', async () => {
-        story.status = 'completed';
-        story.progress = 100;
-        story.currentStep = 'İşlem tamamlandı!';
-        await story.save();
+        await dbConnect();
+        
+        // findByIdAndUpdate kullan
+        await Story.findByIdAndUpdate(storyId, {
+          status: 'completed',
+          progress: 100,
+          currentStep: 'İşlem tamamlandı!'
+        });
 
         logger.info('Hikaye işleme tamamlandı', { storyId });
       });
@@ -392,14 +465,18 @@ export const processStory = inngest.createFunction(
         stack: error instanceof Error ? error.stack : undefined
       });
 
+      await dbConnect();
       await Story.findByIdAndUpdate(storyId, {
         status: 'failed',
-        errorMessage: error instanceof Error ? error.message : 'Bilinmeyen hata',
-        retryCount: { $inc: 1 }
+        errorMessage: error instanceof Error ? error.message : 'Bilinmeyen hata'
+      });
+
+      // retryCount'u ayrı $inc operatörü ile güncelle
+      await Story.findByIdAndUpdate(storyId, {
+        $inc: { retryCount: 1 }
       });
 
       throw error;
     }
   }
 );
-
