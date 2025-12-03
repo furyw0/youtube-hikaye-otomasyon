@@ -122,10 +122,16 @@
       "targetLanguage": "Target Language",
       "targetCountry": "Target Country",
       "openaiModel": "OpenAI Model",
+      "elevenlabsModel": "ElevenLabs Model",
       "voice": "Voice",
       "imagefxModel": "ImageFX Model",
       "aspectRatio": "Aspect Ratio",
-      "seed": "Seed (Optional)"
+      "seed": "Seed (Optional)",
+      "coquiProvider": "Using Coqui TTS (Can be changed in Settings)",
+      "coquiNotConfigured": "Coqui TTS is not configured. Please enter Tunnel URL in Settings.",
+      "coquiLanguage": "Voice Language",
+      "coquiVoice": "Reference Voice",
+      "coquiNoVoices": "No voices available"
     },
 
     "hints": {

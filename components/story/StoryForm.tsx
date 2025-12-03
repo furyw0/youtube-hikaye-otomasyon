@@ -15,6 +15,20 @@ interface Voice {
   preview_url?: string;
 }
 
+interface CoquiVoice {
+  id: string;
+  name: string;
+  language?: string;
+  gender?: string;
+  type?: 'builtin' | 'custom';
+  available?: boolean;
+}
+
+interface CoquiLanguage {
+  code: string;
+  name: string;
+}
+
 interface Model {
   id: string;
   name: string;
@@ -26,6 +40,10 @@ export function StoryForm() {
   const tCommon = useTranslations('common');
   const router = useRouter();
 
+  // TTS Provider state
+  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'coqui'>('elevenlabs');
+  const [coquiTunnelUrl, setCoquiTunnelUrl] = useState('');
+
   // Form state
   const [formData, setFormData] = useState({
     title: '',
@@ -33,9 +51,15 @@ export function StoryForm() {
     targetLanguage: 'en',
     targetCountry: 'USA',
     openaiModel: 'gpt-4o-mini',
+    // ElevenLabs
     elevenlabsModel: 'eleven_flash_v2_5',
     voiceId: '',
     voiceName: '',
+    // Coqui TTS
+    coquiLanguage: 'tr',
+    coquiVoiceId: '',
+    coquiVoiceName: '',
+    // ImageFX
     imagefxModel: 'IMAGEN_4',
     imagefxAspectRatio: 'LANDSCAPE',
     imagefxSeed: undefined as number | undefined
@@ -46,8 +70,11 @@ export function StoryForm() {
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<Array<{ field: string; message: string }> | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [coquiVoices, setCoquiVoices] = useState<CoquiVoice[]>([]);
+  const [coquiLanguages, setCoquiLanguages] = useState<CoquiLanguage[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
+  const [loadingCoquiVoices, setLoadingCoquiVoices] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [loadingSettings, setLoadingSettings] = useState(true);
 
@@ -60,15 +87,23 @@ export function StoryForm() {
         
         if (data.success && data.settings) {
           const settings = data.settings;
+          
+          // TTS Provider ayarla
+          setTtsProvider(settings.ttsProvider || 'elevenlabs');
+          setCoquiTunnelUrl(settings.coquiTunnelUrl || '');
+          
           setFormData(prev => ({
             ...prev,
             openaiModel: settings.defaultOpenaiModel || prev.openaiModel,
             elevenlabsModel: settings.defaultElevenlabsModel || prev.elevenlabsModel,
             imagefxModel: settings.defaultImagefxModel || prev.imagefxModel,
             imagefxAspectRatio: settings.defaultImagefxAspectRatio || prev.imagefxAspectRatio,
-            // Ses ayarlardan gelirse, voices yüklendikten sonra kontrol edilecek
+            // ElevenLabs - Ses ayarlardan gelirse, voices yüklendikten sonra kontrol edilecek
             voiceId: settings.defaultVoiceId || prev.voiceId,
-            voiceName: settings.defaultVoiceName || prev.voiceName
+            voiceName: settings.defaultVoiceName || prev.voiceName,
+            // Coqui TTS
+            coquiLanguage: settings.coquiLanguage || prev.coquiLanguage,
+            coquiVoiceId: settings.coquiSelectedVoiceId || prev.coquiVoiceId
           }));
         }
       } catch (err) {
@@ -81,7 +116,7 @@ export function StoryForm() {
     fetchSettings();
   }, []);
 
-  // Load voices
+  // Load ElevenLabs voices
   useEffect(() => {
     async function fetchVoices() {
       try {
@@ -108,7 +143,7 @@ export function StoryForm() {
           });
         }
       } catch (err) {
-        console.error('Sesler yüklenemedi:', err);
+        console.error('ElevenLabs sesler yüklenemedi:', err);
       } finally {
         setLoadingVoices(false);
       }
@@ -116,6 +151,69 @@ export function StoryForm() {
 
     fetchVoices();
   }, []);
+
+  // Load Coqui languages
+  useEffect(() => {
+    async function fetchCoquiLanguages() {
+      try {
+        const response = await fetch('/api/coqui/languages');
+        const data = await response.json();
+        
+        if (data.success && data.languages) {
+          setCoquiLanguages(data.languages);
+        }
+      } catch (err) {
+        console.error('Coqui dilleri yüklenemedi:', err);
+      }
+    }
+
+    if (ttsProvider === 'coqui') {
+      fetchCoquiLanguages();
+    }
+  }, [ttsProvider]);
+
+  // Load Coqui voices when tunnel URL is available
+  useEffect(() => {
+    async function fetchCoquiVoices() {
+      if (!coquiTunnelUrl) return;
+      
+      setLoadingCoquiVoices(true);
+      try {
+        const response = await fetch(`/api/coqui/voices?tunnelUrl=${encodeURIComponent(coquiTunnelUrl)}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          const allVoices = [...(data.builtin || []), ...(data.custom || [])];
+          const availableVoices = allVoices.filter((v: CoquiVoice) => v.available !== false);
+          setCoquiVoices(availableVoices);
+          
+          // İlk sesi varsayılan olarak seç
+          setFormData(prev => {
+            if (prev.coquiVoiceId && availableVoices.some((v: CoquiVoice) => v.id === prev.coquiVoiceId)) {
+              const voice = availableVoices.find((v: CoquiVoice) => v.id === prev.coquiVoiceId);
+              return { ...prev, coquiVoiceName: voice?.name || prev.coquiVoiceName };
+            }
+            if (availableVoices.length > 0) {
+              return {
+                ...prev,
+                coquiVoiceId: availableVoices[0].id,
+                coquiVoiceName: availableVoices[0].name
+              };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.error('Coqui sesleri yüklenemedi:', err);
+      } finally {
+        setLoadingCoquiVoices(false);
+      }
+    }
+
+    if (ttsProvider === 'coqui' && coquiTunnelUrl) {
+      fetchCoquiVoices();
+    }
+  }, [ttsProvider, coquiTunnelUrl]);
 
   // Load OpenAI models
   useEffect(() => {
@@ -144,11 +242,18 @@ export function StoryForm() {
     setErrorDetails(null);
 
     try {
+      // TTS Provider bilgisini ekle
+      const submitData = {
+        ...formData,
+        ttsProvider,
+        coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined
+      };
+
       // 1. Hikaye oluştur
       const createResponse = await fetch('/api/stories/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submitData)
       });
 
       const createData = await createResponse.json();
@@ -191,6 +296,17 @@ export function StoryForm() {
         ...prev,
         voiceId: voice.voice_id,
         voiceName: voice.name
+      }));
+    }
+  };
+
+  const handleCoquiVoiceChange = (voiceId: string) => {
+    const voice = coquiVoices.find(v => v.id === voiceId);
+    if (voice) {
+      setFormData(prev => ({
+        ...prev,
+        coquiVoiceId: voice.id,
+        coquiVoiceName: voice.name
       }));
     }
   };
@@ -320,49 +436,138 @@ export function StoryForm() {
         )}
       </div>
 
-      {/* ElevenLabs Settings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* ElevenLabs Model */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {t('fields.elevenlabsModel')}
-          </label>
-          <select
-            value={formData.elevenlabsModel}
-            onChange={(e) => setFormData({ ...formData, elevenlabsModel: e.target.value })}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-          >
-            {ELEVENLABS_MODELS.map(model => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Voice */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {t('fields.voice')}
-          </label>
-          {loadingVoices ? (
-            <div className="text-sm text-gray-500">{tCommon('loading')}</div>
-          ) : (
+      {/* TTS Settings - Conditional based on provider */}
+      {ttsProvider === 'elevenlabs' ? (
+        /* ElevenLabs Settings */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* ElevenLabs Model */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('fields.elevenlabsModel')}
+            </label>
             <select
-              value={formData.voiceId}
-              onChange={(e) => handleVoiceChange(e.target.value)}
+              value={formData.elevenlabsModel}
+              onChange={(e) => setFormData({ ...formData, elevenlabsModel: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-              required
             >
-              {voices.map(voice => (
-                <option key={voice.voice_id} value={voice.voice_id}>
-                  {voice.name}
+              {ELEVENLABS_MODELS.map(model => (
+                <option key={model.id} value={model.id}>
+                  {model.name}
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Voice */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('fields.voice')}
+            </label>
+            {loadingVoices ? (
+              <div className="text-sm text-gray-500">{tCommon('loading')}</div>
+            ) : (
+              <select
+                value={formData.voiceId}
+                onChange={(e) => handleVoiceChange(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+                required
+              >
+                {voices.map(voice => (
+                  <option key={voice.voice_id} value={voice.voice_id}>
+                    {voice.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Coqui TTS Settings */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 px-3 py-2 rounded-lg">
+            <span>🐸</span>
+            <span>{t('fields.coquiProvider')}</span>
+          </div>
+          
+          {!coquiTunnelUrl ? (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800 text-sm">
+                ⚠️ {t('fields.coquiNotConfigured')}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Coqui Language */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('fields.coquiLanguage')}
+                </label>
+                <select
+                  value={formData.coquiLanguage}
+                  onChange={(e) => setFormData({ ...formData, coquiLanguage: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white text-gray-900"
+                >
+                  {coquiLanguages.length > 0 ? (
+                    coquiLanguages.map(lang => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="tr">🇹🇷 Türkçe</option>
+                      <option value="en">🇬🇧 English</option>
+                      <option value="de">🇩🇪 Deutsch</option>
+                      <option value="es">🇪🇸 Español</option>
+                      <option value="fr">🇫🇷 Français</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Coqui Voice */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('fields.coquiVoice')}
+                </label>
+                {loadingCoquiVoices ? (
+                  <div className="text-sm text-gray-500">{tCommon('loading')}</div>
+                ) : coquiVoices.length === 0 ? (
+                  <div className="text-sm text-gray-500">{t('fields.coquiNoVoices')}</div>
+                ) : (
+                  <select
+                    value={formData.coquiVoiceId}
+                    onChange={(e) => handleCoquiVoiceChange(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white text-gray-900"
+                    required
+                  >
+                    {/* Dahili Sesler */}
+                    {coquiVoices.filter(v => v.type === 'builtin').length > 0 && (
+                      <optgroup label="📦 Dahili Sesler">
+                        {coquiVoices.filter(v => v.type === 'builtin').map(voice => (
+                          <option key={voice.id} value={voice.id}>
+                            {voice.name} ({voice.language?.toUpperCase()})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* Özel Sesler */}
+                    {coquiVoices.filter(v => v.type === 'custom').length > 0 && (
+                      <optgroup label="👤 Özel Sesler">
+                        {coquiVoices.filter(v => v.type === 'custom').map(voice => (
+                          <option key={voice.id} value={voice.id}>
+                            {voice.name} ({voice.language?.toUpperCase()})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                )}
+              </div>
+            </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* ImageFX Settings */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -420,7 +625,13 @@ export function StoryForm() {
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={isSubmitting || loadingVoices || loadingModels || loadingSettings}
+        disabled={
+          isSubmitting || 
+          loadingModels || 
+          loadingSettings || 
+          (ttsProvider === 'elevenlabs' && loadingVoices) ||
+          (ttsProvider === 'coqui' && (loadingCoquiVoices || !coquiTunnelUrl))
+        }
         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isSubmitting ? t('submitting') : t('submit')}

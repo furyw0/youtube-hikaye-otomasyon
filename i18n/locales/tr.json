@@ -126,7 +126,12 @@
       "voice": "Ses",
       "imagefxModel": "ImageFX Modeli",
       "aspectRatio": "Görsel Oranı",
-      "seed": "Seed (Opsiyonel)"
+      "seed": "Seed (Opsiyonel)",
+      "coquiProvider": "Coqui TTS kullanılıyor (Ayarlardan değiştirilebilir)",
+      "coquiNotConfigured": "Coqui TTS henüz yapılandırılmamış. Lütfen Ayarlar sayfasından Tunnel URL'ini girin.",
+      "coquiLanguage": "Seslendirme Dili",
+      "coquiVoice": "Referans Ses",
+      "coquiNoVoices": "Kullanılabilir ses bulunamadı"
     },
 
     "hints": {
