@@ -15,9 +15,10 @@ import { translateStory } from '@/services/translation.service';
 import { adaptStory } from '@/services/adaptation.service';
 import { generateScenes, generateVisualPrompts } from '@/services/scene.service';
 import { generateImage } from '@/services/imagefx.service';
-import { generateAudio } from '@/services/elevenlabs.service';
+import { generateSpeech } from '@/services/tts-router.service';
 import { uploadImage, uploadAudio, uploadZip } from '@/services/blob.service';
 import { createZipArchive } from '@/services/zip.service';
+import Settings from '@/models/Settings';
 
 export const processStory = inngest.createFunction(
   { 
@@ -84,6 +85,7 @@ export const processStory = inngest.createFunction(
         // Plain object olarak dön (Inngest serialize edebilsin)
         return {
           _id: story._id.toString(),
+          userId: story.userId?.toString(),
           originalContent: story.originalContent,
           originalTitle: story.originalTitle,
           originalLanguage: detection.language,
@@ -339,16 +341,32 @@ export const processStory = inngest.createFunction(
         await dbConnect();
         await updateProgress(85, 'Seslendirme yapılıyor...');
 
+        // Kullanıcının TTS ayarlarını al
+        let userSettings = null;
+        if (storyData.userId) {
+          userSettings = await Settings.findOne({ userId: storyData.userId });
+        }
+        
+        // Ayar yoksa varsayılan oluştur
+        if (!userSettings) {
+          userSettings = {
+            ttsProvider: 'elevenlabs',
+            defaultVoiceId: storyData.voiceId,
+            defaultElevenlabsModel: 'eleven_flash_v2_5'
+          };
+        }
+
         const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 });
         let completedAudios = 0;
         let totalDuration = 0;
 
         for (const scene of scenes) {
           try {
-            // Ses üret
-            const audio = await generateAudio({
+            // TTS Router ile ses üret (ElevenLabs veya Coqui)
+            const audio = await generateSpeech({
               text: scene.sceneTextAdapted,
-              voiceId: storyData.voiceId
+              settings: userSettings as any,
+              language: storyData.targetLanguage
             });
 
             // Blob'a yükle
@@ -379,7 +397,8 @@ export const processStory = inngest.createFunction(
             logger.debug('Seslendirme tamamlandı', {
               storyId,
               sceneNumber: scene.sceneNumber,
-              duration: audio.duration
+              duration: audio.duration,
+              provider: audio.provider
             });
 
           } catch (error) {

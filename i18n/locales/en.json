@@ -238,7 +238,38 @@
     "save": "Save",
     "saving": "Saving...",
     "saved": "Settings saved successfully",
-    "error": "Failed to save settings"
+    "error": "Failed to save settings",
+    "ttsProvider": "Voice Provider",
+    "selectProvider": "Select Provider",
+    "coqui": {
+      "title": "Coqui TTS Settings",
+      "tunnelUrl": "Cloudflare Tunnel URL",
+      "tunnelUrlPlaceholder": "https://your-tunnel.trycloudflare.com",
+      "tunnelUrlHint": "Enter the Tunnel URL displayed when running the Windows app",
+      "language": "Language",
+      "referenceVoice": "Reference Voice",
+      "selectVoice": "Select voice...",
+      "noVoices": "No reference voices yet",
+      "uploadVoice": "Upload New Reference Voice",
+      "voiceNamePlaceholder": "Voice name (e.g., Male Voice 1)",
+      "uploadHint": "Upload a 3-10 second clear voice recording (WAV or MP3)",
+      "uploading": "Uploading...",
+      "testConnection": "Test Connection",
+      "testing": "Testing...",
+      "connectionSuccess": "Connection successful!",
+      "connectionFailed": "Connection failed",
+      "gpuActive": "GPU active",
+      "cpuMode": "CPU mode",
+      "deleteVoice": "Delete",
+      "deleteConfirm": "Are you sure you want to delete this reference voice?",
+      "voiceUploaded": "Reference voice uploaded successfully",
+      "voiceDeleted": "Reference voice deleted"
+    },
+    "elevenlabs": {
+      "title": "ElevenLabs Settings",
+      "cloudBased": "Cloud-based, high-quality voices. Requires API key.",
+      "model": "ElevenLabs Model"
+    }
   },
 
   "stories": {

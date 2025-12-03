@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 import logger from '@/lib/logger';
@@ -12,20 +13,36 @@ import logger from '@/lib/logger';
 // GET - Ayarları getir (API key'leri maskelenmiş)
 export async function GET() {
   try {
+    const session = await auth();
+    if (!session || !session.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Yetkisiz erişim' },
+        { status: 401 }
+      );
+    }
+
     await dbConnect();
 
-    // Ayarları getir (API key'leri dahil et ama maskele)
-    let settings = await Settings.findOne().select('+openaiApiKey +elevenlabsApiKey +imagefxCookie');
+    // Kullanıcının ayarlarını getir (API key'leri dahil et ama maskele)
+    let settings = await Settings.findOne({ userId: session.user.id })
+      .select('+openaiApiKey +elevenlabsApiKey +imagefxCookie');
 
     // Eğer ayar yoksa varsayılan oluştur
     if (!settings) {
-      settings = await Settings.create({});
-      logger.info('Varsayılan ayarlar oluşturuldu');
+      settings = await Settings.create({ userId: session.user.id });
+      logger.info('Varsayılan ayarlar oluşturuldu', { userId: session.user.id });
     }
 
     // API key'leri maskele
     const maskedSettings = {
       _id: settings._id,
+      // TTS Sağlayıcı
+      ttsProvider: settings.ttsProvider || 'elevenlabs',
+      // Coqui TTS Ayarları
+      coquiTunnelUrl: settings.coquiTunnelUrl || '',
+      coquiLanguage: settings.coquiLanguage || 'tr',
+      coquiSelectedVoiceId: settings.coquiSelectedVoiceId || '',
+      // Varsayılan ayarlar
       defaultOpenaiModel: settings.defaultOpenaiModel,
       defaultElevenlabsModel: settings.defaultElevenlabsModel,
       defaultVoiceId: settings.defaultVoiceId,
@@ -71,18 +88,44 @@ export async function GET() {
 // PUT - Ayarları güncelle
 export async function PUT(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Yetkisiz erişim' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     
     await dbConnect();
 
-    // Mevcut ayarları getir veya oluştur
-    let settings = await Settings.findOne();
+    // Kullanıcının ayarlarını getir veya oluştur
+    let settings = await Settings.findOne({ userId: session.user.id });
     if (!settings) {
-      settings = new Settings({});
+      settings = new Settings({ userId: session.user.id });
     }
 
     // Güncellenecek alanlar
     const updateFields: Record<string, any> = {};
+
+    // TTS Sağlayıcı
+    if (body.ttsProvider !== undefined) {
+      if (['elevenlabs', 'coqui'].includes(body.ttsProvider)) {
+        updateFields.ttsProvider = body.ttsProvider;
+      }
+    }
+
+    // Coqui TTS Ayarları
+    if (body.coquiTunnelUrl !== undefined) {
+      updateFields.coquiTunnelUrl = body.coquiTunnelUrl || undefined;
+    }
+    if (body.coquiLanguage !== undefined) {
+      updateFields.coquiLanguage = body.coquiLanguage;
+    }
+    if (body.coquiSelectedVoiceId !== undefined) {
+      updateFields.coquiSelectedVoiceId = body.coquiSelectedVoiceId || undefined;
+    }
 
     // API Keys (boş string gönderilirse silme)
     if (body.openaiApiKey !== undefined) {
@@ -126,6 +169,7 @@ export async function PUT(request: NextRequest) {
     await settings.save();
 
     logger.info('Ayarlar güncellendi', {
+      userId: session.user.id,
       updatedFields: Object.keys(updateFields)
     });
 
@@ -145,4 +189,3 @@ export async function PUT(request: NextRequest) {
     }, { status: 500 });
   }
 }
-

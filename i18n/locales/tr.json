@@ -239,7 +239,38 @@
     "save": "Kaydet",
     "saving": "Kaydediliyor...",
     "saved": "Ayarlar başarıyla kaydedildi",
-    "error": "Ayarlar kaydedilemedi"
+    "error": "Ayarlar kaydedilemedi",
+    "ttsProvider": "Seslendirme Sağlayıcısı",
+    "selectProvider": "Sağlayıcı Seçin",
+    "coqui": {
+      "title": "Coqui TTS Ayarları",
+      "tunnelUrl": "Cloudflare Tunnel URL",
+      "tunnelUrlPlaceholder": "https://your-tunnel.trycloudflare.com",
+      "tunnelUrlHint": "Windows uygulamasını çalıştırdığınızda görüntülenen Tunnel URL'ini girin",
+      "language": "Dil",
+      "referenceVoice": "Referans Ses",
+      "selectVoice": "Ses seçin...",
+      "noVoices": "Henüz referans ses yok",
+      "uploadVoice": "Yeni Referans Ses Yükle",
+      "voiceNamePlaceholder": "Ses adı (örn: Erkek Sesi 1)",
+      "uploadHint": "3-10 saniyelik net bir ses kaydı yükleyin (WAV veya MP3)",
+      "uploading": "Yükleniyor...",
+      "testConnection": "Bağlantı Testi",
+      "testing": "Test ediliyor...",
+      "connectionSuccess": "Bağlantı başarılı!",
+      "connectionFailed": "Bağlantı başarısız",
+      "gpuActive": "GPU aktif",
+      "cpuMode": "CPU modu",
+      "deleteVoice": "Sil",
+      "deleteConfirm": "Bu referans sesi silmek istediğinize emin misiniz?",
+      "voiceUploaded": "Referans ses başarıyla yüklendi",
+      "voiceDeleted": "Referans ses silindi"
+    },
+    "elevenlabs": {
+      "title": "ElevenLabs Ayarları",
+      "cloudBased": "Bulut tabanlı, yüksek kaliteli sesler. API key gerektirir.",
+      "model": "ElevenLabs Modeli"
+    }
   },
 
   "stories": {

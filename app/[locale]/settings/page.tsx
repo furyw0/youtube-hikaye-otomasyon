@@ -1,6 +1,6 @@
 /**
  * Ayarlar Sayfası
- * API Keys ve sistem ayarları
+ * API Keys, TTS Sağlayıcı ve sistem ayarları
  */
 
 'use client';
@@ -10,6 +10,10 @@ import { useTranslations } from 'next-intl';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface Settings {
+  ttsProvider: 'elevenlabs' | 'coqui';
+  coquiTunnelUrl: string;
+  coquiLanguage: string;
+  coquiSelectedVoiceId: string;
   defaultOpenaiModel: string;
   defaultElevenlabsModel: string;
   defaultVoiceId?: string;
@@ -26,11 +30,22 @@ interface Settings {
   imagefxCookieMasked?: string;
 }
 
-interface Voice {
+interface ElevenLabsVoice {
   voice_id: string;
   name: string;
   description?: string;
   preview_url?: string;
+}
+
+interface CoquiVoice {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+interface CoquiLanguage {
+  code: string;
+  name: string;
 }
 
 export default function SettingsPage() {
@@ -45,13 +60,19 @@ function SettingsContent() {
   const t = useTranslations('settings');
   
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [voices, setVoices] = useState<Voice[]>([]);
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [coquiVoices, setCoquiVoices] = useState<CoquiVoice[]>([]);
+  const [coquiLanguages, setCoquiLanguages] = useState<CoquiLanguage[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
+    ttsProvider: 'elevenlabs' as 'elevenlabs' | 'coqui',
+    coquiTunnelUrl: '',
+    coquiLanguage: 'tr',
+    coquiSelectedVoiceId: '',
     openaiApiKey: '',
     elevenlabsApiKey: '',
     imagefxCookie: '',
@@ -69,11 +90,17 @@ function SettingsContent() {
   const [testingOpenai, setTestingOpenai] = useState(false);
   const [testingElevenlabs, setTestingElevenlabs] = useState(false);
   const [testingImagefx, setTestingImagefx] = useState(false);
+  const [testingCoqui, setTestingCoqui] = useState(false);
   const [testResults, setTestResults] = useState<{
     openai?: { success: boolean; message: string };
     elevenlabs?: { success: boolean; message: string };
     imagefx?: { success: boolean; message: string };
+    coqui?: { success: boolean; message: string; gpu?: boolean };
   }>({});
+
+  // Voice upload state
+  const [uploadingVoice, setUploadingVoice] = useState(false);
+  const [newVoiceName, setNewVoiceName] = useState('');
 
   // Voice preview states
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
@@ -81,45 +108,41 @@ function SettingsContent() {
 
   // Ses önizleme fonksiyonu
   const playVoicePreview = (voiceId: string, previewUrl?: string) => {
-    // Önceki sesi durdur
     if (audioElement) {
       audioElement.pause();
       audioElement.currentTime = 0;
     }
-
-    if (!previewUrl) {
-      return;
-    }
-
-    // Aynı ses çalıyorsa durdur
+    if (!previewUrl) return;
     if (playingVoice === voiceId) {
       setPlayingVoice(null);
       return;
     }
-
     const audio = new Audio(previewUrl);
     audio.onended = () => setPlayingVoice(null);
     audio.onerror = () => setPlayingVoice(null);
     audio.play();
-    
     setAudioElement(audio);
     setPlayingVoice(voiceId);
   };
 
-  // Component unmount olduğunda sesi durdur
   useEffect(() => {
     return () => {
-      if (audioElement) {
-        audioElement.pause();
-      }
+      if (audioElement) audioElement.pause();
     };
   }, [audioElement]);
 
-  // Ayarları yükle
   useEffect(() => {
     fetchSettings();
-    fetchVoices();
+    fetchElevenLabsVoices();
+    fetchCoquiLanguages();
   }, []);
+
+  // Coqui Tunnel URL değiştiğinde sesleri çek
+  useEffect(() => {
+    if (formData.coquiTunnelUrl && formData.ttsProvider === 'coqui') {
+      fetchCoquiVoices();
+    }
+  }, [formData.coquiTunnelUrl, formData.ttsProvider]);
 
   const fetchSettings = async () => {
     try {
@@ -130,6 +153,10 @@ function SettingsContent() {
         setSettings(data.settings);
         setFormData(prev => ({
           ...prev,
+          ttsProvider: data.settings.ttsProvider || 'elevenlabs',
+          coquiTunnelUrl: data.settings.coquiTunnelUrl || '',
+          coquiLanguage: data.settings.coquiLanguage || 'tr',
+          coquiSelectedVoiceId: data.settings.coquiSelectedVoiceId || '',
           defaultOpenaiModel: data.settings.defaultOpenaiModel || 'gpt-4o-mini',
           defaultElevenlabsModel: data.settings.defaultElevenlabsModel || 'eleven_flash_v2_5',
           defaultVoiceId: data.settings.defaultVoiceId || '',
@@ -147,15 +174,40 @@ function SettingsContent() {
     }
   };
 
-  const fetchVoices = async () => {
+  const fetchElevenLabsVoices = async () => {
     try {
       const response = await fetch('/api/elevenlabs/voices');
       const data = await response.json();
       if (data.success) {
-        setVoices(data.voices || []);
+        setElevenLabsVoices(data.voices || []);
       }
     } catch (error) {
-      console.error('Sesler yüklenemedi:', error);
+      console.error('ElevenLabs sesleri yüklenemedi:', error);
+    }
+  };
+
+  const fetchCoquiLanguages = async () => {
+    try {
+      const response = await fetch('/api/coqui/languages');
+      const data = await response.json();
+      if (data.success) {
+        setCoquiLanguages(data.languages || []);
+      }
+    } catch (error) {
+      console.error('Coqui dilleri yüklenemedi:', error);
+    }
+  };
+
+  const fetchCoquiVoices = async () => {
+    if (!formData.coquiTunnelUrl) return;
+    try {
+      const response = await fetch(`/api/coqui/voices?tunnelUrl=${encodeURIComponent(formData.coquiTunnelUrl)}`);
+      const data = await response.json();
+      if (data.success) {
+        setCoquiVoices(data.voices || []);
+      }
+    } catch (error) {
+      console.error('Coqui sesleri yüklenemedi:', error);
     }
   };
 
@@ -199,16 +251,141 @@ function SettingsContent() {
     }
   };
 
+  // Coqui bağlantı testi
+  const testCoquiConnection = async () => {
+    if (!formData.coquiTunnelUrl) {
+      setTestResults(prev => ({
+        ...prev,
+        coqui: { success: false, message: 'Tunnel URL girilmemiş' }
+      }));
+      return;
+    }
+
+    setTestingCoqui(true);
+    setTestResults(prev => ({ ...prev, coqui: undefined }));
+
+    try {
+      const response = await fetch('/api/coqui/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tunnelUrl: formData.coquiTunnelUrl })
+      });
+
+      const data = await response.json();
+
+      setTestResults(prev => ({
+        ...prev,
+        coqui: {
+          success: data.success,
+          message: data.success 
+            ? `Bağlantı başarılı! ${data.gpu ? '🚀 GPU aktif' : '💻 CPU modu'}` 
+            : data.error,
+          gpu: data.gpu
+        }
+      }));
+
+      // Başarılıysa sesleri yeniden çek
+      if (data.success) {
+        fetchCoquiVoices();
+      }
+    } catch (error) {
+      setTestResults(prev => ({
+        ...prev,
+        coqui: {
+          success: false,
+          message: 'Bağlantı hatası oluştu'
+        }
+      }));
+    } finally {
+      setTestingCoqui(false);
+    }
+  };
+
+  // Coqui ses yükleme
+  const uploadCoquiVoice = async (file: File) => {
+    if (!formData.coquiTunnelUrl || !newVoiceName.trim()) {
+      setMessage({ type: 'error', text: 'Tunnel URL ve ses adı gerekli' });
+      return;
+    }
+
+    setUploadingVoice(true);
+    setMessage(null);
+
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('tunnelUrl', formData.coquiTunnelUrl);
+      formDataToSend.append('name', newVoiceName.trim());
+      formDataToSend.append('audio', file);
+
+      const response = await fetch('/api/coqui/voices', {
+        method: 'POST',
+        body: formDataToSend
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setMessage({ type: 'success', text: 'Referans ses başarıyla yüklendi' });
+        setNewVoiceName('');
+        fetchCoquiVoices();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Ses yüklenemedi' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Ses yükleme hatası' });
+    } finally {
+      setUploadingVoice(false);
+    }
+  };
+
+  // Coqui ses silme
+  const deleteCoquiVoice = async (voiceId: string) => {
+    if (!formData.coquiTunnelUrl) return;
+    if (!confirm('Bu referans sesi silmek istediğinize emin misiniz?')) return;
+
+    try {
+      const response = await fetch(
+        `/api/coqui/voices/${voiceId}?tunnelUrl=${encodeURIComponent(formData.coquiTunnelUrl)}`,
+        { method: 'DELETE' }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        setMessage({ type: 'success', text: 'Referans ses silindi' });
+        fetchCoquiVoices();
+        if (formData.coquiSelectedVoiceId === voiceId) {
+          setFormData(prev => ({ ...prev, coquiSelectedVoiceId: '' }));
+        }
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Ses silinemedi' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Ses silme hatası' });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setMessage(null);
 
     try {
-      // Sadece dolu olan alanları gönder (boş string göndermemek için)
       const dataToSend: Record<string, string | number> = {};
       
-      // API Keys - sadece girilmişse gönder
+      // TTS Sağlayıcı
+      dataToSend.ttsProvider = formData.ttsProvider;
+      
+      // Coqui TTS Ayarları
+      if (formData.coquiTunnelUrl.trim()) {
+        dataToSend.coquiTunnelUrl = formData.coquiTunnelUrl.trim();
+      }
+      dataToSend.coquiLanguage = formData.coquiLanguage;
+      if (formData.coquiSelectedVoiceId) {
+        dataToSend.coquiSelectedVoiceId = formData.coquiSelectedVoiceId;
+      }
+      
+      // API Keys
       if (formData.openaiApiKey.trim()) {
         dataToSend.openaiApiKey = formData.openaiApiKey.trim();
       }
@@ -219,7 +396,7 @@ function SettingsContent() {
         dataToSend.imagefxCookie = formData.imagefxCookie.trim();
       }
       
-      // Varsayılan ayarlar - her zaman gönder
+      // Varsayılan ayarlar
       dataToSend.defaultOpenaiModel = formData.defaultOpenaiModel;
       dataToSend.defaultElevenlabsModel = formData.defaultElevenlabsModel;
       dataToSend.defaultImagefxModel = formData.defaultImagefxModel;
@@ -227,7 +404,7 @@ function SettingsContent() {
       dataToSend.maxDailyStories = formData.maxDailyStories;
       dataToSend.maxConcurrentProcessing = formData.maxConcurrentProcessing;
       
-      // Voice - sadece seçilmişse gönder
+      // ElevenLabs Voice
       if (formData.defaultVoiceId) {
         dataToSend.defaultVoiceId = formData.defaultVoiceId;
         dataToSend.defaultVoiceName = formData.defaultVoiceName;
@@ -243,9 +420,7 @@ function SettingsContent() {
 
       if (data.success) {
         setMessage({ type: 'success', text: t('saved') });
-        // Ayarları yeniden yükle
         fetchSettings();
-        // Form'daki key'leri temizle (güvenlik için)
         setFormData(prev => ({
           ...prev,
           openaiApiKey: '',
@@ -272,18 +447,295 @@ function SettingsContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Page Header */}
       <header className="bg-white border-b shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900">{t('title')}</h1>
-          <p className="text-gray-600 mt-1">API anahtarlarını ve varsayılan ayarları yönetin</p>
+          <p className="text-gray-600 mt-1">API anahtarlarını, TTS sağlayıcısını ve varsayılan ayarları yönetin</p>
         </div>
       </header>
 
-      {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         <form onSubmit={handleSubmit} className="space-y-8">
           
+          {/* TTS Provider Section */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-purple-700">
+              <span className="text-2xl">🎙️</span> {t('ttsProvider') || 'Seslendirme Sağlayıcısı'}
+            </h2>
+            
+            {/* Provider Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                {t('selectProvider') || 'Sağlayıcı Seçin'}
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ElevenLabs Option */}
+                <label 
+                  className={`relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    formData.ttsProvider === 'elevenlabs' 
+                      ? 'border-purple-500 bg-purple-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="ttsProvider"
+                    value="elevenlabs"
+                    checked={formData.ttsProvider === 'elevenlabs'}
+                    onChange={(e) => setFormData({ ...formData, ttsProvider: e.target.value as 'elevenlabs' | 'coqui' })}
+                    className="sr-only"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">☁️</span>
+                      <span className="font-semibold text-gray-900">ElevenLabs</span>
+                      {formData.ttsProvider === 'elevenlabs' && (
+                        <span className="ml-auto text-purple-600">✓</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Bulut tabanlı, yüksek kaliteli sesler. API key gerektirir.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Coqui TTS Option */}
+                <label 
+                  className={`relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    formData.ttsProvider === 'coqui' 
+                      ? 'border-purple-500 bg-purple-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="ttsProvider"
+                    value="coqui"
+                    checked={formData.ttsProvider === 'coqui'}
+                    onChange={(e) => setFormData({ ...formData, ttsProvider: e.target.value as 'elevenlabs' | 'coqui' })}
+                    className="sr-only"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">🐸</span>
+                      <span className="font-semibold text-gray-900">Coqui TTS</span>
+                      <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Ücretsiz</span>
+                      {formData.ttsProvider === 'coqui' && (
+                        <span className="ml-auto text-purple-600">✓</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Açık kaynak, bilgisayarınızda çalışır. XTTS v2 modeli.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Coqui TTS Settings */}
+            {formData.ttsProvider === 'coqui' && (
+              <div className="border-t pt-6 mt-6 space-y-4">
+                <h3 className="font-medium text-gray-900 flex items-center gap-2">
+                  <span>🐸</span> Coqui TTS Ayarları
+                </h3>
+                
+                {/* Tunnel URL */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cloudflare Tunnel URL
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="https://your-tunnel.trycloudflare.com"
+                      value={formData.coquiTunnelUrl}
+                      onChange={(e) => setFormData({ ...formData, coquiTunnelUrl: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={testCoquiConnection}
+                      disabled={testingCoqui || !formData.coquiTunnelUrl}
+                      className="px-4 py-2 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-2"
+                    >
+                      {testingCoqui ? (
+                        <><span className="animate-spin">⏳</span> Test...</>
+                      ) : (
+                        <>🧪 Bağlantı Testi</>
+                      )}
+                    </button>
+                  </div>
+                  {testResults.coqui && (
+                    <div className={`mt-2 p-2 rounded text-sm ${
+                      testResults.coqui.success 
+                        ? 'bg-green-50 text-green-700 border border-green-200' 
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {testResults.coqui.success ? '✅' : '❌'} {testResults.coqui.message}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Windows uygulamasını çalıştırdığınızda görüntülenen Tunnel URL&apos;ini girin
+                  </p>
+                </div>
+
+                {/* Language Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Dil
+                  </label>
+                  <select
+                    value={formData.coquiLanguage}
+                    onChange={(e) => setFormData({ ...formData, coquiLanguage: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 bg-white"
+                  >
+                    {coquiLanguages.map(lang => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Voice Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Referans Ses
+                  </label>
+                  {coquiVoices.length > 0 ? (
+                    <div className="space-y-2">
+                      <select
+                        value={formData.coquiSelectedVoiceId}
+                        onChange={(e) => setFormData({ ...formData, coquiSelectedVoiceId: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 bg-white"
+                      >
+                        <option value="">Ses seçin...</option>
+                        {coquiVoices.map(voice => (
+                          <option key={voice.id} value={voice.id}>
+                            {voice.name}
+                          </option>
+                        ))}
+                      </select>
+                      
+                      {/* Voice List with Delete */}
+                      <div className="border rounded-md divide-y">
+                        {coquiVoices.map(voice => (
+                          <div key={voice.id} className="flex items-center justify-between p-2 text-sm">
+                            <span className={formData.coquiSelectedVoiceId === voice.id ? 'font-medium text-purple-700' : ''}>
+                              {voice.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => deleteCoquiVoice(voice.id)}
+                              className="text-red-500 hover:text-red-700 text-xs"
+                            >
+                              🗑️ Sil
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">
+                      {formData.coquiTunnelUrl 
+                        ? 'Henüz referans ses yok. Aşağıdan yükleyin.' 
+                        : 'Önce Tunnel URL girin ve bağlantıyı test edin.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Upload New Voice */}
+                {formData.coquiTunnelUrl && (
+                  <div className="border-t pt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Yeni Referans Ses Yükle
+                    </label>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        placeholder="Ses adı (örn: Erkek Sesi 1)"
+                        value={newVoiceName}
+                        onChange={(e) => setNewVoiceName(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                      />
+                    </div>
+                    <input
+                      type="file"
+                      accept="audio/wav,audio/mp3,audio/mpeg"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadCoquiVoice(file);
+                      }}
+                      disabled={uploadingVoice || !newVoiceName.trim()}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 disabled:opacity-50"
+                    />
+                    {uploadingVoice && (
+                      <p className="text-sm text-purple-600 mt-2 flex items-center gap-2">
+                        <span className="animate-spin">⏳</span> Yükleniyor...
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">
+                      3-10 saniyelik net bir ses kaydı yükleyin (WAV veya MP3). Ses klonlama için kullanılacak.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ElevenLabs Settings (show when ElevenLabs selected) */}
+            {formData.ttsProvider === 'elevenlabs' && (
+              <div className="border-t pt-6 mt-6">
+                <h3 className="font-medium text-gray-900 flex items-center gap-2 mb-4">
+                  <span>☁️</span> ElevenLabs Ayarları
+                </h3>
+                
+                {/* Default Voice with Preview */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('defaultVoice')}
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.defaultVoiceId}
+                      onChange={(e) => {
+                        const voice = elevenLabsVoices.find(v => v.voice_id === e.target.value);
+                        setFormData({ 
+                          ...formData, 
+                          defaultVoiceId: e.target.value,
+                          defaultVoiceName: voice?.name || ''
+                        });
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    >
+                      <option value="">{t('selectVoice')}</option>
+                      {elevenLabsVoices.map(voice => (
+                        <option key={voice.voice_id} value={voice.voice_id}>
+                          {voice.name}
+                        </option>
+                      ))}
+                    </select>
+                    {formData.defaultVoiceId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const voice = elevenLabsVoices.find(v => v.voice_id === formData.defaultVoiceId);
+                          playVoicePreview(formData.defaultVoiceId, voice?.preview_url);
+                        }}
+                        className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1 transition-all ${
+                          playingVoice === formData.defaultVoiceId
+                            ? 'bg-red-500 text-white hover:bg-red-600'
+                            : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                        }`}
+                      >
+                        {playingVoice === formData.defaultVoiceId ? <>⏹️ Durdur</> : <>▶️ Dinle</>}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* API Keys Section */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-700">
@@ -301,7 +753,7 @@ function SettingsContent() {
                   placeholder={settings?.hasOpenaiApiKey ? settings.openaiApiKeyMasked || '••••••••' : 'sk-... API anahtarınızı girin'}
                   value={formData.openaiApiKey}
                   onChange={(e) => setFormData({ ...formData, openaiApiKey: e.target.value })}
-                  className="flex-1 px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 placeholder:text-gray-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                 />
                 {settings?.hasOpenaiApiKey && (
                   <span className="px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm flex items-center">
@@ -312,81 +764,53 @@ function SettingsContent() {
                   type="button"
                   onClick={() => testApi('openai')}
                   disabled={testingOpenai || !settings?.hasOpenaiApiKey}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-2"
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
                 >
-                  {testingOpenai ? (
-                    <>
-                      <span className="animate-spin">⏳</span> Test...
-                    </>
-                  ) : (
-                    <>🧪 Test</>
-                  )}
+                  {testingOpenai ? '⏳ Test...' : '🧪 Test'}
                 </button>
               </div>
               {testResults.openai && (
-                <div className={`mt-2 p-2 rounded text-sm ${
-                  testResults.openai.success 
-                    ? 'bg-green-50 text-green-700 border border-green-200' 
-                    : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
+                <div className={`mt-2 p-2 rounded text-sm ${testResults.openai.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                   {testResults.openai.success ? '✅' : '❌'} {testResults.openai.message}
                 </div>
               )}
-              <p className="text-xs text-gray-500 mt-1">
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-blue-600 hover:underline">
-                  OpenAI API Key al →
-                </a>
-              </p>
             </div>
 
             {/* ElevenLabs API Key */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                ElevenLabs API Key
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  placeholder={settings?.hasElevenlabsApiKey ? settings.elevenlabsApiKeyMasked || '••••••••' : 'ElevenLabs API anahtarınızı girin'}
-                  value={formData.elevenlabsApiKey}
-                  onChange={(e) => setFormData({ ...formData, elevenlabsApiKey: e.target.value })}
-                  className="flex-1 px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 placeholder:text-gray-500"
-                />
-                {settings?.hasElevenlabsApiKey && (
-                  <span className="px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm flex items-center">
-                    ✓ {t('configured')}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => testApi('elevenlabs')}
-                  disabled={testingElevenlabs || !settings?.hasElevenlabsApiKey}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-2"
-                >
-                  {testingElevenlabs ? (
-                    <>
-                      <span className="animate-spin">⏳</span> Test...
-                    </>
-                  ) : (
-                    <>🧪 Test</>
+            {formData.ttsProvider === 'elevenlabs' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ElevenLabs API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder={settings?.hasElevenlabsApiKey ? settings.elevenlabsApiKeyMasked || '••••••••' : 'ElevenLabs API anahtarınızı girin'}
+                    value={formData.elevenlabsApiKey}
+                    onChange={(e) => setFormData({ ...formData, elevenlabsApiKey: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {settings?.hasElevenlabsApiKey && (
+                    <span className="px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm flex items-center">
+                      ✓ {t('configured')}
+                    </span>
                   )}
-                </button>
-              </div>
-              {testResults.elevenlabs && (
-                <div className={`mt-2 p-2 rounded text-sm ${
-                  testResults.elevenlabs.success 
-                    ? 'bg-green-50 text-green-700 border border-green-200' 
-                    : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
-                  {testResults.elevenlabs.success ? '✅' : '❌'} {testResults.elevenlabs.message}
+                  <button
+                    type="button"
+                    onClick={() => testApi('elevenlabs')}
+                    disabled={testingElevenlabs || !settings?.hasElevenlabsApiKey}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {testingElevenlabs ? '⏳ Test...' : '🧪 Test'}
+                  </button>
                 </div>
-              )}
-              <p className="text-xs text-gray-500 mt-1">
-                <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener" className="text-blue-600 hover:underline">
-                  ElevenLabs API Key al →
-                </a>
-              </p>
-            </div>
+                {testResults.elevenlabs && (
+                  <div className={`mt-2 p-2 rounded text-sm ${testResults.elevenlabs.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {testResults.elevenlabs.success ? '✅' : '❌'} {testResults.elevenlabs.message}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ImageFX Cookie */}
             <div className="mb-4">
@@ -395,11 +819,11 @@ function SettingsContent() {
               </label>
               <div className="flex gap-2">
                 <textarea
-                  placeholder={settings?.hasImagefxCookie ? settings.imagefxCookieMasked || '••••••••' : 'Google hesabınızdan alınan cookie değerini buraya yapıştırın...'}
+                  placeholder={settings?.hasImagefxCookie ? settings.imagefxCookieMasked || '••••••••' : 'Google cookie değeri...'}
                   value={formData.imagefxCookie}
                   onChange={(e) => setFormData({ ...formData, imagefxCookie: e.target.value })}
-                  rows={3}
-                  className="flex-1 px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm placeholder:text-gray-500"
+                  rows={2}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
                 <div className="flex flex-col gap-2">
                   {settings?.hasImagefxCookie && (
@@ -411,36 +835,17 @@ function SettingsContent() {
                     type="button"
                     onClick={() => testApi('imagefx')}
                     disabled={testingImagefx || !settings?.hasImagefxCookie}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-2"
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
                   >
-                    {testingImagefx ? (
-                      <>
-                        <span className="animate-spin">⏳</span> Test...
-                      </>
-                    ) : (
-                      <>🧪 Test</>
-                    )}
+                    {testingImagefx ? '⏳ Test...' : '🧪 Test'}
                   </button>
                 </div>
               </div>
               {testResults.imagefx && (
-                <div className={`mt-2 p-2 rounded text-sm ${
-                  testResults.imagefx.success 
-                    ? 'bg-green-50 text-green-700 border border-green-200' 
-                    : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
+                <div className={`mt-2 p-2 rounded text-sm ${testResults.imagefx.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                   {testResults.imagefx.success ? '✅' : '❌'} {testResults.imagefx.message}
                 </div>
               )}
-              <p className="text-xs text-gray-500 mt-1">
-                <a href="https://github.com/rohitaryal/imageFX-api#help" target="_blank" rel="noopener" className="text-blue-600 hover:underline">
-                  Cookie nasıl alınır? →
-                </a>
-                {' | '}
-                <a href="https://labs.google/fx/tools/image-fx" target="_blank" rel="noopener" className="text-blue-600 hover:underline">
-                  labs.google/fx →
-                </a>
-              </p>
             </div>
           </div>
 
@@ -459,7 +864,7 @@ function SettingsContent() {
                 <select
                   value={formData.defaultOpenaiModel}
                   onChange={(e) => setFormData({ ...formData, defaultOpenaiModel: e.target.value })}
-                  className="w-full px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
                 >
                   <option value="gpt-4o-mini">GPT-4o Mini (Önerilen)</option>
                   <option value="gpt-4o">GPT-4o</option>
@@ -467,82 +872,23 @@ function SettingsContent() {
                 </select>
               </div>
 
-              {/* ElevenLabs Model */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ElevenLabs Modeli
-                </label>
-                <select
-                  value={formData.defaultElevenlabsModel}
-                  onChange={(e) => setFormData({ ...formData, defaultElevenlabsModel: e.target.value })}
-                  className="w-full px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
-                >
-                  <option value="eleven_flash_v2_5">Flash v2.5 (Önerilen) - Ultra hızlı</option>
-                  <option value="eleven_turbo_v2_5">Turbo v2.5 - Yüksek kalite</option>
-                  <option value="eleven_multilingual_v2">Multilingual v2 - En doğal</option>
-                  <option value="eleven_v3">Eleven v3 (Alpha) - En yeni</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  <a href="https://elevenlabs.io/docs/models" target="_blank" rel="noopener" className="text-blue-600 hover:underline">
-                    Model karşılaştırması →
-                  </a>
-                </p>
-              </div>
-
-              {/* Default Voice with Preview */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('defaultVoice')}
-                </label>
-                <div className="flex gap-2">
+              {/* ElevenLabs Model (only when ElevenLabs selected) */}
+              {formData.ttsProvider === 'elevenlabs' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ElevenLabs Modeli
+                  </label>
                   <select
-                    value={formData.defaultVoiceId}
-                    onChange={(e) => {
-                      const voice = voices.find(v => v.voice_id === e.target.value);
-                      setFormData({ 
-                        ...formData, 
-                        defaultVoiceId: e.target.value,
-                        defaultVoiceName: voice?.name || ''
-                      });
-                    }}
-                    className="flex-1 px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                    value={formData.defaultElevenlabsModel}
+                    onChange={(e) => setFormData({ ...formData, defaultElevenlabsModel: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
                   >
-                    <option value="">{t('selectVoice')}</option>
-                    {voices.map(voice => (
-                      <option key={voice.voice_id} value={voice.voice_id}>
-                        {voice.name}
-                      </option>
-                    ))}
+                    <option value="eleven_flash_v2_5">Flash v2.5 (Önerilen)</option>
+                    <option value="eleven_turbo_v2_5">Turbo v2.5</option>
+                    <option value="eleven_multilingual_v2">Multilingual v2</option>
                   </select>
-                  {/* Play Preview Button */}
-                  {formData.defaultVoiceId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const voice = voices.find(v => v.voice_id === formData.defaultVoiceId);
-                        playVoicePreview(formData.defaultVoiceId, voice?.preview_url);
-                      }}
-                      className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1 transition-all ${
-                        playingVoice === formData.defaultVoiceId
-                          ? 'bg-red-500 text-white hover:bg-red-600'
-                          : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                      }`}
-                      title="Sesi dinle"
-                    >
-                      {playingVoice === formData.defaultVoiceId ? (
-                        <>⏹️ Durdur</>
-                      ) : (
-                        <>▶️ Dinle</>
-                      )}
-                    </button>
-                  )}
                 </div>
-                {formData.defaultVoiceName && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Seçili: <span className="font-medium text-gray-700">{formData.defaultVoiceName}</span>
-                  </p>
-                )}
-              </div>
+              )}
 
               {/* ImageFX Model */}
               <div>
@@ -552,7 +898,7 @@ function SettingsContent() {
                 <select
                   value={formData.defaultImagefxModel}
                   onChange={(e) => setFormData({ ...formData, defaultImagefxModel: e.target.value })}
-                  className="w-full px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
                 >
                   <option value="IMAGEN_4">Imagen 4 (En Yeni)</option>
                   <option value="IMAGEN_3_5">Imagen 3.5</option>
@@ -567,7 +913,7 @@ function SettingsContent() {
                 <select
                   value={formData.defaultImagefxAspectRatio}
                   onChange={(e) => setFormData({ ...formData, defaultImagefxAspectRatio: e.target.value })}
-                  className="w-full px-3 py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
                 >
                   <option value="LANDSCAPE">Yatay (16:9)</option>
                   <option value="SQUARE">Kare (1:1)</option>
@@ -603,4 +949,3 @@ function SettingsContent() {
     </div>
   );
 }
-

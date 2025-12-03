@@ -1,12 +1,23 @@
 import mongoose, { Schema, Model, Types } from 'mongoose';
 
+export type TTSProvider = 'elevenlabs' | 'coqui';
+
 export interface ISettings {
   _id: Types.ObjectId;
+  userId: Types.ObjectId; // Kullanıcıya özel ayarlar
   
   // API Keys (şifrelenmiş saklanır)
   openaiApiKey?: string;
   elevenlabsApiKey?: string;
   imagefxCookie?: string; // Google Cookie for ImageFX
+  
+  // TTS Sağlayıcı Ayarları
+  ttsProvider: TTSProvider;
+  
+  // Coqui TTS Ayarları
+  coquiTunnelUrl?: string;
+  coquiLanguage?: string;        // 'tr', 'en', 'de', vb.
+  coquiSelectedVoiceId?: string; // Seçili referans ses ID'si
   
   // Varsayılan ayarlar
   defaultOpenaiModel: string;
@@ -27,6 +38,14 @@ export interface ISettings {
 
 const SettingsSchema = new Schema<ISettings>(
   {
+    // Kullanıcı referansı
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      unique: true
+    },
+    
     // API Keys
     openaiApiKey: {
       type: String,
@@ -39,6 +58,25 @@ const SettingsSchema = new Schema<ISettings>(
     imagefxCookie: {
       type: String,
       select: false
+    },
+    
+    // TTS Sağlayıcı
+    ttsProvider: {
+      type: String,
+      enum: ['elevenlabs', 'coqui'],
+      default: 'elevenlabs'
+    },
+    
+    // Coqui TTS Ayarları
+    coquiTunnelUrl: {
+      type: String
+    },
+    coquiLanguage: {
+      type: String,
+      default: 'tr'
+    },
+    coquiSelectedVoiceId: {
+      type: String
     },
     
     // Varsayılan ayarlar
@@ -79,6 +117,9 @@ const SettingsSchema = new Schema<ISettings>(
     timestamps: true
   }
 );
+
+// Indexes
+SettingsSchema.index({ userId: 1 });
 
 const Settings: Model<ISettings> = mongoose.models.Settings || mongoose.model<ISettings>('Settings', SettingsSchema);
 
