@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Tailwind v4: Source paths for content scanning */
+@source "../components/**/*.{js,ts,jsx,tsx}";
+@source "../app/**/*.{js,ts,jsx,tsx}";
+@source "../pages/**/*.{js,ts,jsx,tsx}";
+
+/* Custom config reference */
+@config "../tailwind.config.ts";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
