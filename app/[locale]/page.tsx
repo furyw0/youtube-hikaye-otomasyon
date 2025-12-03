@@ -1,15 +1,20 @@
 /**
  * Ana Sayfa
- * Hikaye oluşturma formu
+ * Hikaye oluşturma formu (sadece giriş yapmış kullanıcılar için)
  */
 
-import { useTranslations } from 'next-intl';
-import { StoryForm } from '@/components/story/StoryForm';
+'use client';
 
-export const dynamic = 'force-dynamic';
+import { useTranslations } from 'next-intl';
+import { useSession } from 'next-auth/react';
+import { StoryForm } from '@/components/story/StoryForm';
+import { Link } from '@/i18n/navigation';
 
 export default function HomePage() {
   const t = useTranslations('home');
+  const tAuth = useTranslations('auth');
+  const tNav = useTranslations('nav');
+  const { data: session, status } = useSession();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -51,10 +56,45 @@ export default function HomePage() {
           />
         </div>
 
-        {/* Story Form */}
-        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
-          <StoryForm />
-        </div>
+        {/* Conditional Content based on auth status */}
+        {status === 'loading' ? (
+          // Loading state
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          </div>
+        ) : session ? (
+          // Authenticated - Show Form
+          <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
+            <StoryForm />
+          </div>
+        ) : (
+          // Not authenticated - Show CTA
+          <div className="bg-white rounded-xl shadow-lg p-8 md:p-12 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="text-6xl mb-6">🔐</div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                {tAuth('login.title')}
+              </h2>
+              <p className="text-gray-600 mb-8">
+                Hikaye oluşturmak için giriş yapın veya yeni bir hesap oluşturun
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link
+                  href="/login"
+                  className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  🔐 {tNav('login')}
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-8 py-3 bg-white text-blue-600 font-semibold rounded-lg border-2 border-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  ✨ {tNav('register')}
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -77,4 +117,3 @@ function FeatureCard({
     </div>
   );
 }
-
