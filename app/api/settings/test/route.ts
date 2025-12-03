@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 import logger from '@/lib/logger';
@@ -11,15 +12,27 @@ import logger from '@/lib/logger';
 // POST - API bağlantısını test et
 export async function POST(request: NextRequest) {
   try {
+    // Auth kontrolü
+    const session = await auth();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Yetkisiz erişim'
+      }, { status: 401 });
+    }
+
+    const userId = session.user.id;
     const { type } = await request.json();
     
     await dbConnect();
-    const settings = await Settings.findOne().select('+openaiApiKey +elevenlabsApiKey +imagefxCookie');
+    
+    // Kullanıcıya ait ayarları bul (userId ile filtrele)
+    const settings = await Settings.findOne({ userId }).select('+openaiApiKey +elevenlabsApiKey +imagefxCookie');
 
     if (!settings) {
       return NextResponse.json({
         success: false,
-        error: 'Ayarlar bulunamadı'
+        error: 'Ayarlar bulunamadı. Lütfen önce API anahtarını kaydedin.'
       }, { status: 404 });
     }
 
