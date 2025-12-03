@@ -152,7 +152,7 @@ export function StoryForm() {
     fetchVoices();
   }, []);
 
-  // Load Coqui languages
+  // Load Coqui languages when settings are loaded
   useEffect(() => {
     async function fetchCoquiLanguages() {
       try {
@@ -167,24 +167,32 @@ export function StoryForm() {
       }
     }
 
-    if (ttsProvider === 'coqui') {
+    // Settings yüklenene kadar bekle
+    if (!loadingSettings && ttsProvider === 'coqui') {
       fetchCoquiLanguages();
     }
-  }, [ttsProvider]);
+  }, [ttsProvider, loadingSettings]);
 
-  // Load Coqui voices when tunnel URL is available
+  // Load Coqui voices when tunnel URL is available and settings are loaded
   useEffect(() => {
     async function fetchCoquiVoices() {
-      if (!coquiTunnelUrl) return;
+      if (!coquiTunnelUrl) {
+        console.log('Coqui voices: tunnelUrl boş');
+        return;
+      }
       
+      console.log('Coqui voices yükleniyor...', { ttsProvider, coquiTunnelUrl });
       setLoadingCoquiVoices(true);
       try {
         const response = await fetch(`/api/coqui/voices?tunnelUrl=${encodeURIComponent(coquiTunnelUrl)}`);
         const data = await response.json();
         
+        console.log('Coqui voices API yanıtı:', data);
+        
         if (data.success) {
           const allVoices = [...(data.builtin || []), ...(data.custom || [])];
           const availableVoices = allVoices.filter((v: CoquiVoice) => v.available !== false);
+          console.log('Kullanılabilir sesler:', availableVoices.length);
           setCoquiVoices(availableVoices);
           
           // İlk sesi varsayılan olarak seç
@@ -202,6 +210,8 @@ export function StoryForm() {
             }
             return prev;
           });
+        } else {
+          console.error('Coqui voices API hatası:', data.error);
         }
       } catch (err) {
         console.error('Coqui sesleri yüklenemedi:', err);
@@ -210,10 +220,11 @@ export function StoryForm() {
       }
     }
 
-    if (ttsProvider === 'coqui' && coquiTunnelUrl) {
+    // Settings yüklenene kadar bekle, sonra ttsProvider ve tunnelUrl kontrol et
+    if (!loadingSettings && ttsProvider === 'coqui' && coquiTunnelUrl) {
       fetchCoquiVoices();
     }
-  }, [ttsProvider, coquiTunnelUrl]);
+  }, [ttsProvider, coquiTunnelUrl, loadingSettings]);
 
   // Load OpenAI models
   useEffect(() => {
