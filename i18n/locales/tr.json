@@ -69,6 +69,30 @@
     }
   },
 
+  "profile": {
+    "title": "Profil",
+    "subtitle": "Hesap bilgilerinizi yönetin",
+    "editProfile": "Profil Bilgileri",
+    "changePassword": "Şifre Değiştir",
+    "memberSince": "Üyelik tarihi",
+    "fields": {
+      "name": "Ad Soyad",
+      "email": "E-posta",
+      "currentPassword": "Mevcut Şifre",
+      "newPassword": "Yeni Şifre",
+      "confirmNewPassword": "Yeni Şifre (Tekrar)"
+    },
+    "saveProfile": "Profili Kaydet",
+    "changePasswordBtn": "Şifreyi Değiştir",
+    "saving": "Kaydediliyor...",
+    "profileUpdated": "Profil başarıyla güncellendi",
+    "passwordChanged": "Şifre başarıyla değiştirildi",
+    "errors": {
+      "general": "Bir hata oluştu",
+      "passwordMismatch": "Şifreler eşleşmiyor"
+    }
+  },
+
   "home": {
     "title": "YouTube Hikaye Otomasyon",
     "subtitle": "Hikayelerinizi otomatik olarak çevirin, adapte edin, görselleştirin ve seslendirin",

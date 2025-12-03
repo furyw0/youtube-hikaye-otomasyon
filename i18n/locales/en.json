@@ -69,6 +69,30 @@
     }
   },
 
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Manage your account settings",
+    "editProfile": "Profile Information",
+    "changePassword": "Change Password",
+    "memberSince": "Member since",
+    "fields": {
+      "name": "Full Name",
+      "email": "Email",
+      "currentPassword": "Current Password",
+      "newPassword": "New Password",
+      "confirmNewPassword": "Confirm New Password"
+    },
+    "saveProfile": "Save Profile",
+    "changePasswordBtn": "Change Password",
+    "saving": "Saving...",
+    "profileUpdated": "Profile updated successfully",
+    "passwordChanged": "Password changed successfully",
+    "errors": {
+      "general": "An error occurred",
+      "passwordMismatch": "Passwords do not match"
+    }
+  },
+
   "home": {
     "title": "YouTube Story Automation",
     "subtitle": "Automatically translate, adapt, visualize, and voice your stories",
