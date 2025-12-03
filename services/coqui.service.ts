@@ -183,7 +183,12 @@ export async function uploadCoquiVoice(
   
   try {
     const formData = new FormData();
-    const blob = new Blob([audioBuffer], { type: 'audio/wav' });
+    // Buffer'ı ArrayBuffer'a çevir ve Blob oluştur
+    const arrayBuffer = audioBuffer.buffer.slice(
+      audioBuffer.byteOffset, 
+      audioBuffer.byteOffset + audioBuffer.byteLength
+    ) as ArrayBuffer;
+    const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
     formData.append('audio', blob, `${name}.wav`);
     formData.append('name', name);
     
