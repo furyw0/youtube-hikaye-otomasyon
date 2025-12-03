@@ -40,7 +40,13 @@ interface ElevenLabsVoice {
 interface CoquiVoice {
   id: string;
   name: string;
-  createdAt: string;
+  language?: string;
+  gender?: string;
+  type?: 'builtin' | 'custom';
+  description?: string;
+  preview_text?: string;
+  available?: boolean;
+  createdAt?: string;
 }
 
 interface CoquiLanguage {
@@ -62,7 +68,10 @@ function SettingsContent() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
   const [coquiVoices, setCoquiVoices] = useState<CoquiVoice[]>([]);
+  const [coquiBuiltinVoices, setCoquiBuiltinVoices] = useState<CoquiVoice[]>([]);
+  const [coquiCustomVoices, setCoquiCustomVoices] = useState<CoquiVoice[]>([]);
   const [coquiLanguages, setCoquiLanguages] = useState<CoquiLanguage[]>([]);
+  const [loadingCoquiPreview, setLoadingCoquiPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -101,6 +110,8 @@ function SettingsContent() {
   // Voice upload state
   const [uploadingVoice, setUploadingVoice] = useState(false);
   const [newVoiceName, setNewVoiceName] = useState('');
+  const [newVoiceLanguage, setNewVoiceLanguage] = useState('tr');
+  const [newVoiceGender, setNewVoiceGender] = useState('unknown');
 
   // Voice preview states
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
@@ -204,10 +215,70 @@ function SettingsContent() {
       const response = await fetch(`/api/coqui/voices?tunnelUrl=${encodeURIComponent(formData.coquiTunnelUrl)}`);
       const data = await response.json();
       if (data.success) {
-        setCoquiVoices(data.voices || []);
+        const allVoices = data.voices || [];
+        setCoquiVoices(allVoices);
+        // Dahili ve özel sesleri ayır
+        setCoquiBuiltinVoices(data.builtin || allVoices.filter((v: CoquiVoice) => v.type === 'builtin'));
+        setCoquiCustomVoices(data.custom || allVoices.filter((v: CoquiVoice) => v.type === 'custom'));
       }
     } catch (error) {
       console.error('Coqui sesleri yüklenemedi:', error);
+    }
+  };
+
+  // Coqui ses önizleme
+  const playCoquiPreview = async (voiceId: string) => {
+    if (!formData.coquiTunnelUrl) return;
+    
+    // Zaten çalıyorsa durdur
+    if (playingVoice === voiceId) {
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+      }
+      setPlayingVoice(null);
+      return;
+    }
+    
+    // Önceki sesi durdur
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+    }
+    
+    setLoadingCoquiPreview(voiceId);
+    
+    try {
+      const response = await fetch(
+        `/api/coqui/voices/${voiceId}/preview?tunnelUrl=${encodeURIComponent(formData.coquiTunnelUrl)}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Önizleme alınamadı');
+      }
+      
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      
+      audio.onended = () => {
+        setPlayingVoice(null);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setPlayingVoice(null);
+        URL.revokeObjectURL(url);
+      };
+      
+      await audio.play();
+      setAudioElement(audio);
+      setPlayingVoice(voiceId);
+      
+    } catch (error) {
+      console.error('Coqui önizleme hatası:', error);
+      setMessage({ type: 'error', text: 'Ses önizlemesi alınamadı' });
+    } finally {
+      setLoadingCoquiPreview(null);
     }
   };
 
@@ -315,6 +386,8 @@ function SettingsContent() {
       const formDataToSend = new FormData();
       formDataToSend.append('tunnelUrl', formData.coquiTunnelUrl);
       formDataToSend.append('name', newVoiceName.trim());
+      formDataToSend.append('language', newVoiceLanguage);
+      formDataToSend.append('gender', newVoiceGender);
       formDataToSend.append('audio', file);
 
       const response = await fetch('/api/coqui/voices', {
@@ -327,6 +400,8 @@ function SettingsContent() {
       if (data.success) {
         setMessage({ type: 'success', text: 'Referans ses başarıyla yüklendi' });
         setNewVoiceName('');
+        setNewVoiceLanguage('tr');
+        setNewVoiceGender('unknown');
         fetchCoquiVoices();
       } else {
         setMessage({ type: 'error', text: data.error || 'Ses yüklenemedi' });
@@ -599,47 +674,175 @@ function SettingsContent() {
 
                 {/* Voice Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Referans Ses
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    🎤 Ses Seçimi
                   </label>
+                  
                   {coquiVoices.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="space-y-4">
+                      {/* Quick Select Dropdown */}
                       <select
                         value={formData.coquiSelectedVoiceId}
                         onChange={(e) => setFormData({ ...formData, coquiSelectedVoiceId: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 bg-white"
                       >
                         <option value="">Ses seçin...</option>
-                        {coquiVoices.map(voice => (
-                          <option key={voice.id} value={voice.id}>
-                            {voice.name}
-                          </option>
-                        ))}
+                        {coquiBuiltinVoices.length > 0 && (
+                          <optgroup label="📦 Dahili Sesler">
+                            {coquiBuiltinVoices.filter(v => v.available).map(voice => (
+                              <option key={voice.id} value={voice.id}>
+                                {voice.name} ({voice.language?.toUpperCase()})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {coquiCustomVoices.length > 0 && (
+                          <optgroup label="👤 Özel Seslerim">
+                            {coquiCustomVoices.map(voice => (
+                              <option key={voice.id} value={voice.id}>
+                                {voice.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
-                      
-                      {/* Voice List with Delete */}
-                      <div className="border rounded-md divide-y">
-                        {coquiVoices.map(voice => (
-                          <div key={voice.id} className="flex items-center justify-between p-2 text-sm">
-                            <span className={formData.coquiSelectedVoiceId === voice.id ? 'font-medium text-purple-700' : ''}>
-                              {voice.name}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => deleteCoquiVoice(voice.id)}
-                              className="text-red-500 hover:text-red-700 text-xs"
-                            >
-                              🗑️ Sil
-                            </button>
+
+                      {/* Builtin Voices */}
+                      {coquiBuiltinVoices.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
+                            <span>📦</span> Dahili Sesler
+                            <span className="text-xs text-gray-400">({coquiBuiltinVoices.filter(v => v.available).length} mevcut)</span>
+                          </h4>
+                          <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                            {coquiBuiltinVoices.map(voice => (
+                              <div 
+                                key={voice.id} 
+                                className={`flex items-center justify-between p-3 text-sm hover:bg-gray-50 transition-colors ${
+                                  formData.coquiSelectedVoiceId === voice.id ? 'bg-purple-50 border-l-4 border-l-purple-500' : ''
+                                } ${!voice.available ? 'opacity-50' : ''}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="radio"
+                                    name="coquiVoice"
+                                    value={voice.id}
+                                    checked={formData.coquiSelectedVoiceId === voice.id}
+                                    onChange={(e) => setFormData({ ...formData, coquiSelectedVoiceId: e.target.value })}
+                                    disabled={!voice.available}
+                                    className="text-purple-600 focus:ring-purple-500"
+                                  />
+                                  <div>
+                                    <div className="font-medium text-gray-900">{voice.name}</div>
+                                    <div className="text-xs text-gray-500">
+                                      {voice.language?.toUpperCase()} • {voice.gender === 'male' ? '👨' : voice.gender === 'female' ? '👩' : '🧑'}
+                                      {!voice.available && <span className="ml-2 text-orange-500">⚠️ Ses dosyası eksik</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                                {voice.available && (
+                                  <button
+                                    type="button"
+                                    onClick={() => playCoquiPreview(voice.id)}
+                                    disabled={loadingCoquiPreview === voice.id}
+                                    className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-all ${
+                                      playingVoice === voice.id
+                                        ? 'bg-red-500 text-white hover:bg-red-600'
+                                        : loadingCoquiPreview === voice.id
+                                        ? 'bg-gray-200 text-gray-500'
+                                        : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                    }`}
+                                  >
+                                    {loadingCoquiPreview === voice.id ? (
+                                      <><span className="animate-spin">⏳</span> Yükleniyor</>
+                                    ) : playingVoice === voice.id ? (
+                                      <>⏹️ Durdur</>
+                                    ) : (
+                                      <>▶️ Dinle</>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </div>
+                      )}
+
+                      {/* Custom Voices */}
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
+                          <span>👤</span> Özel Seslerim
+                          <span className="text-xs text-gray-400">({coquiCustomVoices.length} ses)</span>
+                        </h4>
+                        {coquiCustomVoices.length > 0 ? (
+                          <div className="border rounded-lg divide-y">
+                            {coquiCustomVoices.map(voice => (
+                              <div 
+                                key={voice.id} 
+                                className={`flex items-center justify-between p-3 text-sm hover:bg-gray-50 transition-colors ${
+                                  formData.coquiSelectedVoiceId === voice.id ? 'bg-purple-50 border-l-4 border-l-purple-500' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="radio"
+                                    name="coquiVoice"
+                                    value={voice.id}
+                                    checked={formData.coquiSelectedVoiceId === voice.id}
+                                    onChange={(e) => setFormData({ ...formData, coquiSelectedVoiceId: e.target.value })}
+                                    className="text-purple-600 focus:ring-purple-500"
+                                  />
+                                  <div>
+                                    <div className="font-medium text-gray-900">{voice.name}</div>
+                                    <div className="text-xs text-gray-500">
+                                      {voice.language?.toUpperCase() || 'TR'} • Özel Ses
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => playCoquiPreview(voice.id)}
+                                    disabled={loadingCoquiPreview === voice.id}
+                                    className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-all ${
+                                      playingVoice === voice.id
+                                        ? 'bg-red-500 text-white hover:bg-red-600'
+                                        : loadingCoquiPreview === voice.id
+                                        ? 'bg-gray-200 text-gray-500'
+                                        : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                    }`}
+                                  >
+                                    {loadingCoquiPreview === voice.id ? (
+                                      <><span className="animate-spin">⏳</span></>
+                                    ) : playingVoice === voice.id ? (
+                                      <>⏹️</>
+                                    ) : (
+                                      <>▶️</>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteCoquiVoice(voice.id)}
+                                    className="px-2 py-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md text-xs"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-400 italic p-3 border rounded-lg bg-gray-50">
+                            Henüz özel ses eklenmemiş. Aşağıdan kendi sesinizi yükleyebilirsiniz.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500 italic">
+                    <p className="text-sm text-gray-500 italic p-4 border rounded-lg bg-gray-50">
                       {formData.coquiTunnelUrl 
-                        ? 'Henüz referans ses yok. Aşağıdan yükleyin.' 
-                        : 'Önce Tunnel URL girin ve bağlantıyı test edin.'}
+                        ? '⏳ Sesler yükleniyor veya bağlantı kurulamadı. Bağlantıyı test edin.' 
+                        : '👆 Önce Tunnel URL girin ve bağlantıyı test edin.'}
                     </p>
                   )}
                 </div>
@@ -647,36 +850,75 @@ function SettingsContent() {
                 {/* Upload New Voice */}
                 {formData.coquiTunnelUrl && (
                   <div className="border-t pt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Yeni Referans Ses Yükle
-                    </label>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        placeholder="Ses adı (örn: Erkek Sesi 1)"
-                        value={newVoiceName}
-                        onChange={(e) => setNewVoiceName(e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
-                      />
-                    </div>
-                    <input
-                      type="file"
-                      accept="audio/wav,audio/mp3,audio/mpeg"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) uploadCoquiVoice(file);
-                      }}
-                      disabled={uploadingVoice || !newVoiceName.trim()}
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 disabled:opacity-50"
-                    />
-                    {uploadingVoice && (
-                      <p className="text-sm text-purple-600 mt-2 flex items-center gap-2">
-                        <span className="animate-spin">⏳</span> Yükleniyor...
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <span>📤</span> Yeni Referans Ses Yükle
+                    </h4>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                      {/* Ses Adı */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Ses Adı</label>
+                        <input
+                          type="text"
+                          placeholder="Örn: Benim Sesim"
+                          value={newVoiceName}
+                          onChange={(e) => setNewVoiceName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                        />
+                      </div>
+                      
+                      {/* Dil ve Cinsiyet */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Dil</label>
+                          <select
+                            value={newVoiceLanguage}
+                            onChange={(e) => setNewVoiceLanguage(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm bg-white"
+                          >
+                            {coquiLanguages.map(lang => (
+                              <option key={lang.code} value={lang.code}>{lang.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Cinsiyet</label>
+                          <select
+                            value={newVoiceGender}
+                            onChange={(e) => setNewVoiceGender(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm bg-white"
+                          >
+                            <option value="male">👨 Erkek</option>
+                            <option value="female">👩 Kadın</option>
+                            <option value="unknown">🧑 Belirtilmemiş</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Dosya Yükleme */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Ses Dosyası</label>
+                        <input
+                          type="file"
+                          accept="audio/wav,audio/mp3,audio/mpeg"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadCoquiVoice(file);
+                          }}
+                          disabled={uploadingVoice || !newVoiceName.trim()}
+                          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 disabled:opacity-50 cursor-pointer"
+                        />
+                      </div>
+                      
+                      {uploadingVoice && (
+                        <p className="text-sm text-purple-600 flex items-center gap-2">
+                          <span className="animate-spin">⏳</span> Yükleniyor...
+                        </p>
+                      )}
+                      
+                      <p className="text-xs text-gray-500">
+                        💡 3-10 saniyelik net bir ses kaydı yükleyin (WAV veya MP3). Ses klonlama için kullanılacak.
                       </p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-2">
-                      3-10 saniyelik net bir ses kaydı yükleyin (WAV veya MP3). Ses klonlama için kullanılacak.
-                    </p>
+                    </div>
                   </div>
                 )}
               </div>

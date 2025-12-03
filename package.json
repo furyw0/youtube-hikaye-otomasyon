@@ -29,6 +29,7 @@
     "openai": "^4.77.3",
     "react": "19.2.1",
     "react-dom": "19.2.1",
+    "readable-stream": "^4.7.0",
     "winston": "^3.17.0",
     "zod": "^3.24.1"
   },

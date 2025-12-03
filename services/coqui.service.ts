@@ -32,8 +32,14 @@ export type CoquiLanguageCode = typeof COQUI_SUPPORTED_LANGUAGES[number]['code']
 export interface CoquiVoice {
   id: string;
   name: string;
-  createdAt: string;
-  filePath: string;
+  language?: string;
+  gender?: string;
+  type?: 'builtin' | 'custom';
+  description?: string;
+  preview_text?: string;
+  available?: boolean;
+  createdAt?: string;
+  filePath?: string;
 }
 
 export interface CoquiHealthResponse {
@@ -175,11 +181,13 @@ export async function getCoquiVoices(tunnelUrl: string): Promise<CoquiVoice[]> {
 export async function uploadCoquiVoice(
   tunnelUrl: string, 
   audioBuffer: Buffer, 
-  name: string
+  name: string,
+  language: string = 'tr',
+  gender: string = 'unknown'
 ): Promise<CoquiVoice> {
   const url = normalizeUrl(tunnelUrl);
   
-  logger.info('Coqui TTS referans ses yükleniyor', { name, size: audioBuffer.length });
+  logger.info('Coqui TTS referans ses yükleniyor', { name, language, gender, size: audioBuffer.length });
   
   try {
     const formData = new FormData();
@@ -191,6 +199,8 @@ export async function uploadCoquiVoice(
     const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
     formData.append('audio', blob, `${name}.wav`);
     formData.append('name', name);
+    formData.append('language', language);
+    formData.append('gender', gender);
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -424,6 +434,101 @@ export async function coquiHealthCheck(tunnelUrl: string): Promise<boolean> {
     return health.ok && health.modelLoaded;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Belirli bir sesin önizleme sesini getir
+ */
+export async function getCoquiVoicePreview(tunnelUrl: string, voiceId: string): Promise<Buffer> {
+  const url = normalizeUrl(tunnelUrl);
+  
+  logger.info('Coqui TTS ses önizlemesi getiriliyor', { voiceId, tunnelUrl: url });
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 saniye timeout (önizleme üretimi uzun sürebilir)
+    
+    const response = await fetch(`${url}/api/voices/${voiceId}/preview`, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'Accept': 'audio/wav'
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('Coqui TTS önizleme hatası', { 
+        status: response.status, 
+        error: errorText,
+        voiceId 
+      });
+      throw new Error(`Önizleme getirilemedi: ${response.status} - ${errorText}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    logger.info('Coqui TTS önizleme başarıyla alındı', { 
+      voiceId, 
+      size: buffer.length 
+    });
+    
+    return buffer;
+    
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.error('Coqui TTS önizleme zaman aşımı', { voiceId });
+      throw new Error('Önizleme getirme zaman aşımına uğradı');
+    }
+    
+    logger.error('Coqui TTS önizleme hatası', { 
+      error: error instanceof Error ? error.message : 'Bilinmeyen hata',
+      voiceId
+    });
+    throw error;
+  }
+}
+
+/**
+ * Belirli bir sesin detaylarını getir
+ */
+export async function getCoquiVoiceDetails(tunnelUrl: string, voiceId: string): Promise<CoquiVoice | null> {
+  const url = normalizeUrl(tunnelUrl);
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(`${url}/api/voices/${voiceId}`, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`Ses detayları getirilemedi: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data.voice || null;
+    
+  } catch (error) {
+    logger.error('Coqui TTS ses detayları hatası', { 
+      error: error instanceof Error ? error.message : 'Bilinmeyen hata',
+      voiceId
+    });
+    return null;
   }
 }
 

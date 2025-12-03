@@ -68,6 +68,8 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const tunnelUrl = formData.get('tunnelUrl') as string;
     const name = formData.get('name') as string;
+    const language = formData.get('language') as string || 'tr';
+    const gender = formData.get('gender') as string || 'unknown';
     const audioFile = formData.get('audio') as File;
 
     if (!tunnelUrl || !name || !audioFile) {
@@ -97,6 +99,8 @@ export async function POST(request: NextRequest) {
     logger.info('Coqui TTS ses yükleme isteği', { 
       userId: session.user.id,
       name,
+      language,
+      gender,
       size: audioFile.size,
       type: audioFile.type
     });
@@ -104,7 +108,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await audioFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const voice = await uploadCoquiVoice(tunnelUrl, buffer, name);
+    const voice = await uploadCoquiVoice(tunnelUrl, buffer, name, language, gender);
 
     return NextResponse.json({
       success: true,
