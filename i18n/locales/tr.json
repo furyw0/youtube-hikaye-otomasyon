@@ -229,6 +229,7 @@
     "title": "Ayarlar",
     "back": "Geri",
     "apiKeys": "API Anahtarları",
+    "enterApiValue": "Lütfen bir değer girin",
     "defaults": "Varsayılan Ayarlar",
     "configured": "Ayarlandı",
     "defaultModel": "Varsayılan Model",

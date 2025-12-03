@@ -107,6 +107,16 @@ function SettingsContent() {
     coqui?: { success: boolean; message: string; gpu?: boolean };
   }>({});
 
+  // Individual save states for API keys
+  const [savingOpenai, setSavingOpenai] = useState(false);
+  const [savingElevenlabs, setSavingElevenlabs] = useState(false);
+  const [savingImagefx, setSavingImagefx] = useState(false);
+  const [apiSaveMessage, setApiSaveMessage] = useState<{
+    openai?: { type: 'success' | 'error'; text: string };
+    elevenlabs?: { type: 'success' | 'error'; text: string };
+    imagefx?: { type: 'success' | 'error'; text: string };
+  }>({});
+
   // Voice upload state
   const [uploadingVoice, setUploadingVoice] = useState(false);
   const [newVoiceName, setNewVoiceName] = useState('');
@@ -437,6 +447,82 @@ function SettingsContent() {
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Ses silme hatası' });
+    }
+  };
+
+  // Tek bir API key'i kaydet
+  const saveApiKey = async (type: 'openai' | 'elevenlabs' | 'imagefx') => {
+    const setterMap = {
+      openai: setSavingOpenai,
+      elevenlabs: setSavingElevenlabs,
+      imagefx: setSavingImagefx
+    };
+    
+    const valueMap = {
+      openai: formData.openaiApiKey,
+      elevenlabs: formData.elevenlabsApiKey,
+      imagefx: formData.imagefxCookie
+    };
+
+    const keyMap = {
+      openai: 'openaiApiKey',
+      elevenlabs: 'elevenlabsApiKey',
+      imagefx: 'imagefxCookie'
+    };
+
+    const value = valueMap[type];
+    if (!value.trim()) {
+      setApiSaveMessage(prev => ({
+        ...prev,
+        [type]: { type: 'error', text: t('enterApiValue') }
+      }));
+      return;
+    }
+
+    setterMap[type](true);
+    setApiSaveMessage(prev => ({ ...prev, [type]: undefined }));
+
+    try {
+      const dataToSend: Record<string, string> = {
+        [keyMap[type]]: value.trim()
+      };
+
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataToSend)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setApiSaveMessage(prev => ({
+          ...prev,
+          [type]: { type: 'success', text: t('saved') }
+        }));
+        // Input'u temizle ve ayarları yenile
+        setFormData(prev => ({
+          ...prev,
+          [type === 'openai' ? 'openaiApiKey' : type === 'elevenlabs' ? 'elevenlabsApiKey' : 'imagefxCookie']: ''
+        }));
+        fetchSettings();
+        // 3 saniye sonra mesajı temizle
+        setTimeout(() => {
+          setApiSaveMessage(prev => ({ ...prev, [type]: undefined }));
+        }, 3000);
+      } else {
+        setApiSaveMessage(prev => ({
+          ...prev,
+          [type]: { type: 'error', text: data.error || t('error') }
+        }));
+      }
+    } catch (error) {
+      setApiSaveMessage(prev => ({
+        ...prev,
+        [type]: { type: 'error', text: t('error') }
+      }));
+    } finally {
+      setterMap[type](false);
     }
   };
 
@@ -1004,6 +1090,14 @@ function SettingsContent() {
                 )}
                 <button
                   type="button"
+                  onClick={() => saveApiKey('openai')}
+                  disabled={savingOpenai || !formData.openaiApiKey.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                >
+                  {savingOpenai ? '⏳...' : '💾 Kaydet'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => testApi('openai')}
                   disabled={testingOpenai || !settings?.hasOpenaiApiKey}
                   className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
@@ -1011,6 +1105,11 @@ function SettingsContent() {
                   {testingOpenai ? '⏳ Test...' : '🧪 Test'}
                 </button>
               </div>
+              {apiSaveMessage.openai && (
+                <div className={`mt-2 p-2 rounded text-sm ${apiSaveMessage.openai.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {apiSaveMessage.openai.type === 'success' ? '✅' : '❌'} {apiSaveMessage.openai.text}
+                </div>
+              )}
               {testResults.openai && (
                 <div className={`mt-2 p-2 rounded text-sm ${testResults.openai.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                   {testResults.openai.success ? '✅' : '❌'} {testResults.openai.message}
@@ -1039,6 +1138,14 @@ function SettingsContent() {
                   )}
                   <button
                     type="button"
+                    onClick={() => saveApiKey('elevenlabs')}
+                    disabled={savingElevenlabs || !formData.elevenlabsApiKey.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {savingElevenlabs ? '⏳...' : '💾 Kaydet'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => testApi('elevenlabs')}
                     disabled={testingElevenlabs || !settings?.hasElevenlabsApiKey}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
@@ -1046,6 +1153,11 @@ function SettingsContent() {
                     {testingElevenlabs ? '⏳ Test...' : '🧪 Test'}
                   </button>
                 </div>
+                {apiSaveMessage.elevenlabs && (
+                  <div className={`mt-2 p-2 rounded text-sm ${apiSaveMessage.elevenlabs.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {apiSaveMessage.elevenlabs.type === 'success' ? '✅' : '❌'} {apiSaveMessage.elevenlabs.text}
+                  </div>
+                )}
                 {testResults.elevenlabs && (
                   <div className={`mt-2 p-2 rounded text-sm ${testResults.elevenlabs.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                     {testResults.elevenlabs.success ? '✅' : '❌'} {testResults.elevenlabs.message}
@@ -1075,6 +1187,14 @@ function SettingsContent() {
                   )}
                   <button
                     type="button"
+                    onClick={() => saveApiKey('imagefx')}
+                    disabled={savingImagefx || !formData.imagefxCookie.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {savingImagefx ? '⏳...' : '💾 Kaydet'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => testApi('imagefx')}
                     disabled={testingImagefx || !settings?.hasImagefxCookie}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
@@ -1083,6 +1203,11 @@ function SettingsContent() {
                   </button>
                 </div>
               </div>
+              {apiSaveMessage.imagefx && (
+                <div className={`mt-2 p-2 rounded text-sm ${apiSaveMessage.imagefx.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {apiSaveMessage.imagefx.type === 'success' ? '✅' : '❌'} {apiSaveMessage.imagefx.text}
+                </div>
+              )}
               {testResults.imagefx && (
                 <div className={`mt-2 p-2 rounded text-sm ${testResults.imagefx.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                   {testResults.imagefx.success ? '✅' : '❌'} {testResults.imagefx.message}

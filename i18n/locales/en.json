@@ -228,6 +228,7 @@
     "title": "Settings",
     "back": "Back",
     "apiKeys": "API Keys",
+    "enterApiValue": "Please enter a value",
     "defaults": "Default Settings",
     "configured": "Configured",
     "defaultModel": "Default Model",
