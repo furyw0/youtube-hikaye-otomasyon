@@ -62,7 +62,7 @@ export default function RegisterPage() {
       });
 
       if (loginResult?.ok) {
-        router.push('/dashboard');
+        router.push('/');
         router.refresh();
       } else {
         // Registration successful but auto-login failed

@@ -15,12 +15,11 @@ export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
   const searchParams = useSearchParams();
-  // callbackUrl zaten locale içerebilir veya /stories gibi olabilir
+  // callbackUrl - locale prefix'i kaldırarak temizle
   const rawCallbackUrl = searchParams.get('callbackUrl');
-  // Eğer callbackUrl locale prefix içermiyorsa /stories olarak al, değilse direkt kullan
-  const callbackUrl = rawCallbackUrl && (rawCallbackUrl.startsWith('/tr') || rawCallbackUrl.startsWith('/en')) 
+  const callbackUrl = rawCallbackUrl 
     ? rawCallbackUrl.replace(/^\/(tr|en)/, '') || '/'
-    : rawCallbackUrl || '/';
+    : '/';
   const error = searchParams.get('error');
 
   const [formData, setFormData] = useState({
