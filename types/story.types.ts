@@ -21,9 +21,20 @@ export interface IStory {
   
   // AI Ayarları
   openaiModel: string;
-  elevenlabsModel: string;
-  voiceId: string;
-  voiceName: string;
+  
+  // TTS Sağlayıcı
+  ttsProvider: 'elevenlabs' | 'coqui';
+  
+  // ElevenLabs Ayarları
+  elevenlabsModel?: string;
+  voiceId?: string;
+  voiceName?: string;
+  
+  // Coqui TTS Ayarları
+  coquiTunnelUrl?: string;
+  coquiLanguage?: string;
+  coquiVoiceId?: string;
+  coquiVoiceName?: string;
   
   // ImageFX Ayarları
   imagefxModel: string;
@@ -66,9 +77,18 @@ export interface CreateStoryInput {
   targetLanguage: string;
   targetCountry: string;
   openaiModel: string;
+  // TTS
+  ttsProvider?: 'elevenlabs' | 'coqui';
+  // ElevenLabs
   elevenlabsModel?: string;
-  voiceId: string;
-  voiceName: string;
+  voiceId?: string;
+  voiceName?: string;
+  // Coqui TTS
+  coquiTunnelUrl?: string;
+  coquiLanguage?: string;
+  coquiVoiceId?: string;
+  coquiVoiceName?: string;
+  // ImageFX
   imagefxModel?: string;
   imagefxAspectRatio?: string;
   imagefxSeed?: number;

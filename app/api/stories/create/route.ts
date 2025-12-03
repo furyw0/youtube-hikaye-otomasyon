@@ -19,17 +19,36 @@ const createStorySchema = z.object({
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
   openaiModel: z.string(),
+  // TTS Provider
+  ttsProvider: z.enum(['elevenlabs', 'coqui']).optional().default('elevenlabs'),
+  // ElevenLabs
   elevenlabsModel: z.enum([
     'eleven_flash_v2_5', 
     'eleven_turbo_v2_5', 
     'eleven_multilingual_v2', 
     'eleven_v3'
   ]).optional().default('eleven_flash_v2_5'),
-  voiceId: z.string(),
-  voiceName: z.string(),
+  voiceId: z.string().optional(),
+  voiceName: z.string().optional(),
+  // Coqui TTS
+  coquiTunnelUrl: z.string().optional(),
+  coquiLanguage: z.string().optional(),
+  coquiVoiceId: z.string().optional(),
+  coquiVoiceName: z.string().optional(),
+  // ImageFX
   imagefxModel: z.enum(['IMAGEN_4', 'IMAGEN_3_5']).optional().default('IMAGEN_4'),
   imagefxAspectRatio: z.enum(['SQUARE', 'LANDSCAPE', 'PORTRAIT']).optional().default('LANDSCAPE'),
   imagefxSeed: z.number().int().min(0).max(2147483647).optional()
+}).refine((data) => {
+  // TTS Provider'a göre gerekli alanları kontrol et
+  if (data.ttsProvider === 'elevenlabs') {
+    return !!data.voiceId;
+  } else if (data.ttsProvider === 'coqui') {
+    return !!data.coquiVoiceId && !!data.coquiTunnelUrl;
+  }
+  return true;
+}, {
+  message: 'TTS sağlayıcısı için gerekli alanlar eksik'
 });
 
 export async function POST(request: NextRequest) {
@@ -94,9 +113,18 @@ export async function POST(request: NextRequest) {
       targetLanguage: validated.targetLanguage,
       targetCountry: validated.targetCountry,
       openaiModel: validated.openaiModel,
+      // TTS Ayarları
+      ttsProvider: validated.ttsProvider || 'elevenlabs',
+      // ElevenLabs
       elevenlabsModel: validated.elevenlabsModel,
       voiceId: validated.voiceId,
       voiceName: validated.voiceName,
+      // Coqui TTS
+      coquiTunnelUrl: validated.coquiTunnelUrl,
+      coquiLanguage: validated.coquiLanguage,
+      coquiVoiceId: validated.coquiVoiceId,
+      coquiVoiceName: validated.coquiVoiceName,
+      // ImageFX
       imagefxModel: validated.imagefxModel,
       imagefxAspectRatio: validated.imagefxAspectRatio,
       imagefxSeed: validated.imagefxSeed,

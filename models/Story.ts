@@ -51,17 +51,44 @@ const StorySchema = new Schema<IStory>(
       required: true,
       default: 'gpt-4o-mini'
     },
+    
+    // TTS Sağlayıcı
+    ttsProvider: {
+      type: String,
+      enum: ['elevenlabs', 'coqui'],
+      default: 'elevenlabs'
+    },
+    
+    // ElevenLabs Ayarları
     elevenlabsModel: {
       type: String,
       default: 'eleven_flash_v2_5'
     },
     voiceId: {
       type: String,
-      required: true
+      required: false  // Coqui kullanılabilir
     },
     voiceName: {
       type: String,
-      required: true
+      required: false  // Coqui kullanılabilir
+    },
+    
+    // Coqui TTS Ayarları
+    coquiTunnelUrl: {
+      type: String,
+      required: false
+    },
+    coquiLanguage: {
+      type: String,
+      default: 'tr'
+    },
+    coquiVoiceId: {
+      type: String,
+      required: false
+    },
+    coquiVoiceName: {
+      type: String,
+      required: false
     },
     
     // ImageFX Ayarları
