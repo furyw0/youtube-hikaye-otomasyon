@@ -7,15 +7,20 @@
 
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  // callbackUrl zaten locale içerebilir veya /stories gibi olabilir
+  const rawCallbackUrl = searchParams.get('callbackUrl');
+  // Eğer callbackUrl locale prefix içermiyorsa /stories olarak al, değilse direkt kullan
+  const callbackUrl = rawCallbackUrl && (rawCallbackUrl.startsWith('/tr') || rawCallbackUrl.startsWith('/en')) 
+    ? rawCallbackUrl.replace(/^\/(tr|en)/, '') || '/'
+    : rawCallbackUrl || '/';
   const error = searchParams.get('error');
 
   const [formData, setFormData] = useState({
