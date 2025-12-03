@@ -190,9 +190,11 @@ export function StoryForm() {
         console.log('Coqui voices API yanıtı:', data);
         
         if (data.success) {
-          const allVoices = [...(data.builtin || []), ...(data.custom || [])];
+          // API'den gelen voices array'ini kullan
+          const allVoices = data.voices || [...(data.builtin || []), ...(data.custom || [])];
+          // available false olmayan sesleri filtrele (undefined da kabul et)
           const availableVoices = allVoices.filter((v: CoquiVoice) => v.available !== false);
-          console.log('Kullanılabilir sesler:', availableVoices.length);
+          console.log('Kullanılabilir sesler:', availableVoices.length, availableVoices);
           setCoquiVoices(availableVoices);
           
           // İlk sesi varsayılan olarak seç
