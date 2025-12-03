@@ -186,9 +186,22 @@ export function validateCreateStoryRequest(data: any): ValidationResult {
     errors.push('Geçersiz hedef ülke');
   }
 
-  // Ses ID
-  if (!data.voiceId || data.voiceId.length < 5) {
-    errors.push('Geçersiz ses ID');
+  // Ses ID - TTS Provider'a göre kontrol
+  const ttsProvider = data.ttsProvider || 'elevenlabs';
+  
+  if (ttsProvider === 'coqui') {
+    // Coqui TTS için coquiVoiceId gerekli
+    if (!data.coquiVoiceId || data.coquiVoiceId.length < 3) {
+      errors.push('Coqui TTS için geçersiz referans ses');
+    }
+    if (!data.coquiTunnelUrl) {
+      errors.push('Coqui TTS için Tunnel URL gerekli');
+    }
+  } else {
+    // ElevenLabs için voiceId gerekli
+    if (!data.voiceId || data.voiceId.length < 5) {
+      errors.push('Geçersiz ses ID');
+    }
   }
 
   // ImageFX ayarları
