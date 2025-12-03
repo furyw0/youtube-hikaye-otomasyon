@@ -92,7 +92,18 @@ export const processStory = inngest.createFunction(
           targetLanguage: story.targetLanguage,
           targetCountry: story.targetCountry,
           openaiModel: story.openaiModel,
+          // TTS Ayarları
+          ttsProvider: story.ttsProvider || 'elevenlabs',
+          // ElevenLabs
+          elevenlabsModel: story.elevenlabsModel,
           voiceId: story.voiceId,
+          voiceName: story.voiceName,
+          // Coqui TTS
+          coquiTunnelUrl: story.coquiTunnelUrl,
+          coquiLanguage: story.coquiLanguage,
+          coquiVoiceId: story.coquiVoiceId,
+          coquiVoiceName: story.coquiVoiceName,
+          // ImageFX
           imagefxModel: story.imagefxModel,
           imagefxAspectRatio: story.imagefxAspectRatio,
           imagefxSeed: story.imagefxSeed
@@ -341,20 +352,24 @@ export const processStory = inngest.createFunction(
         await dbConnect();
         await updateProgress(85, 'Seslendirme yapılıyor...');
 
-        // Kullanıcının TTS ayarlarını al
-        let userSettings = null;
-        if (storyData.userId) {
-          userSettings = await Settings.findOne({ userId: storyData.userId });
-        }
-        
-        // Ayar yoksa varsayılan oluştur
-        if (!userSettings) {
-          userSettings = {
-            ttsProvider: 'elevenlabs',
-            defaultVoiceId: storyData.voiceId,
-            defaultElevenlabsModel: 'eleven_flash_v2_5'
-          };
-        }
+        // Story'de kaydedilen TTS ayarlarını kullan
+        // (Hikaye oluşturulurken kullanıcının seçtiği ayarlar)
+        const ttsSettings = {
+          ttsProvider: storyData.ttsProvider || 'elevenlabs',
+          // ElevenLabs ayarları
+          defaultVoiceId: storyData.voiceId,
+          defaultElevenlabsModel: storyData.elevenlabsModel || 'eleven_flash_v2_5',
+          // Coqui TTS ayarları
+          coquiTunnelUrl: storyData.coquiTunnelUrl,
+          coquiLanguage: storyData.coquiLanguage,
+          coquiSelectedVoiceId: storyData.coquiVoiceId
+        };
+
+        logger.info('TTS ayarları', {
+          storyId,
+          provider: ttsSettings.ttsProvider,
+          voiceId: ttsSettings.ttsProvider === 'coqui' ? ttsSettings.coquiSelectedVoiceId : ttsSettings.defaultVoiceId
+        });
 
         const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 });
         let completedAudios = 0;
@@ -365,7 +380,7 @@ export const processStory = inngest.createFunction(
             // TTS Router ile ses üret (ElevenLabs veya Coqui)
             const audio = await generateSpeech({
               text: scene.sceneTextAdapted,
-              settings: userSettings as any,
+              settings: ttsSettings as any,
               language: storyData.targetLanguage
             });
 
