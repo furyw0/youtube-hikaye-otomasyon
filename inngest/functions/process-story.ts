@@ -123,6 +123,18 @@ export const processStory = inngest.createFunction(
           model: storyData.openaiModel
         });
 
+        // UZUNLUK KONTROLÜ - Çeviri orijinalin en az %70'i olmalı
+        const lengthRatio = result.translatedLength / result.originalLength;
+        if (lengthRatio < 0.70) {
+          logger.error('⚠️ KRİTİK: Çeviri çok kısa! Hikaye kısaltılmış olabilir!', {
+            storyId,
+            originalLength: result.originalLength,
+            translatedLength: result.translatedLength,
+            ratio: Math.round(lengthRatio * 100) + '%',
+            minExpected: Math.round(result.originalLength * 0.70)
+          });
+        }
+
         // findByIdAndUpdate kullan
         await Story.findByIdAndUpdate(storyId, {
           adaptedTitle: result.title,
@@ -135,12 +147,14 @@ export const processStory = inngest.createFunction(
           storyId,
           originalLength: result.originalLength,
           translatedLength: result.translatedLength,
+          lengthRatio: Math.round(lengthRatio * 100) + '%',
           chunks: result.chunksUsed
         });
 
         return {
           adaptedTitle: result.title,
-          adaptedContent: result.content
+          adaptedContent: result.content,
+          originalLength: result.originalLength
         };
       });
 
@@ -157,6 +171,28 @@ export const processStory = inngest.createFunction(
           model: storyData.openaiModel
         });
 
+        // UZUNLUK KONTROLÜ - Adaptasyon çevirinin en az %80'i olmalı
+        const adaptLengthRatio = result.adaptedLength / result.originalLength;
+        if (adaptLengthRatio < 0.80) {
+          logger.error('⚠️ KRİTİK: Adaptasyon çok kısa! Hikaye kısaltılmış olabilir!', {
+            storyId,
+            translatedLength: result.originalLength,
+            adaptedLength: result.adaptedLength,
+            ratio: Math.round(adaptLengthRatio * 100) + '%'
+          });
+        }
+
+        // TOPLAM ORAN KONTROLÜ - Adaptasyon orijinalin en az %60'ı olmalı
+        const totalRatio = result.adaptedLength / (translationData.originalLength || result.originalLength);
+        if (totalRatio < 0.60) {
+          logger.error('🚨 ALARM: Final metin orijinalden çok kısa! (<%60)', {
+            storyId,
+            originalLength: translationData.originalLength,
+            finalLength: result.adaptedLength,
+            totalRatio: Math.round(totalRatio * 100) + '%'
+          });
+        }
+
         // findByIdAndUpdate kullan
         await Story.findByIdAndUpdate(storyId, {
           adaptedTitle: result.title,
@@ -167,7 +203,9 @@ export const processStory = inngest.createFunction(
 
         logger.info('Adaptasyon tamamlandı', {
           storyId,
-          adaptations: result.adaptations.length
+          adaptations: result.adaptations.length,
+          adaptedLength: result.adaptedLength,
+          totalRatio: Math.round(totalRatio * 100) + '%'
         });
 
         return {

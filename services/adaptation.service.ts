@@ -78,95 +78,115 @@ async function adaptChunk(
   totalChunks: number,
   previousNotes?: string[]  // Önceki chunk'lardaki isim değişiklikleri
 ): Promise<{ adapted: string; notes: string[] }> {
+  const originalLength = chunk.length;
+  const MIN_LENGTH_RATIO = 0.80; // Adaptasyon en az orijinalin %80'i olmalı
+  const MAX_RETRIES = 3;
+
   // Önceki değişiklikleri formatla
   const previousChanges = previousNotes && previousNotes.length > 0
-    ? `\n\n🔄 ÖNCEKİ CHUNK'LARDA YAPILAN DEĞİŞİKLİKLER (AYNI KULLAN!):\n${previousNotes.map(n => `- ${n}`).join('\n')}\n`
+    ? `\n🔄 ÖNCEKİ DEĞİŞİKLİKLER (AYNI KULLAN!):\n${previousNotes.slice(-20).map(n => `- ${n}`).join('\n')}\n`
     : '';
 
-  const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri KISALTMADAN adapte ediyorsun.
 
-📌 ÖNEMLİ: Metin zaten hedef dile çevrilmiş. Şimdi SADECE kültürel adaptasyon yapılacak.
+⛔ YASAK - ASLA YAPMA:
+- ❌ ASLA içeriği KISALTMA veya ÖZETLEME
+- ❌ ASLA paragraf, cümle veya kelime ATLAMA
+- ❌ ASLA sahne, olay veya diyalog ÇIKARMA
+- ❌ ASLA "..." ile kısaltma yapma
 
-⚠️ KRİTİK - ASLA YAPMA:
-- ASLA içeriği kısaltma veya özetleme
-- ASLA paragraf, cümle veya kelime atlama
-- ASLA sahne, olay veya diyalog çıkarma
-- ASLA hikayenin uzunluğunu değiştirme
+📏 UZUNLUK KONTROLÜ (ÇOK KRİTİK):
+- Orijinal metin: ~${originalLength} karakter
+- Adapte edilmiş metin EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI
+- Eğer çıktı çok kısa ise, YANLIŞ YAPTIN demektir!
 
-🔄 ZORUNLU DEĞİŞİKLİKLER (MUTLAKA YAP):
+🔄 SADECE BU DEĞİŞİKLİKLERİ YAP:
+1. KİŞİ İSİMLERİ → ${targetCountry}'de yaygın isimlerle değiştir
+2. YER İSİMLERİ → ${targetCountry}'deki yerlerle değiştir  
+3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi yerelleştir
 
-1. **KİŞİ İSİMLERİ** - TÜM karakter isimlerini ${targetCountry}'de yaygın isimlerle DEĞİŞTİR:
-   - Örnek: "John" → "Juan" (İspanya), "Mehmet" (Türkiye), "Hans" (Almanya), "Pierre" (Fransa)
-   - Ana karakterler ve yan karakterler dahil
-   - İsimler hikaye boyunca TUTARLI olmalı
-
-2. **YER İSİMLERİ** - Şehir, mahalle, sokak isimlerini ${targetCountry}'deki yerlerle DEĞİŞTİR:
-   - Örnek: "New York" → "Madrid" (İspanya), "İstanbul" (Türkiye), "Berlin" (Almanya)
-   - Okul, hastane, restoran, market isimleri de yerelleştirilmeli
-
-3. **KÜLTÜREL UNSURLAR** - Tamamen yerelleştir:
-   - Yemekler: Yerel mutfaktan yemekler kullan (hamburger → döner, pasta → baklava vb.)
-   - Bayramlar/Tatiller: Yerel bayramlarla değiştir
-   - Gelenekler: Yerel gelenekleri yansıt
-   - Giyim: Yerel kıyafet tanımları
-
-4. **PARA BİRİMİ & ÖLÇÜLER**:
-   - Para: ${targetCountry} para birimine çevir (dolar → TL, euro vb.)
-   - Uzunluk/Ağırlık: Metrik sisteme çevir
-
-5. **DİL & İFADELER**:
-   - Yerel deyimler ve atasözleri kullan
-   - Selamlaşma şekilleri yerel olmalı (Hi → Merhaba, Selam vb.)
-   - Hitap şekilleri kültüre uygun olmalı
+✅ KORU (DEĞİŞTİRME):
+- Paragraf sayısı AYNI kalmalı
+- Cümle sayısı AYNI kalmalı
+- Hikaye uzunluğu AYNI kalmalı
 ${previousChanges}
-✅ KORUMASI GEREKENLER:
-- Hikayenin OLAY ÖRGÜSÜ aynı kalmalı
-- Karakter KİŞİLİKLERİ aynı kalmalı
-- Duygusal ton ve atmosfer korunmalı
-- Metin uzunluğu AYNI kalmalı (çok kritik!)
-- Paragraf yapısı AYNEN korunmalı
+Hedef: ${targetCountry} / ${targetLanguage}
+Parça: ${chunkIndex + 1}/${totalChunks}
 
-Hedef Ülke: ${targetCountry}
-Hedef Dil: ${targetLanguage}
+JSON FORMAT:
+{"adapted": "TAM METİN (kısaltılmamış)", "notes": ["değişiklik1", "değişiklik2"]}`;
 
-JSON FORMAT (zorunlu):
-{
-  "adapted": "TAMAMEN adapte edilmiş metin (isimler, yerler, kültürel unsurlar değişmiş)",
-  "notes": ["John → Mehmet olarak değiştirildi", "New York → İstanbul olarak değiştirildi", ...]
-}
+    const response = await retryOpenAI(
+      () => createChatCompletion({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `ADAPTE ET (KISALTMADAN!):\n\n${chunk}` }
+        ],
+        temperature: 0.4,
+        responseFormat: 'json_object'
+      }),
+      `Chunk ${chunkIndex + 1}/${totalChunks} adaptasyonu (Deneme ${attempt})`
+    );
 
-Bu metin ${totalChunks} parçanın ${chunkIndex + 1}. parçası.
-${chunkIndex > 0 ? '⚠️ ÖNCEKİ CHUNK\'LARDA DEĞİŞTİRİLEN İSİMLERİ AYNI KULLANMALISIN!' : 'Bu ilk parça - yaptığın isim değişikliklerini not et, sonraki parçalarda aynı isimleri kullanacaksın.'}`;
+    try {
+      const parsed = JSON.parse(response);
+      const adaptedText = parsed.adapted || chunk;
+      const adaptedLength = adaptedText.length;
+      const ratio = adaptedLength / originalLength;
 
-  const response = await retryOpenAI(
-    () => createChatCompletion({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: chunk }
-      ],
-      temperature: 0.4,
-      responseFormat: 'json_object'
-    }),
-    `Chunk ${chunkIndex + 1}/${totalChunks} adaptasyonu`
-  );
+      // Uzunluk kontrolü
+      if (ratio >= MIN_LENGTH_RATIO) {
+        logger.debug(`Chunk ${chunkIndex + 1} adapte edildi`, {
+          originalLength,
+          adaptedLength,
+          ratio: Math.round(ratio * 100) + '%'
+        });
+        return {
+          adapted: adaptedText,
+          notes: parsed.notes || []
+        };
+      }
 
-  try {
-    const parsed = JSON.parse(response);
-    return {
-      adapted: parsed.adapted || chunk,
-      notes: parsed.notes || []
-    };
-  } catch (error) {
-    logger.warn('Adaptasyon JSON parse hatası, ham metin kullanılıyor', {
-      chunkIndex,
-      error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-    });
-    return {
-      adapted: response, // Fallback: ham yanıtı kullan
-      notes: []
-    };
+      // Adaptasyon çok kısa - tekrar dene
+      logger.warn(`⚠️ Adaptasyon çok kısa! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
+        chunkIndex: chunkIndex + 1,
+        originalLength,
+        adaptedLength,
+        ratio: Math.round(ratio * 100) + '%',
+        minRequired: Math.round(originalLength * MIN_LENGTH_RATIO)
+      });
+
+      if (attempt === MAX_RETRIES) {
+        logger.error(`❌ Adaptasyon ${MAX_RETRIES} denemede de kısa kaldı!`, {
+          chunkIndex: chunkIndex + 1,
+          ratio: Math.round(ratio * 100) + '%'
+        });
+        return {
+          adapted: adaptedText,
+          notes: parsed.notes || []
+        };
+      }
+
+    } catch (error) {
+      logger.warn('Adaptasyon JSON parse hatası', {
+        chunkIndex,
+        attempt,
+        error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+      });
+      
+      if (attempt === MAX_RETRIES) {
+        return {
+          adapted: chunk, // Fallback: orijinal chunk'ı kullan (kısaltmaktansa)
+          notes: []
+        };
+      }
+    }
   }
+
+  // Fallback (buraya ulaşmamalı)
+  return { adapted: chunk, notes: [] };
 }
 
 /**

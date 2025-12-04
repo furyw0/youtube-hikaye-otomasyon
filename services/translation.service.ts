@@ -77,48 +77,84 @@ async function translateChunk(
   totalChunks: number,
   previousContext?: string
 ): Promise<string> {
-  const systemPrompt = `Sen profesyonel bir edebi çevirmensin. Hikayeleri hedef dile çeviriyorsun.
+  const originalLength = chunk.length;
+  const MIN_LENGTH_RATIO = 0.75; // Çeviri en az orijinalin %75'i olmalı
+  const MAX_RETRIES = 3;
 
-📌 ÖNEMLİ: Bu SADECE dil çevirisi. Kültürel adaptasyon SONRA yapılacak.
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const systemPrompt = `Sen profesyonel bir edebi çevirmensin. Hikayeleri hedef dile BİREBİR çeviriyorsun.
 
-⚠️ KRİTİK - ASLA YAPMA:
-- ASLA içeriği kısaltma veya özetleme
-- ASLA paragraf, cümle veya kelime atlama
-- ASLA sahne, olay veya diyalog çıkarma
-- ASLA hikayeyi değiştirme veya yeniden yazma
-- ASLA isimleri veya yerleri DEĞİŞTİRME (adaptasyonda değiştirilecek)
+⛔ YASAK - ASLA YAPMA (YAPAN MODELİ SİLERİZ):
+- ❌ ASLA içeriği KISALTMA veya ÖZETLEME
+- ❌ ASLA paragraf, cümle veya kelime ATLAMA
+- ❌ ASLA sahne, olay veya diyalog ÇIKARMA
+- ❌ ASLA hikayeyi değiştirme veya yeniden yazma
+- ❌ ASLA "..." ile kısaltma yapma
+- ❌ ASLA "devamı..." gibi ifadeler kullanma
+
+📏 UZUNLUK KONTROLÜ (ÇOK KRİTİK):
+- Orijinal metin: ~${originalLength} karakter
+- Çeviri EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI
+- Çeviri orijinalin %75-%130 arasında olmalı
+- Eğer çeviri çok kısa ise, EKSİK ÇEVİRDİN demektir!
 
 ✅ ZORUNLU KURALLAR:
-1. HER PARAGRAF, HER CÜMLE, HER KELİME çevrilmeli (eksiksiz)
-2. Orijinal metin ne kadar uzunsa, çeviri de o kadar uzun olmalı
-3. Hikayenin BÜTÜNLÜĞÜ ve AKIŞI korunmalı
-4. Edebi değeri koru (dil, üslup, atmosfer)
-5. Karakter ve yer isimleri AYNEN KALSIN (örn: "John" → "John", "Paris" → "Paris")
-6. Diyalogları doğal çevir
-7. Paragraf yapısını AYNEN koru
-8. SADECE çevrilmiş metni döndür (yorum veya açıklama ekleme)
+1. HER PARAGRAF, HER CÜMLE, HER KELİME eksiksiz çevrilmeli
+2. Paragraf sayısı AYNI kalmalı
+3. Cümle sayısı yaklaşık AYNI kalmalı
+4. Karakter ve yer isimleri AYNEN KALSIN (adaptasyonda değişecek)
+5. SADECE çevrilmiş metni döndür
 
 Kaynak Dil: ${sourceLang}
 Hedef Dil: ${targetLang}
+${previousContext ? `\n[Bağlam: ...${previousContext}]\n` : ''}
+Parça: ${chunkIndex + 1}/${totalChunks}`;
 
-${previousContext ? `\n[Önceki Bağlam]\n${previousContext}\n[/Önceki Bağlam]\n` : ''}
+    const response = await retryOpenAI(
+      () => createChatCompletion({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `ÇEVİR (KISALTMADAN!):\n\n${chunk}` }
+        ],
+        temperature: 0.3
+      }),
+      `Chunk ${chunkIndex + 1}/${totalChunks} çevirisi (Deneme ${attempt})`
+    );
 
-Bu metin ${totalChunks} parçanın ${chunkIndex + 1}. parçası.
-${chunkIndex > 0 ? 'Önceki parçanın devamı, tutarlılığı koru.' : ''}`;
+    const translatedLength = response.length;
+    const ratio = translatedLength / originalLength;
 
-  const response = await retryOpenAI(
-    () => createChatCompletion({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: chunk }
-      ],
-      temperature: 0.3 // Tutarlılık için düşük
-    }),
-    `Chunk ${chunkIndex + 1}/${totalChunks} çevirisi`
-  );
+    // Uzunluk kontrolü
+    if (ratio >= MIN_LENGTH_RATIO) {
+      logger.debug(`Chunk ${chunkIndex + 1} çevirildi`, {
+        originalLength,
+        translatedLength,
+        ratio: Math.round(ratio * 100) + '%'
+      });
+      return response;
+    }
 
-  return response;
+    // Çeviri çok kısa - tekrar dene
+    logger.warn(`⚠️ Çeviri çok kısa! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
+      chunkIndex: chunkIndex + 1,
+      originalLength,
+      translatedLength,
+      ratio: Math.round(ratio * 100) + '%',
+      minRequired: Math.round(originalLength * MIN_LENGTH_RATIO)
+    });
+
+    if (attempt === MAX_RETRIES) {
+      logger.error(`❌ Çeviri ${MAX_RETRIES} denemede de kısa kaldı! Yine de kullanılıyor.`, {
+        chunkIndex: chunkIndex + 1,
+        ratio: Math.round(ratio * 100) + '%'
+      });
+      return response;
+    }
+  }
+
+  // Fallback (buraya ulaşmamalı)
+  throw new OpenAIError(`Chunk ${chunkIndex + 1} çevirilemedi`);
 }
 
 /**
