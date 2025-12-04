@@ -77,20 +77,23 @@ async function translateChunk(
   totalChunks: number,
   previousContext?: string
 ): Promise<string> {
-  const systemPrompt = `Sen profesyonel bir edebi çevirmensin. Hikayeleri çeviriyorsun.
+  const systemPrompt = `Sen profesyonel bir edebi çevirmensin. Hikayeleri hedef dile çeviriyorsun.
+
+📌 ÖNEMLİ: Bu SADECE dil çevirisi. Kültürel adaptasyon SONRA yapılacak.
 
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA içeriği kısaltma veya özetleme
 - ASLA paragraf, cümle veya kelime atlama
 - ASLA sahne, olay veya diyalog çıkarma
 - ASLA hikayeyi değiştirme veya yeniden yazma
+- ASLA isimleri veya yerleri DEĞİŞTİRME (adaptasyonda değiştirilecek)
 
 ✅ ZORUNLU KURALLAR:
 1. HER PARAGRAF, HER CÜMLE, HER KELİME çevrilmeli (eksiksiz)
 2. Orijinal metin ne kadar uzunsa, çeviri de o kadar uzun olmalı
 3. Hikayenin BÜTÜNLÜĞÜ ve AKIŞI korunmalı
 4. Edebi değeri koru (dil, üslup, atmosfer)
-5. Karakter isimleri ve özel isimler tutarlı olmalı
+5. Karakter ve yer isimleri AYNEN KALSIN (örn: "John" → "John", "Paris" → "Paris")
 6. Diyalogları doğal çevir
 7. Paragraf yapısını AYNEN koru
 8. SADECE çevrilmiş metni döndür (yorum veya açıklama ekleme)

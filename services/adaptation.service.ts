@@ -75,9 +75,17 @@ async function adaptChunk(
   targetLanguage: string,
   model: string,
   chunkIndex: number,
-  totalChunks: number
+  totalChunks: number,
+  previousNotes?: string[]  // Önceki chunk'lardaki isim değişiklikleri
 ): Promise<{ adapted: string; notes: string[] }> {
+  // Önceki değişiklikleri formatla
+  const previousChanges = previousNotes && previousNotes.length > 0
+    ? `\n\n🔄 ÖNCEKİ CHUNK'LARDA YAPILAN DEĞİŞİKLİKLER (AYNI KULLAN!):\n${previousNotes.map(n => `- ${n}`).join('\n')}\n`
+    : '';
+
   const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
+
+📌 ÖNEMLİ: Metin zaten hedef dile çevrilmiş. Şimdi SADECE kültürel adaptasyon yapılacak.
 
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA içeriği kısaltma veya özetleme
@@ -88,34 +96,34 @@ async function adaptChunk(
 🔄 ZORUNLU DEĞİŞİKLİKLER (MUTLAKA YAP):
 
 1. **KİŞİ İSİMLERİ** - TÜM karakter isimlerini ${targetCountry}'de yaygın isimlerle DEĞİŞTİR:
-   - Örnek: "John" → "Juan" (İspanya için), "Ahmet" (Türkiye için), "Hans" (Almanya için)
+   - Örnek: "John" → "Juan" (İspanya), "Mehmet" (Türkiye), "Hans" (Almanya), "Pierre" (Fransa)
    - Ana karakterler ve yan karakterler dahil
    - İsimler hikaye boyunca TUTARLI olmalı
 
 2. **YER İSİMLERİ** - Şehir, mahalle, sokak isimlerini ${targetCountry}'deki yerlerle DEĞİŞTİR:
-   - Örnek: "New York" → "Madrid" (İspanya için), "İstanbul" (Türkiye için)
-   - Okul, hastane, restoran isimleri de yerelleştirilmeli
+   - Örnek: "New York" → "Madrid" (İspanya), "İstanbul" (Türkiye), "Berlin" (Almanya)
+   - Okul, hastane, restoran, market isimleri de yerelleştirilmeli
 
 3. **KÜLTÜREL UNSURLAR** - Tamamen yerelleştir:
-   - Yemekler: Yerel mutfaktan yemekler kullan
+   - Yemekler: Yerel mutfaktan yemekler kullan (hamburger → döner, pasta → baklava vb.)
    - Bayramlar/Tatiller: Yerel bayramlarla değiştir
    - Gelenekler: Yerel gelenekleri yansıt
    - Giyim: Yerel kıyafet tanımları
 
 4. **PARA BİRİMİ & ÖLÇÜLER**:
-   - Para: ${targetCountry} para birimine çevir
-   - Uzunluk/Ağırlık: Metrik/İmperial sisteme göre ayarla
+   - Para: ${targetCountry} para birimine çevir (dolar → TL, euro vb.)
+   - Uzunluk/Ağırlık: Metrik sisteme çevir
 
 5. **DİL & İFADELER**:
    - Yerel deyimler ve atasözleri kullan
-   - Selamlaşma şekilleri yerel olmalı
+   - Selamlaşma şekilleri yerel olmalı (Hi → Merhaba, Selam vb.)
    - Hitap şekilleri kültüre uygun olmalı
-
+${previousChanges}
 ✅ KORUMASI GEREKENLER:
 - Hikayenin OLAY ÖRGÜSÜ aynı kalmalı
 - Karakter KİŞİLİKLERİ aynı kalmalı
 - Duygusal ton ve atmosfer korunmalı
-- Metin uzunluğu AYNI kalmalı
+- Metin uzunluğu AYNI kalmalı (çok kritik!)
 - Paragraf yapısı AYNEN korunmalı
 
 Hedef Ülke: ${targetCountry}
@@ -123,12 +131,12 @@ Hedef Dil: ${targetLanguage}
 
 JSON FORMAT (zorunlu):
 {
-  "adapted": "TAMAMEN adapte edilmiş metin (isimler, yerler değişmiş)",
-  "notes": ["John → Juan olarak değiştirildi", "New York → Madrid olarak değiştirildi", ...]
+  "adapted": "TAMAMEN adapte edilmiş metin (isimler, yerler, kültürel unsurlar değişmiş)",
+  "notes": ["John → Mehmet olarak değiştirildi", "New York → İstanbul olarak değiştirildi", ...]
 }
 
 Bu metin ${totalChunks} parçanın ${chunkIndex + 1}. parçası.
-${chunkIndex > 0 ? 'ÖNCEKİ CHUNK\'LARDA DEĞİŞTİRİLEN İSİMLERİ AYNI KULLAN!' : ''}`;
+${chunkIndex > 0 ? '⚠️ ÖNCEKİ CHUNK\'LARDA DEĞİŞTİRİLEN İSİMLERİ AYNI KULLANMALISIN!' : 'Bu ilk parça - yaptığın isim değişikliklerini not et, sonraki parçalarda aynı isimleri kullanacaksın.'}`;
 
   const response = await retryOpenAI(
     () => createChatCompletion({
@@ -201,23 +209,27 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
       const chunk = chunks[i];
       
       logger.debug(`Chunk ${i + 1}/${chunks.length} adapte ediliyor...`, {
-        chunkLength: chunk.length
+        chunkLength: chunk.length,
+        previousNotesCount: allNotes.length
       });
 
+      // Önceki chunk'lardaki isim değişikliklerini geçir (tutarlılık için)
       const result = await adaptChunk(
         chunk,
         targetCountry,
         targetLanguage,
         model,
         i,
-        chunks.length
+        chunks.length,
+        i > 0 ? allNotes : undefined  // İlk chunk hariç önceki notları geçir
       );
 
       adaptedChunks.push(result.adapted);
       allNotes.push(...result.notes);
 
       logger.debug(`Chunk ${i + 1}/${chunks.length} tamamlandı`, {
-        notesCount: result.notes.length
+        newNotesCount: result.notes.length,
+        totalNotesCount: allNotes.length
       });
     }
 
@@ -282,7 +294,7 @@ export async function adaptText(
     throw new OpenAIError('Metin çok uzun, adaptStory() kullanın');
   }
 
-  const result = await adaptChunk(text, targetCountry, targetLanguage, model, 0, 1);
+  const result = await adaptChunk(text, targetCountry, targetLanguage, model, 0, 1, undefined);
   return result.adapted;
 }
 
