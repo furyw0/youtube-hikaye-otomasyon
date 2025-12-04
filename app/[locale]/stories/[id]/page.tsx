@@ -84,6 +84,15 @@ function StoryDetailContent() {
       
       if (data.success) {
         setStory(data.story);
+        // DEBUG: Scenes ve blobUrls kontrolü
+        console.log('📊 Story data:', {
+          storyId: data.story._id,
+          status: data.story.status,
+          totalScenes: data.story.scenes?.length,
+          scenesWithImages: data.story.scenes?.filter((s: any) => s.blobUrls?.image).length,
+          scenesWithAudio: data.story.scenes?.filter((s: any) => s.blobUrls?.audio).length,
+          firstSceneBlobUrls: data.story.scenes?.[0]?.blobUrls
+        });
       }
     } catch (error) {
       console.error('Hikaye yüklenemedi:', error);

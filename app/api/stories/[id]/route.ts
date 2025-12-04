@@ -34,10 +34,8 @@ export async function GET(
     // MongoDB bağlantısı
     await dbConnect();
 
-    // Story ve scenes'leri getir - userId kontrolü ile
-    const story = await Story.findOne({ _id: storyId, userId })
-      .populate('scenes')
-      .lean();
+    // Story'yi getir - userId kontrolü ile
+    const story = await Story.findOne({ _id: storyId, userId }).lean();
 
     if (!story) {
       logger.warn('Hikaye bulunamadı veya yetkisiz', { storyId, userId });
@@ -48,11 +46,18 @@ export async function GET(
       }, { status: 404 });
     }
 
+    // Scene'leri ayrı olarak getir (populate yerine direct query - daha güvenilir)
+    const scenes = await Scene.find({ storyId: storyId })
+      .sort({ sceneNumber: 1 })
+      .lean();
+    
     logger.debug('Hikaye detayları gönderiliyor', {
       storyId,
       status: story.status,
       progress: story.progress,
-      scenes: story.scenes.length
+      scenesCount: scenes.length,
+      scenesWithImages: scenes.filter(s => s.blobUrls?.image).length,
+      scenesWithAudio: scenes.filter(s => s.blobUrls?.audio).length
     });
 
     return NextResponse.json({
@@ -60,7 +65,7 @@ export async function GET(
       story: {
         ...story,
         _id: story._id.toString(),
-        scenes: story.scenes
+        scenes: scenes // Direct query'den gelen scenes
       }
     });
 
