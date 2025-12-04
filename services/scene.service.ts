@@ -242,14 +242,44 @@ JSON FORMAT:
     logger.warn(`İlk 3 dakika için 6 sahne hedeflendi, ${parsed.scenes.length} oluşturuldu (hikaye kısa olabilir)`);
   }
 
-  // Her sahnenin görsel içerdiğini kontrol et
-  const imagesCount = parsed.scenes.filter(s => s.hasImage).length;
-  if (imagesCount < 3) {
-    throw new SceneValidationError(
-      `İlk 3 dakikada minimum 3 görsel bekleniyor, ${imagesCount} bulundu`
-    );
+  // TÜM SAHNELERE görsel ekle (ilk 3 dakika için her sahne önemli)
+  const targetImages = IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES; // 6
+  const totalScenes = parsed.scenes.length;
+  const desiredImages = Math.min(targetImages, totalScenes);
+  
+  logger.info(`İlk 3 dakika görsel dağıtımı yapılıyor`, {
+    totalScenes,
+    targetImages: desiredImages
+  });
+
+  // Eşit aralıklarla görsel ekle
+  let imageIdx = 1;
+  const step = totalScenes / desiredImages;
+  
+  // Önce tüm görselleri temizle
+  parsed.scenes.forEach(scene => {
+    scene.hasImage = false;
+    delete scene.imageIndex;
+  });
+  
+  // Sonra eşit dağıt
+  for (let i = 0; i < desiredImages && imageIdx <= targetImages; i++) {
+    const sceneIndex = Math.min(Math.floor(i * step), totalScenes - 1);
+    const scene = parsed.scenes[sceneIndex];
+    
+    if (!scene.hasImage) {
+      scene.hasImage = true;
+      scene.imageIndex = imageIdx++;
+      
+      // Görsel betimleme yoksa ekle
+      if (!scene.visualDescription) {
+        scene.visualDescription = `Cinematic dramatic photograph: ${scene.text.substring(0, 100)}...`;
+      }
+    }
   }
 
+  const imagesCount = parsed.scenes.filter(s => s.hasImage).length;
+  
   logger.info(`İlk 3 dakika sahneleri oluşturuldu (${language})`, {
     scenes: parsed.scenes.length,
     images: imagesCount,
@@ -363,39 +393,51 @@ JSON FORMAT:
     );
   }
 
-  // Görselli sahne sayısını kontrol et
+  // Görselli sahne sayısını kontrol et ve ZORLA hedef sayıya ulaştır
   let imagesCount = parsed.scenes.filter(s => s.hasImage).length;
   const maxImageIndex = endImageIndex; // startImageIndex + targetImages - 1 (yukarıda hesaplandı)
   
-  // Minimum 2 görsel yeterli, hedef 14
-  if (imagesCount < 2) {
-    logger.warn('Çok az görsel var, otomatik düzeltme yapılıyor', {
-      found: imagesCount,
-      target: targetImages
-    });
+  // HER ZAMAN otomatik dağıtım yap - OpenAI genelde yeterli görsel oluşturmuyor
+  const totalScenes = parsed.scenes.length;
+  const desiredImages = Math.min(targetImages, totalScenes); // Sahne sayısından fazla görsel olamaz
+  
+  logger.info(`Görsel dağıtımı yapılıyor`, {
+    currentImages: imagesCount,
+    targetImages: desiredImages,
+    totalScenes
+  });
 
-    // Eşit aralıklarla mümkün olduğunca çok sahneye görsel ekle
-    const totalScenes = parsed.scenes.length;
-    const desiredImages = Math.min(targetImages, totalScenes);
-    const step = Math.max(1, Math.floor(totalScenes / desiredImages));
+  // Önce tüm görselleri temizle, sonra eşit dağıt
+  parsed.scenes.forEach(scene => {
+    scene.hasImage = false;
+    delete scene.imageIndex;
+  });
+  
+  // Eşit aralıklarla görsel ekle
+  const step = totalScenes / desiredImages;
+  let imageIdx = startImageIndex;
+  
+  for (let i = 0; i < desiredImages && imageIdx <= maxImageIndex; i++) {
+    const sceneIndex = Math.min(Math.floor(i * step), totalScenes - 1);
+    const scene = parsed.scenes[sceneIndex];
     
-    let imageIdx = startImageIndex;
-    parsed.scenes.forEach((scene, idx) => {
-      const shouldHaveImage = idx % step === 0 && imageIdx <= maxImageIndex;
-      scene.hasImage = shouldHaveImage;
-      if (shouldHaveImage) {
-        scene.imageIndex = imageIdx++;
-      } else {
-        delete scene.imageIndex;
-        delete scene.visualDescription;
+    if (!scene.hasImage) {
+      scene.hasImage = true;
+      scene.imageIndex = imageIdx++;
+      
+      // Görsel betimleme yoksa ekle
+      if (!scene.visualDescription) {
+        scene.visualDescription = `Cinematic photograph of the scene: ${scene.text.substring(0, 100)}...`;
       }
-    });
-
-    imagesCount = parsed.scenes.filter(s => s.hasImage).length;
-  } else if (imagesCount < targetImages && imagesCount >= 2) {
-    // 2-13 arası görsel varsa, uyar ama devam et
-    logger.info(`Kalan kısımda ${targetImages} görsel hedeflendi, ${imagesCount} oluşturuldu (hikaye kısa olabilir)`);
+    }
   }
+
+  imagesCount = parsed.scenes.filter(s => s.hasImage).length;
+  
+  logger.info(`Görsel dağıtımı tamamlandı`, {
+    finalImages: imagesCount,
+    target: desiredImages
+  });
 
   logger.info(`Kalan sahneler oluşturuldu (${language})`, {
     scenes: parsed.scenes.length,
