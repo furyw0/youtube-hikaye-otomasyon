@@ -257,7 +257,7 @@ export const processStory = inngest.createFunction(
         for (const [sceneNumber, prompt] of prompts.entries()) {
           await Scene.findOneAndUpdate(
             { storyId: storyId, sceneNumber },
-            { visualPrompt: prompt }
+            { $set: { visualPrompt: prompt } }
           );
         }
 
@@ -329,14 +329,29 @@ export const processStory = inngest.createFunction(
                 scene.imageIndex!
               );
 
-              // Scene'i güncelle
-              await Scene.findOneAndUpdate(
+              // Scene'i güncelle - $set operatörü ile explicit update
+              const updateResult = await Scene.findOneAndUpdate(
                 { storyId: storyId, sceneNumber: scene.sceneNumber },
                 { 
-                  'blobUrls.image': uploaded.url,
-                  status: 'processing'
-                }
+                  $set: {
+                    'blobUrls.image': uploaded.url,
+                    status: 'processing'
+                  }
+                },
+                { new: true } // Güncellenmiş dokümanı döndür
               );
+              
+              if (!updateResult) {
+                logger.warn(`Scene güncellenemedi`, {
+                  storyId,
+                  sceneNumber: scene.sceneNumber
+                });
+              } else {
+                logger.debug(`Scene güncellendi`, {
+                  sceneNumber: scene.sceneNumber,
+                  imageUrl: updateResult.blobUrls?.image
+                });
+              }
 
               completedImages++;
               success = true;
@@ -469,19 +484,27 @@ export const processStory = inngest.createFunction(
               audio.audioBuffer
             );
 
-            // Scene'i güncelle
-            await Scene.findOneAndUpdate(
+            // Scene'i güncelle - $set operatörü ile explicit update
+            const audioUpdateResult = await Scene.findOneAndUpdate(
               { storyId, sceneNumber },
               {
-                'blobUrls.audio': uploaded.url,
-                actualDuration: audio.duration,
-                status: 'completed'
-              }
+                $set: {
+                  'blobUrls.audio': uploaded.url,
+                  actualDuration: audio.duration,
+                  status: 'completed'
+                }
+              },
+              { new: true }
             );
+
+            if (!audioUpdateResult) {
+              logger.warn(`Audio Scene güncellenemedi`, { storyId, sceneNumber });
+            }
 
             logger.info(`Sahne ${sceneNumber} seslendirme tamamlandı`, {
               duration: audio.duration,
-              provider: audio.provider
+              provider: audio.provider,
+              audioUrl: audioUpdateResult?.blobUrls?.audio
             });
 
           } catch (error) {
@@ -541,7 +564,7 @@ export const processStory = inngest.createFunction(
 
               await Scene.findOneAndUpdate(
                 { storyId: storyId, sceneNumber: scene.sceneNumber },
-                { sceneTextTurkish: turkishText }
+                { $set: { sceneTextTurkish: turkishText } }
               );
 
               completedTranslations++;
