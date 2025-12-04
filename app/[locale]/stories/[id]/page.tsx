@@ -102,6 +102,29 @@ function StoryDetailContent() {
     setExpandedScenes(newExpanded);
   };
 
+  // Dosya indirme fonksiyonu (cross-origin blob URL'ler için)
+  const handleDownload = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Cleanup
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('İndirme hatası:', error);
+      // Fallback: yeni sekmede aç
+      window.open(url, '_blank');
+    }
+  };
+
   const getLanguageName = (code: string) => {
     const languages: Record<string, string> = {
       'tr': 'Türkçe',
@@ -382,15 +405,12 @@ function StoryDetailContent() {
                               alt={`Sahne ${scene.sceneNumber}`}
                               className="w-full rounded-lg"
                             />
-                            <a 
-                              href={scene.blobUrls.image} 
-                              download={`sahne-${scene.sceneNumber}.png`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                            <button 
+                              onClick={() => handleDownload(scene.blobUrls.image!, `sahne-${scene.sceneNumber}.png`)}
+                              className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
                             >
                               ⬇️ {t('scene.download')}
-                            </a>
+                            </button>
                           </div>
                         ) : scene.hasImage ? (
                           <div className="bg-gray-100 rounded-lg p-8 text-center text-gray-400">
@@ -411,13 +431,12 @@ function StoryDetailContent() {
                             >
                               <source src={scene.blobUrls.audio} type="audio/mpeg" />
                             </audio>
-                            <a 
-                              href={scene.blobUrls.audio} 
-                              download={`sahne-${scene.sceneNumber}.mp3`}
-                              className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                            <button 
+                              onClick={() => handleDownload(scene.blobUrls.audio!, `sahne-${scene.sceneNumber}.mp3`)}
+                              className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
                             >
                               ⬇️ {t('scene.download')}
-                            </a>
+                            </button>
                           </div>
                         ) : (
                           <div className="bg-gray-100 rounded-lg p-4 text-center text-gray-400 text-sm">
@@ -455,23 +474,20 @@ function StoryDetailContent() {
                   <span className="text-sm">Sahne {scene.sceneNumber}</span>
                   <div className="flex gap-2">
                     {scene.blobUrls?.image && (
-                      <a 
-                        href={scene.blobUrls.image}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
+                      <button 
+                        onClick={() => handleDownload(scene.blobUrls.image!, `sahne-${scene.sceneNumber}.png`)}
+                        className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 cursor-pointer"
                       >
                         🖼️ Görsel
-                      </a>
+                      </button>
                     )}
                     {scene.blobUrls?.audio && (
-                      <a 
-                        href={scene.blobUrls.audio}
-                        download={`sahne-${scene.sceneNumber}.mp3`}
-                        className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                      <button 
+                        onClick={() => handleDownload(scene.blobUrls.audio!, `sahne-${scene.sceneNumber}.mp3`)}
+                        className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 cursor-pointer"
                       >
                         🔊 Ses
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
