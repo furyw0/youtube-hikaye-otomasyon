@@ -705,37 +705,49 @@ ${isFirstThreeMinutes ?
   'BU İLK 3 DAKİKA! İzleyicinin dikkatini ÇEKMELİ!' : 
   'Hikayenin devamı için görsel.'}
 
+⛔ GOOGLE IMAGEFX KISITLAMALARI (ÇOK ÖNEMLİ!):
+ImageFX "Prominent People Filter" kullanıyor. Şunlar YASAK:
+- ❌ ASLA isim kullanma (Santiago, Carlos, Maria, John vb.)
+- ❌ ASLA spesifik yaş belirtme (35-year-old, 8 yaşındaki vb.)
+- ❌ ASLA "named X" veya "called X" kalıpları
+- ❌ ASLA gerçek kişi referansları
+- ❌ ASLA ünlü/tanınmış kişi benzerlikleri
+
+✅ BUNLARI KULLAN:
+- "a man", "a woman", "a child", "a teenager", "an elderly person"
+- "middle-aged", "young adult", "teenager" (yaş yerine)
+- "dark-haired man", "blonde woman" (isim yerine fiziksel özellik)
+
 ⚠️ KRİTİK - ASLA EKLEME:
 - ASLA metin, yazı, harf, kelime ekleme
 - ASLA altyazı, subtitle, caption ekleme
 - ASLA filigran, watermark ekleme
 - ASLA logo, marka, işaret ekleme
-- Görsel SADECE sahneyi göstermeli, hiçbir yazı içermemeli
 
-✅ STİL KURALLARI (TÜM GÖRSELLER İÇİN AYNI):
+✅ STİL KURALLARI:
 1. SADECE "photorealistic cinematic photograph" stili
 2. ASLA çizgi film, anime, illüstrasyon, cartoon YAPMA
-3. Gerçek insan fotoğrafı gibi görünmeli
-4. 4K, ultra detailed, cinematic lighting
-5. Film seti kalitesinde, profesyonel fotoğraf
+3. 4K, ultra detailed, cinematic lighting
+4. Film seti kalitesinde, profesyonel fotoğraf
 
 ${isFirstImage ? `
-🎭 KARAKTER TANIMLARI (İLK GÖRSEL):
-- Bu ilk görseldir, karakterlerin DETAYLI fiziksel özelliklerini tanımla
-- Yaş, saç rengi, göz rengi, ten rengi, yüz özellikleri
+🎭 KARAKTER TANIMLARI (İLK GÖRSEL - İSİMSİZ!):
+- Karakterlerin fiziksel özelliklerini tanımla AMA İSİM KULLANMA
+- "the protagonist", "the main character", "a man with..." şeklinde
+- Saç rengi, göz rengi, ten rengi, yüz özellikleri
 - Kıyafet detayları
-- Bu tanımlar sonraki görsellerde AYNI tutulacak
+- Bu tanımlar sonraki görsellerde tutarlı kalacak
 ` : `
-🎭 KARAKTER TUTARLILIĞI:
-${characterDescriptions || 'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan'}
+🎭 KARAKTER TUTARLILIĞI (İSİMSİZ!):
+${characterDescriptions || 'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan - İSİM KULLANMA'}
 `}
 
 📝 PROMPT KURALLARI:
 1. İngilizce yaz
 2. ${isFirstThreeMinutes ? '150-200 kelime' : '100-150 kelime'}
-3. Prompt MUTLAKA şununla başlamalı: "Photorealistic cinematic photograph, no text, no subtitles, clean image,"
-4. Karakterlerin duygusal durumu DETAYLI
-5. Işık, gölge, renk paleti, atmosfer
+3. Prompt MUTLAKA şununla başlamalı: "Photorealistic cinematic photograph, no text, no watermarks,"
+4. Karakterleri İSİMSİZ tanımla: "the man", "the woman", "the child"
+5. Işık, gölge, renk paleti, atmosfer detaylı olsun
 6. Sahne kompozisyonu ve perspektif
 7. Sadece prompt yaz, açıklama ekleme
 
@@ -757,10 +769,15 @@ Görsel Betimleme:
 ${scene.visualDescription || 'N/A'}
 
 ${isFirstImage ? 
-  'Bu İLK GÖRSEL - Karakterlerin fiziksel özelliklerini DETAYLI tanımla.' :
-  'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan.'}
+  'Bu İLK GÖRSEL - Karakterlerin fiziksel özelliklerini DETAYLI tanımla AMA İSİM KULLANMA!' :
+  'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan - İSİM KULLANMA!'}
 
-ImageFX için detaylı prompt oluştur. ASLA metin/altyazı ekleme!`
+⚠️ HATIRLATMA: 
+- ASLA isim kullanma (hikayede isim geçse bile "the man", "the woman" yaz)
+- ASLA yaş belirtme ("35-year-old" yerine "middle-aged" yaz)
+- İsim yerine: "the protagonist", "the main character", "a dark-haired man" vb.
+
+ImageFX için detaylı prompt oluştur. İSİM KULLANMA! Metin/altyazı ekleme!`
           }
         ],
         temperature: isFirstThreeMinutes ? 0.6 : 0.5 // Tutarlılık için daha düşük
