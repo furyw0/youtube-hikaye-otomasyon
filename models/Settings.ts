@@ -118,8 +118,7 @@ const SettingsSchema = new Schema<ISettings>(
   }
 );
 
-// Indexes
-SettingsSchema.index({ userId: 1 });
+// Indexes (userId index'i schema'da unique: true ile tanımlı)
 
 const Settings: Model<ISettings> = mongoose.models.Settings || mongoose.model<ISettings>('Settings', SettingsSchema);
 

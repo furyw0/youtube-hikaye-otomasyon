@@ -92,8 +92,7 @@ UserSchema.methods.comparePassword = async function (
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-// Indexes
-UserSchema.index({ email: 1 }, { unique: true });
+// Indexes (email index'i schema'da unique: true ile tanımlı)
 UserSchema.index({ role: 1 });
 UserSchema.index({ createdAt: -1 });
 
