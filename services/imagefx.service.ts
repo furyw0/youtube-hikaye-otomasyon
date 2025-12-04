@@ -54,47 +54,72 @@ export interface GenerateImageOptions {
  * NOT: "Fictional", "artistic", "illustration" gibi kelimeler ÇİZGİ FİLM tarzını tetikleyebilir!
  * Bunun yerine fotorealistik terimleri güçlendiriyoruz.
  */
-function sanitizePrompt(prompt: string): string {
-  // İsim temizleme - gerçek kişi isimlerini jenerik tanımlarla değiştir
-  const nameReplacements: [RegExp, string][] = [
-    // Yaş + cinsiyet kalıpları - yaşı kaldır, sadece tanımı bırak
-    [/(\d+)[\s-]*(year[\s-]*old|yaşında|jährige[rn]?|años?|ans?)\s+(man|woman|boy|girl|child|person|male|female|mann|frau|kind|niño|niña|homme|femme|enfant)/gi, 'a $3'],
-    
-    // İsimli kalıpları temizle - ismi tamamen kaldır
-    [/\b[A-Z][a-z]+\s+(Morales|García|López|Martínez|González|Rodríguez|Hernández|Pérez|Sánchez|Ramírez|Torres|Flores|Rivera|Gómez|Díaz|Reyes|Cruz|Ortiz|Moreno|Jiménez)\b/gi, 'a person'],
-    [/\b(Santiago|Carlos|Miguel|José|Juan|María|Ana|Carmen|Luis|Pedro|Roberto|Fernando|Diego|Antonio|Manuel|Francisco|David|Daniel|Pablo|Alejandro)\s+[A-Z][a-z]+/gi, 'a person'],
-    
-    // "person named X" kalıbı
-    [/(person|man|woman|boy|girl|child)\s+(named|called|known as)\s+[A-Z][a-zA-Z]+(\s+[A-Z][a-zA-Z]+)?/gi, 'a $1'],
-    
-    // Tek başına isimler (cümle başında büyük harfle)
-    [/\b(Santiago|Carlos|Miguel|José|Juan|María|Roberto|Fernando|Diego)\b/gi, 'the person'],
-  ];
-
+function sanitizePrompt(prompt: string, aggressiveMode: boolean = false): string {
   let sanitized = prompt;
   
-  for (const [pattern, replacement] of nameReplacements) {
-    sanitized = sanitized.replace(pattern, replacement);
-  }
-
-  // ÇİZGİ FİLM ÖNLEME: Anti-cartoon direktifleri ekle
-  const antiCartoonSuffix = '. Style: Ultra realistic photograph, NOT cartoon, NOT anime, NOT illustration, NOT 3D render, NOT CGI, NOT digital art. Real human skin texture, real lighting, DSLR camera quality, 85mm lens, shallow depth of field.';
+  // ===== AŞAMA 1: TÜM İSİMLERİ TEMİZLE =====
+  // Yaygın isim kalıpları (tüm dillerde)
+  const commonNames = [
+    // İspanyolca
+    'Santiago', 'Carlos', 'Miguel', 'José', 'Juan', 'María', 'Ana', 'Carmen', 'Luis', 'Pedro',
+    'Roberto', 'Fernando', 'Diego', 'Antonio', 'Manuel', 'Francisco', 'David', 'Daniel', 'Pablo',
+    'Alejandro', 'Isabella', 'Sofia', 'Elena', 'Clara', 'Rosa', 'Teresa', 'Lucia', 'Marta',
+    // İngilizce
+    'John', 'Michael', 'William', 'James', 'Robert', 'David', 'Thomas', 'Sarah', 'Emma', 'Emily',
+    'Jessica', 'Jennifer', 'Ashley', 'Amanda', 'Stephanie', 'Nicole', 'Elizabeth', 'Michelle',
+    // Almanca
+    'Hans', 'Klaus', 'Peter', 'Stefan', 'Thomas', 'Anna', 'Maria', 'Lisa', 'Julia', 'Laura',
+    // Fransızca
+    'Pierre', 'Jean', 'Louis', 'Marie', 'Sophie', 'Claire', 'Julie', 'Camille',
+    // Türkçe
+    'Ahmet', 'Mehmet', 'Ali', 'Mustafa', 'Ayşe', 'Fatma', 'Zeynep', 'Elif', 'Hasan', 'Hüseyin'
+  ];
   
-  // Eğer prompt zaten "photorealistic" içeriyorsa, güçlendir
-  if (sanitized.toLowerCase().includes('photorealistic')) {
-    // "Photorealistic" kelimesini daha güçlü versiyonla değiştir
-    sanitized = sanitized.replace(
-      /photorealistic/gi, 
-      'hyper-realistic photograph like taken with Sony A7R IV camera'
-    );
+  // Tüm isimleri "the person" ile değiştir
+  for (const name of commonNames) {
+    const nameRegex = new RegExp(`\\b${name}\\b`, 'gi');
+    sanitized = sanitized.replace(nameRegex, 'the person');
+  }
+  
+  // ===== AŞAMA 2: YAŞ + CİNSİYET KALIPLARINI TEMİZLE =====
+  // "35-year-old man" -> "adult man"
+  sanitized = sanitized.replace(/\d+[\s-]*(year[\s-]*old|yaşında|jährige[rn]?|años?|ans?)\s*/gi, 'adult ');
+  
+  // ===== AŞAMA 3: İSİM + SOYAD KALIPLARINI TEMİZLE =====
+  // İki ardışık büyük harfli kelime (isim + soyad)
+  sanitized = sanitized.replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g, 'a person');
+  
+  // ===== AŞAMA 4: "named X" KALIPLARINI TEMİZLE =====
+  sanitized = sanitized.replace(/(named|called|known as|nicknamed)\s+[A-Za-z]+/gi, '');
+  
+  // ===== AŞAMA 5: AGRESİF MOD (Tüm insan referanslarını kaldır) =====
+  if (aggressiveMode) {
+    // Tüm insan referanslarını atmosfer/manzara ile değiştir
+    sanitized = sanitized.replace(/\b(person|man|woman|boy|girl|child|people|human|face|portrait|figure)\b/gi, 'scene');
+    sanitized = sanitized.replace(/\b(his|her|him|their|they|he|she)\b/gi, 'the');
+    
+    // Prompt'u tamamen manzara odaklı yap
+    sanitized = `Cinematic landscape photograph, dramatic lighting, atmospheric mood. ${sanitized}. No people, no faces, no figures. Pure environmental storytelling.`;
   } else {
-    // Başına ekle
-    sanitized = 'Hyper-realistic photograph, real human, real environment, ' + sanitized;
+    // ===== AŞAMA 6: FOTOREALİSTİK STİL =====
+    const antiCartoonSuffix = '. Shot with Sony A7R IV, 85mm f/1.4 lens. Ultra realistic, NOT cartoon, NOT anime, NOT illustration, NOT 3D render. Real textures, natural lighting.';
+    
+    if (sanitized.toLowerCase().includes('photorealistic')) {
+      sanitized = sanitized.replace(/photorealistic/gi, 'hyper-realistic photograph');
+    } else {
+      sanitized = 'Hyper-realistic photograph, ' + sanitized;
+    }
+    
+    sanitized += antiCartoonSuffix;
   }
 
-  // Sonuna anti-cartoon direktiflerini ekle
-  sanitized += antiCartoonSuffix;
-
+  // Fazla boşlukları temizle
+  sanitized = sanitized.replace(/\s+/g, ' ').trim();
+  
+  // "the person the person" gibi tekrarları temizle
+  sanitized = sanitized.replace(/(the person\s*)+/g, 'a person ');
+  sanitized = sanitized.replace(/(a person\s*)+/g, 'a person ');
+  
   return sanitized;
 }
 
@@ -130,6 +155,7 @@ function getModelValue(): 'IMAGEN_3_5' {
 
 /**
  * Tek bir görsel üretir
+ * PROMINENT_PEOPLE_FILTER_FAILED hatası alınırsa agresif mod ile tekrar dener
  */
 export async function generateImage(options: GenerateImageOptions): Promise<GeneratedImage> {
   const {
@@ -147,103 +173,135 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     promptLength: prompt.length
   });
 
-  try {
-    // Google Cookie al (önce parametre, sonra Settings, sonra env)
-    const googleCookie = cookie || await getImageFXCookie();
+  // Google Cookie al (önce parametre, sonra Settings, sonra env)
+  const googleCookie = cookie || await getImageFXCookie();
 
-    // ImageFX kütüphanesini yükle
-    const { ImageFX, Prompt } = await import('@rohitaryal/imagefx-api');
-    const client = new ImageFX(googleCookie);
+  // ImageFX kütüphanesini yükle
+  const { ImageFX, Prompt } = await import('@rohitaryal/imagefx-api');
+  const client = new ImageFX(googleCookie);
 
-    // Prompt'u sanitize et (Prominent People Filter önleme)
-    const sanitizedPrompt = sanitizePrompt(prompt);
-    
-    logger.debug('Prompt sanitize edildi', {
-      originalLength: prompt.length,
-      sanitizedLength: sanitizedPrompt.length,
-      preview: sanitizedPrompt.substring(0, 100)
-    });
+  // İki aşamalı deneme: Normal -> Agresif
+  const attempts = [
+    { aggressiveMode: false, label: 'normal' },
+    { aggressiveMode: true, label: 'agresif (insan referansları kaldırıldı)' }
+  ];
 
-    // Prompt objesi oluştur
-    const imagefxPrompt = new Prompt({
-      prompt: sanitizedPrompt,
-      generationModel: getModelValue(),
-      aspectRatio: getAspectRatioValue(aspectRatio),
-      numberOfImages: IMAGEFX_SETTINGS.NUMBER_OF_IMAGES,
-      seed: seed || 0
-    });
+  for (const attempt of attempts) {
+    try {
+      // Prompt'u sanitize et
+      const sanitizedPrompt = sanitizePrompt(prompt, attempt.aggressiveMode);
+      
+      logger.debug(`Prompt sanitize edildi (${attempt.label})`, {
+        originalLength: prompt.length,
+        sanitizedLength: sanitizedPrompt.length,
+        aggressiveMode: attempt.aggressiveMode,
+        preview: sanitizedPrompt.substring(0, 100)
+      });
 
-    logger.debug('ImageFX çağrısı yapılıyor', { prompt: sanitizedPrompt.substring(0, 100), model, aspectRatio });
+      // Prompt objesi oluştur
+      const imagefxPrompt = new Prompt({
+        prompt: sanitizedPrompt,
+        generationModel: getModelValue(),
+        aspectRatio: getAspectRatioValue(aspectRatio),
+        numberOfImages: IMAGEFX_SETTINGS.NUMBER_OF_IMAGES,
+        seed: seed || 0
+      });
 
-    // Retry ile görsel üret - generateImage metodu kullanılıyor
-    // Ref: https://github.com/rohitaryal/imageFX-api
-    const images = await retryImageFX(
-      async () => await client.generateImage(imagefxPrompt, 2),
-      `Görsel üretimi: ${prompt.substring(0, 50)}...`
-    );
+      logger.debug('ImageFX çağrısı yapılıyor', { 
+        promptPreview: sanitizedPrompt.substring(0, 100), 
+        mode: attempt.label,
+        model, 
+        aspectRatio 
+      });
 
-    // Sonucu kontrol et
-    if (!images || images.length === 0) {
-      throw new ImageFXError('ImageFX yanıtında görsel bulunamadı');
-    }
+      // Retry ile görsel üret
+      const images = await retryImageFX(
+        async () => await client.generateImage(imagefxPrompt, 2),
+        `Görsel üretimi (${attempt.label}): ${prompt.substring(0, 50)}...`
+      );
 
-    const firstImage = images[0];
+      // Sonucu kontrol et
+      if (!images || images.length === 0) {
+        throw new ImageFXError('ImageFX yanıtında görsel bulunamadı');
+      }
 
-    // Image nesnesinden base64 encoded PNG al
-    // encodedImage private olduğu için any cast gerekli
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const encodedImage = (firstImage as any).encodedImage;
-    
-    if (!encodedImage) {
-      throw new ImageFXError('Görsel verisi alınamadı');
-    }
+      const firstImage = images[0];
 
-    // Base64'ü Buffer'a çevir
-    const imageBuffer = Buffer.from(encodedImage, 'base64');
+      // Image nesnesinden base64 encoded PNG al
+      // encodedImage private olduğu için any cast gerekli
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const encodedImage = (firstImage as any).encodedImage;
+      
+      if (!encodedImage) {
+        throw new ImageFXError('Görsel verisi alınamadı');
+      }
 
-    logger.info('Görsel başarıyla üretildi', {
-      model,
-      aspectRatio,
-      seed: firstImage.seed,
-      bufferSize: imageBuffer.length,
-      promptPreview: prompt.substring(0, 100)
-    });
+      // Base64'ü Buffer'a çevir
+      const imageBuffer = Buffer.from(encodedImage, 'base64');
 
-    return {
-      imageBuffer,
-      seed: firstImage.seed || seed || 0,
-      model,
-      aspectRatio,
-      prompt,
-      generatedAt: new Date()
-    };
+      logger.info('Görsel başarıyla üretildi', {
+        model,
+        aspectRatio,
+        seed: firstImage.seed,
+        bufferSize: imageBuffer.length,
+        mode: attempt.label,
+        promptPreview: sanitizedPrompt.substring(0, 100)
+      });
 
-  } catch (error) {
-    logger.error('Görsel üretimi hatası', {
-      error: error instanceof Error ? error.message : 'Bilinmeyen hata',
-      model,
-      aspectRatio,
-      promptPreview: prompt.substring(0, 100)
-    });
+      return {
+        imageBuffer,
+        seed: firstImage.seed || seed || 0,
+        model,
+        aspectRatio,
+        prompt,
+        generatedAt: new Date()
+      };
 
-    // Hata tipine göre özel mesaj
-    if (error instanceof Error) {
-      if (error.message.includes('cookie')) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
+      
+      // PROMINENT_PEOPLE_FILTER hatası mı?
+      const isProminentPeopleError = errorMessage.includes('PROMINENT_PEOPLE_FILTER');
+      
+      logger.warn(`Görsel üretimi başarısız (${attempt.label})`, {
+        error: errorMessage,
+        isProminentPeopleError,
+        willRetryWithAggressive: isProminentPeopleError && !attempt.aggressiveMode,
+        model,
+        aspectRatio
+      });
+
+      // Eğer normal mod ve PROMINENT_PEOPLE hatası ise, agresif mod denenecek
+      if (isProminentPeopleError && !attempt.aggressiveMode) {
+        logger.info('Agresif mod ile tekrar denenecek (insan referansları kaldırılacak)');
+        continue; // Sonraki attempt'e geç (agresif mod)
+      }
+
+      // Cookie hatası - hemen fırlat
+      if (errorMessage.includes('cookie') || errorMessage.includes('401')) {
         throw new ImageFXError(
-          `Google Cookie geçersiz veya süresi dolmuş: ${error.message}`
+          `Google Cookie geçersiz veya süresi dolmuş: ${errorMessage}`
         );
       }
-      if (error.message.includes('rate limit') || error.message.includes('quota')) {
+
+      // Rate limit hatası - hemen fırlat
+      if (errorMessage.includes('rate limit') || errorMessage.includes('quota') || errorMessage.includes('429')) {
         throw new ImageFXError(
-          `ImageFX rate limit aşıldı, lütfen bekleyin: ${error.message}`
+          `ImageFX rate limit aşıldı, lütfen bekleyin: ${errorMessage}`
+        );
+      }
+
+      // Agresif mod da başarısız olduysa veya farklı bir hata ise fırlat
+      if (attempt.aggressiveMode) {
+        throw new ImageFXError(
+          `Görsel üretimi başarısız (agresif mod dahil): ${errorMessage}`
         );
       }
     }
-
-    throw new ImageFXError(
-      `Görsel üretimi başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`
-    );
   }
+
+  // Hiçbir attempt başarılı olmadı
+  throw new ImageFXError('Görsel üretimi tüm denemelerde başarısız oldu');
 }
 
 /**
