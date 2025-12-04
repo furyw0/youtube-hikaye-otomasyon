@@ -64,9 +64,9 @@ export default function HomePage() {
           </div>
         ) : session ? (
           // Authenticated - Show Form
-          <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
-            <StoryForm />
-          </div>
+        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
+          <StoryForm />
+        </div>
         ) : (
           // Not authenticated - Show CTA
           <div className="bg-white rounded-xl shadow-lg p-8 md:p-12 text-center">

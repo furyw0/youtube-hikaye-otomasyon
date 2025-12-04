@@ -112,10 +112,12 @@ export const STORY_LIMITS = {
 };
 
 export const IMAGE_SETTINGS = {
-  TOTAL_IMAGES: 10,
-  FIRST_THREE_MINUTES_IMAGES: 5,
+  TOTAL_IMAGES: 20,              // Hedef: 20 görsel (hikaye kısaysa daha az olabilir)
+  FIRST_THREE_MINUTES_IMAGES: 6, // İlk 3 dakikada 6 görsel
+  REMAINING_IMAGES: 14,          // Kalan bölümde 14 görsel
+  MIN_TOTAL_IMAGES: 5,           // Minimum görsel sayısı (kısa hikayeler için)
   FIRST_THREE_MINUTES_DURATION_SECONDS: 180, // 3 dakika
-  AVG_SCENE_DURATION_SECONDS: 18 // Ortalama sahne süresi
+  AVG_SCENE_DURATION_SECONDS: 15 // Ortalama sahne süresi (daha kısa)
 };
 
 export const IMAGEFX_MODELS = [

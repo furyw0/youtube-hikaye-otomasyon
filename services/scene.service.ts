@@ -155,7 +155,7 @@ function redistributeScenes(scenes: SceneData[], targetCount: number): SceneData
 }
 
 /**
- * AŞAMA 1: İlk 3 dakika için sahneler oluştur (5 görsel)
+ * AŞAMA 1: İlk 3 dakika için sahneler oluştur (6 görsel)
  */
 async function generateFirstThreeMinutes(
   content: string,
@@ -164,7 +164,7 @@ async function generateFirstThreeMinutes(
 ): Promise<SceneData[]> {
   const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin İLK 3 DAKİKASINI sahnelere ayırıyorsun.
 
-HEDEF: İlk 3 dakika (180 saniye) için 5 sahne oluştur.
+HEDEF: İlk 3 dakika (180 saniye) için 6 sahne oluştur, HER BİRİNDE GÖRSEL OLACAK.
 
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA hikayeyi kısaltma veya özetleme
@@ -173,21 +173,21 @@ HEDEF: İlk 3 dakika (180 saniye) için 5 sahne oluştur.
 
 ✅ ZORUNLU KURALLAR:
 1. Her sahnenin metni HİKAYENİN ORİJİNAL METNİNDEN ALINMALI (kelimesi kelimesine)
-2. Hikayenin ilk bölümünü 5 parçaya BÖL (yeniden yazma, orijinal metni kullan)
-3. Her sahne MUTLAKA görsel içermeli (toplam 5 görsel)
-4. Her sahne ~36 saniye seslendirme olmalı (5 × 36s = 180s)
+2. Hikayenin ilk bölümünü 6 parçaya BÖL (yeniden yazma, orijinal metni kullan)
+3. Her sahne MUTLAKA görsel içermeli (toplam 6 görsel)
+4. Her sahne ~30 saniye seslendirme olmalı (6 × 30s = 180s)
 5. İlk 3 dakika izleyiciyi ÇEKMELİ - en ilginç ve aksiyon dolu sahneler
 6. Her sahne için AYRINTILI görsel betimleme yap
 7. Görsel betimlemeler ImageFX için uygun olmalı (detaylı, sinematik)
 8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
 
 Her sahne için (JSON):
-- sceneNumber: Sahne numarası (1-5)
+- sceneNumber: Sahne numarası (1-6)
 - text: HİKAYENİN ORİJİNAL METNİ (özetlenmiş değil, kelimesi kelimesine)
 - visualDescription: DETAYLI görsel betimleme (karakterler, ortam, atmosfer, duygular, renkler)
-- estimatedDuration: Tahmini süre (saniye)
+- estimatedDuration: Tahmini süre (saniye, ~30s)
 - hasImage: true (her sahnede)
-- imageIndex: Görsel sırası (1-5)
+- imageIndex: Görsel sırası (1-6)
 - isFirstThreeMinutes: true
 
 JSON FORMAT:
@@ -197,7 +197,7 @@ JSON FORMAT:
       "sceneNumber": 1,
       "text": "Hikayenin orijinal metni aynen buraya...",
       "visualDescription": "Çok detaylı görsel betimleme...",
-      "estimatedDuration": 36,
+      "estimatedDuration": 30,
       "hasImage": true,
       "imageIndex": 1,
       "isFirstThreeMinutes": true
@@ -227,23 +227,28 @@ JSON FORMAT:
     ['scenes']
   );
 
-  // Validasyon
-  if (!parsed.scenes || parsed.scenes.length !== 5) {
+  // Validasyon (esnek - minimum 3 sahne yeterli, hedef 6)
+  if (!parsed.scenes || parsed.scenes.length < 3) {
     throw new SceneValidationError(
-      `İlk 3 dakika için 5 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
+      `İlk 3 dakika için minimum 3 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
     );
+  }
+
+  if (parsed.scenes.length < 6) {
+    logger.warn(`İlk 3 dakika için 6 sahne hedeflendi, ${parsed.scenes.length} oluşturuldu (hikaye kısa olabilir)`);
   }
 
   // Her sahnenin görsel içerdiğini kontrol et
   const imagesCount = parsed.scenes.filter(s => s.hasImage).length;
-  if (imagesCount !== 5) {
+  if (imagesCount < 3) {
     throw new SceneValidationError(
-      `İlk 3 dakikada 5 görsel bekleniyor, ${imagesCount} bulundu`
+      `İlk 3 dakikada minimum 3 görsel bekleniyor, ${imagesCount} bulundu`
     );
   }
 
   logger.info(`İlk 3 dakika sahneleri oluşturuldu (${language})`, {
     scenes: parsed.scenes.length,
+    images: imagesCount,
     notes: parsed.notes
   });
 
@@ -257,18 +262,28 @@ async function generateRemainingScenes(
   content: string,
   firstThreeMinutesEndPosition: number,
   language: 'original' | 'adapted',
-  model: string
+  model: string,
+  firstThreeScenesCount: number = 6  // İlk 3 dakikada kaç sahne oluşturuldu
 ): Promise<SceneData[]> {
   const remainingContent = content.substring(firstThreeMinutesEndPosition);
   
   // Kalan içerik çok kısa ise minimum sahne sayısını ayarla
   const contentLength = remainingContent.length;
-  const estimatedScenes = Math.max(5, Math.ceil(contentLength / 1200)); // ~1200 karakter/sahne, minimum 5
-  const minScenes = Math.max(5, Math.min(estimatedScenes, 10)); // Minimum 5, maksimum 10 zorunlu
+  
+  // Hedef: 14 görsel, minimum 5 (hikaye kısaysa)
+  const targetImages = IMAGE_SETTINGS.REMAINING_IMAGES; // 14
+  const estimatedScenes = Math.max(targetImages, Math.ceil(contentLength / 1000)); // ~1000 karakter/sahne
+  const minScenes = Math.max(5, Math.min(estimatedScenes, 30)); // Minimum 5, maksimum 30
+  
+  // sceneNumber ve imageIndex başlangıç değerleri
+  const startSceneNumber = firstThreeScenesCount + 1;
+  const startImageIndex = firstThreeScenesCount + 1;
+  const endImageIndex = startImageIndex + targetImages - 1;
   
   const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin KALAN KISMINI sahnelere ayırıyorsun.
 
-HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes + 10} sahneye böl, 5 tanesine görsel ekle.
+HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes} sahneye böl, bu sahnelerden ${targetImages} tanesine görsel ekle.
+NOT: Hikaye kısa ise daha az sahne ve görsel olabilir - önemli olan hikayenin TAMAMI dahil edilmesi.
 
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA hikayeyi kısaltma veya özetleme
@@ -279,37 +294,37 @@ HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes + 10} sahneye b
 ✅ ZORUNLU KURALLAR:
 1. Her sahnenin metni HİKAYENİN ORİJİNAL METNİNDEN ALINMALI (kelimesi kelimesine)
 2. TÜM HİKAYE dahil edilmeli - son kelimeye kadar
-3. Her sahne 15-20 saniye seslendirme (~150-200 kelime)
-4. Minimum ${minScenes} sahne oluştur (içerik kısa ise daha az olabilir)
-5. Bu sahnelerden tam 5 tanesine görsel ekle
+3. Her sahne 12-20 saniye seslendirme (~100-200 kelime)
+4. En az 5 sahne oluştur, daha fazla olabilir
+5. Bu sahnelerden MÜMKÜN OLDUĞUNCA ÇOĞUNA görsel ekle (hedef: ${targetImages})
 6. Görselli sahneleri EŞIT ARALIKLARLA dağıt
 7. Görselli sahneler için DETAYLI görsel betimleme yap
 8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
 9. Her sahne akıcı ve tutarlı olmalı
 
 Her sahne için (JSON):
-- sceneNumber: Sahne numarası (6'dan başla)
+- sceneNumber: Sahne numarası (${startSceneNumber}'dan başla)
 - text: HİKAYENİN ORİJİNAL METNİ (özetlenmiş değil, kelimesi kelimesine)
 - visualDescription: Görsel betimleme (sadece görselli sahnelerde)
-- estimatedDuration: Tahmini süre (15-20 saniye)
+- estimatedDuration: Tahmini süre (12-20 saniye)
 - hasImage: true/false
-- imageIndex: Görsel sırası (6-10 arası, sadece görselli sahnelerde)
+- imageIndex: Görsel sırası (${startImageIndex}-${endImageIndex} arası, sadece görselli sahnelerde)
 - isFirstThreeMinutes: false
 
 JSON FORMAT:
 {
   "scenes": [
     {
-      "sceneNumber": 6,
+      "sceneNumber": ${startSceneNumber},
       "text": "Hikayenin orijinal metni aynen buraya...",
       "visualDescription": "...",
-      "estimatedDuration": 18,
+      "estimatedDuration": 15,
       "hasImage": true,
-      "imageIndex": 6,
+      "imageIndex": ${startImageIndex},
       "isFirstThreeMinutes": false
     },
     {
-      "sceneNumber": 7,
+      "sceneNumber": ${startSceneNumber + 1},
       "text": "Hikayenin devamı aynen...",
       "estimatedDuration": 17,
       "hasImage": false,
@@ -333,29 +348,32 @@ JSON FORMAT:
 
   const parsed = parseJSONResponse<{ scenes: SceneData[] }>(response, ['scenes']);
 
-  // Validasyon - minimum 5 sahne (5 görsel için)
-  if (!parsed.scenes || parsed.scenes.length < 5) {
+  // Validasyon - esnek: minimum 3 sahne yeterli (hikaye kısa olabilir)
+  if (!parsed.scenes || parsed.scenes.length < 3) {
     throw new SceneValidationError(
-      `En az 5 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
+      `En az 3 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
     );
   }
 
   // Görselli sahne sayısını kontrol et
   let imagesCount = parsed.scenes.filter(s => s.hasImage).length;
+  const maxImageIndex = endImageIndex; // startImageIndex + targetImages - 1 (yukarıda hesaplandı)
   
-  if (imagesCount !== 5) {
-    logger.warn('Görselli sahne sayısı hatalı, düzeltiliyor', {
-      expected: 5,
-      found: imagesCount
+  // Minimum 2 görsel yeterli, hedef 14
+  if (imagesCount < 2) {
+    logger.warn('Çok az görsel var, otomatik düzeltme yapılıyor', {
+      found: imagesCount,
+      target: targetImages
     });
 
-    // Eşit aralıklarla 5 sahneye görsel ekle
+    // Eşit aralıklarla mümkün olduğunca çok sahneye görsel ekle
     const totalScenes = parsed.scenes.length;
-    const step = Math.floor(totalScenes / 5);
+    const desiredImages = Math.min(targetImages, totalScenes);
+    const step = Math.max(1, Math.floor(totalScenes / desiredImages));
     
-    let imageIdx = 6; // 6-10 arası
+    let imageIdx = startImageIndex;
     parsed.scenes.forEach((scene, idx) => {
-      const shouldHaveImage = Math.floor(idx / step) < 5 && imageIdx <= 10;
+      const shouldHaveImage = idx % step === 0 && imageIdx <= maxImageIndex;
       scene.hasImage = shouldHaveImage;
       if (shouldHaveImage) {
         scene.imageIndex = imageIdx++;
@@ -366,17 +384,15 @@ JSON FORMAT:
     });
 
     imagesCount = parsed.scenes.filter(s => s.hasImage).length;
-  }
-
-  if (imagesCount !== 5) {
-    throw new SceneValidationError(
-      `Kalan kısımda 5 görsel bekleniyor, ${imagesCount} bulundu`
-    );
+  } else if (imagesCount < targetImages && imagesCount >= 2) {
+    // 2-13 arası görsel varsa, uyar ama devam et
+    logger.info(`Kalan kısımda ${targetImages} görsel hedeflendi, ${imagesCount} oluşturuldu (hikaye kısa olabilir)`);
   }
 
   logger.info(`Kalan sahneler oluşturuldu (${language})`, {
     scenes: parsed.scenes.length,
-    imagesCount
+    images: imagesCount,
+    targetImages
   });
 
   return parsed.scenes;
@@ -422,7 +438,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       adaptedContent,
       firstThreeTextLength,
       'adapted',
-      model
+      model,
+      firstThreeAdapted.length  // İlk 3 dakikadaki sahne sayısı
     );
 
     // 4. Tüm adapte sahneleri birleştir
@@ -462,22 +479,34 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       withAdaptedText: finalScenes.filter(s => s.textAdapted).length
     });
 
-    // 9. Final validasyonlar
+    // 9. Final validasyonlar (esnek - hikaye kısaysa daha az görsel olabilir)
     const totalImages = finalScenes.filter(s => s.hasImage).length;
-    if (totalImages !== IMAGE_SETTINGS.TOTAL_IMAGES) {
-      throw new SceneValidationError(
-        `${IMAGE_SETTINGS.TOTAL_IMAGES} görsel bekleniyor, ${totalImages} bulundu`
-      );
+    
+    // Minimum görsel kontrolü (çok az görsel varsa uyar ama devam et)
+    if (totalImages < IMAGE_SETTINGS.MIN_TOTAL_IMAGES) {
+      logger.warn(`Görsel sayısı minimum altında: ${totalImages} < ${IMAGE_SETTINGS.MIN_TOTAL_IMAGES}`, {
+        totalImages,
+        minRequired: IMAGE_SETTINGS.MIN_TOTAL_IMAGES,
+        target: IMAGE_SETTINGS.TOTAL_IMAGES
+      });
+      // Hata fırlatma, devam et
+    } else if (totalImages < IMAGE_SETTINGS.TOTAL_IMAGES) {
+      logger.info(`Hedef görsel sayısına ulaşılamadı: ${totalImages}/${IMAGE_SETTINGS.TOTAL_IMAGES} (hikaye kısa olabilir)`, {
+        totalImages,
+        target: IMAGE_SETTINGS.TOTAL_IMAGES
+      });
     }
 
     const firstThreeImages = finalScenes
       .filter(s => s.isFirstThreeMinutes && s.hasImage)
       .length;
     
-    if (firstThreeImages !== IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES) {
-      throw new SceneValidationError(
-        `İlk 3 dakikada ${IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES} görsel bekleniyor, ${firstThreeImages} bulundu`
-      );
+    // İlk 3 dakika görsel kontrolü (esnek)
+    if (firstThreeImages < 3) {
+      logger.warn(`İlk 3 dakikada çok az görsel: ${firstThreeImages}`, {
+        firstThreeImages,
+        target: IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES
+      });
     }
 
     const estimatedTotalDuration = finalScenes

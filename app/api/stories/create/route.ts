@@ -11,6 +11,7 @@ import logger from '@/lib/logger';
 import { detectLanguage } from '@/services/language-detection.service';
 import { validateCreateStoryRequest } from '@/services/validation.service';
 import { auth } from '@/auth';
+import { IMAGE_SETTINGS } from '@/lib/constants';
 
 // Validation schema
 const createStorySchema = z.object({
@@ -132,8 +133,8 @@ export async function POST(request: NextRequest) {
       progress: 0,
       retryCount: 0,
       totalScenes: 0,
-      totalImages: 10,
-      firstMinuteImages: 5,
+      totalImages: IMAGE_SETTINGS.TOTAL_IMAGES, // 20 (hedef, hikaye kısaysa daha az)
+      firstMinuteImages: IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES, // 6
       estimatedTokens: validationResult.estimatedTokens,
       scenes: [],
       processLogs: [],
