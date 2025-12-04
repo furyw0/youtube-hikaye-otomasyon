@@ -277,6 +277,8 @@ export const processStory = inngest.createFunction(
 
         const imageScenes = scenesData.filter(s => s.hasImage);
         let completedImages = 0;
+        const MAX_RETRIES = 3; // Her görsel için maksimum 3 deneme
+        const failedScenes: number[] = [];
 
         for (const scene of imageScenes) {
           const prompt = visualPromptsData[scene.sceneNumber];
@@ -289,53 +291,93 @@ export const processStory = inngest.createFunction(
             continue;
           }
 
-          try {
-            // Görsel üret
-            const image = await generateImage({
-              prompt,
-              model: storyData.imagefxModel as any,
-              aspectRatio: storyData.imagefxAspectRatio as any,
-              seed: storyData.imagefxSeed
-            });
+          let success = false;
+          let lastError: Error | null = null;
 
-            // Blob'a yükle
-            const uploaded = await uploadImage(
-              storyId,
-              scene.sceneNumber,
-              image.imageBuffer,
-              scene.imageIndex!
-            );
+          // Retry mekanizması
+          for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              logger.info(`Görsel üretiliyor (Deneme ${attempt}/${MAX_RETRIES})`, {
+                storyId,
+                sceneNumber: scene.sceneNumber
+              });
 
-            // Scene'i güncelle (findOneAndUpdate kullan)
-            await Scene.findOneAndUpdate(
-              { storyId: storyId, sceneNumber: scene.sceneNumber },
-              { 
-                'blobUrls.image': uploaded.url,
-                status: 'processing'
+              // Görsel üret
+              const image = await generateImage({
+                prompt,
+                model: storyData.imagefxModel as any,
+                aspectRatio: storyData.imagefxAspectRatio as any,
+                seed: storyData.imagefxSeed
+              });
+
+              // Null veya boş buffer kontrolü
+              if (!image || !image.imageBuffer || image.imageBuffer.length === 0) {
+                throw new Error('Görsel üretimi boş veya null döndü');
               }
-            );
 
-            completedImages++;
-            const imageProgress = 65 + (completedImages / imageScenes.length) * 15;
-            await updateProgress(
-              Math.round(imageProgress),
-              `Görseller üretiliyor (${completedImages}/${imageScenes.length})...`
-            );
+              // Blob'a yükle
+              const uploaded = await uploadImage(
+                storyId,
+                scene.sceneNumber,
+                image.imageBuffer,
+                scene.imageIndex!
+              );
 
-            logger.debug('Görsel üretildi', {
-              storyId,
-              sceneNumber: scene.sceneNumber,
-              url: uploaded.url
-            });
+              // Scene'i güncelle
+              await Scene.findOneAndUpdate(
+                { storyId: storyId, sceneNumber: scene.sceneNumber },
+                { 
+                  'blobUrls.image': uploaded.url,
+                  status: 'processing'
+                }
+              );
 
-          } catch (error) {
-            logger.error('Görsel üretimi başarısız', {
-              storyId,
-              sceneNumber: scene.sceneNumber,
-              error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-            });
-            // Devam et (diğer görselleri dene)
+              completedImages++;
+              success = true;
+
+              logger.info(`Görsel başarıyla üretildi (Deneme ${attempt})`, {
+                storyId,
+                sceneNumber: scene.sceneNumber,
+                url: uploaded.url
+              });
+
+              break; // Başarılı, döngüden çık
+
+            } catch (error) {
+              lastError = error instanceof Error ? error : new Error('Bilinmeyen hata');
+              
+              logger.warn(`Görsel üretimi başarısız (Deneme ${attempt}/${MAX_RETRIES})`, {
+                storyId,
+                sceneNumber: scene.sceneNumber,
+                error: lastError.message,
+                attempt
+              });
+
+              // Son deneme değilse bekle ve tekrar dene
+              if (attempt < MAX_RETRIES) {
+                const waitTime = attempt * 2000; // 2s, 4s, 6s
+                logger.info(`${waitTime}ms beklenip tekrar denenecek...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+              }
+            }
           }
+
+          // Tüm denemeler başarısız olduysa
+          if (!success) {
+            failedScenes.push(scene.sceneNumber);
+            logger.error(`Görsel üretimi ${MAX_RETRIES} denemede de başarısız`, {
+              storyId,
+              sceneNumber: scene.sceneNumber,
+              lastError: lastError?.message
+            });
+          }
+
+          // Progress güncelle
+          const imageProgress = 65 + ((completedImages + failedScenes.length) / imageScenes.length) * 15;
+          await updateProgress(
+            Math.round(imageProgress),
+            `Görseller üretiliyor (${completedImages}/${imageScenes.length})...`
+          );
         }
 
         await updateProgress(80, 'Görseller tamamlandı');
@@ -343,6 +385,8 @@ export const processStory = inngest.createFunction(
         logger.info('Görseller üretildi', {
           storyId,
           completed: completedImages,
+          failed: failedScenes.length,
+          failedScenes: failedScenes.length > 0 ? failedScenes : undefined,
           total: imageScenes.length
         });
       });
