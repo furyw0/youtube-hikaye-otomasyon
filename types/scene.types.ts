@@ -5,9 +5,10 @@ export interface IScene {
   storyId: Types.ObjectId;
   sceneNumber: number;
   
-  // Çift dil metinler
+  // Çoklu dil metinler
   sceneTextOriginal: string;
   sceneTextAdapted: string;
+  sceneTextTurkish?: string; // Türkçe çeviri (hedef dil Türkçe değilse)
   
   // Görsel bilgileri
   hasImage: boolean;

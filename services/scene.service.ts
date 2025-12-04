@@ -35,6 +35,71 @@ interface GenerateScenesResult {
 }
 
 /**
+ * Adapte sahneleri hedef sahne sayısına göre akıllıca yeniden dağıtır.
+ * İçerik bütünlüğünü koruyarak sahneleri birleştirir veya böler.
+ */
+function redistributeScenes(scenes: SceneData[], targetCount: number): SceneData[] {
+  if (scenes.length === targetCount) return scenes;
+  
+  const result: SceneData[] = [];
+  const totalText = scenes.map(s => s.text).join(' ');
+  const avgTextPerScene = Math.ceil(totalText.length / targetCount);
+  
+  if (scenes.length > targetCount) {
+    // Fazla sahne var - birleştir
+    const ratio = scenes.length / targetCount;
+    
+    for (let i = 0; i < targetCount; i++) {
+      const startIdx = Math.floor(i * ratio);
+      const endIdx = Math.min(Math.floor((i + 1) * ratio), scenes.length);
+      
+      // Bu aralıktaki sahneleri birleştir
+      const scenesToMerge = scenes.slice(startIdx, endIdx);
+      const mergedText = scenesToMerge.map(s => s.text).join(' ');
+      
+      // İlk sahnenin özelliklerini kullan
+      const baseScene = scenesToMerge[0];
+      
+      result.push({
+        sceneNumber: i + 1,
+        text: mergedText,
+        visualDescription: baseScene.visualDescription,
+        estimatedDuration: scenesToMerge.reduce((sum, s) => sum + s.estimatedDuration, 0),
+        hasImage: scenesToMerge.some(s => s.hasImage),
+        imageIndex: scenesToMerge.find(s => s.hasImage)?.imageIndex,
+        isFirstThreeMinutes: baseScene.isFirstThreeMinutes
+      });
+    }
+  } else {
+    // Eksik sahne var - böl
+    const words = totalText.split(/\s+/);
+    const wordsPerScene = Math.ceil(words.length / targetCount);
+    
+    for (let i = 0; i < targetCount; i++) {
+      const startWord = i * wordsPerScene;
+      const endWord = Math.min((i + 1) * wordsPerScene, words.length);
+      const sceneText = words.slice(startWord, endWord).join(' ');
+      
+      // Orijinal sahnelerden özellik al (orantılı)
+      const sourceIdx = Math.min(Math.floor(i * scenes.length / targetCount), scenes.length - 1);
+      const sourceScene = scenes[sourceIdx];
+      
+      result.push({
+        sceneNumber: i + 1,
+        text: sceneText || sourceScene.text, // Boş kalmasın
+        visualDescription: sourceScene.visualDescription,
+        estimatedDuration: Math.ceil(sceneText.split(/\s+/).length * 0.4), // ~0.4 saniye/kelime
+        hasImage: sourceScene.hasImage,
+        imageIndex: sourceScene.imageIndex,
+        isFirstThreeMinutes: i < 5 // İlk 5 sahne ilk 3 dakika kabul edilir
+      });
+    }
+  }
+  
+  return result;
+}
+
+/**
  * AŞAMA 1: İlk 3 dakika için sahneler oluştur (5 görsel)
  */
 async function generateFirstThreeMinutes(
@@ -46,17 +111,24 @@ async function generateFirstThreeMinutes(
 
 HEDEF: İlk 3 dakika (180 saniye) için 5 sahne oluştur.
 
-KURALLAR:
-1. Her sahne MUTLAKA görsel içermeli (toplam 5 görsel)
-2. Her sahne ~36 saniye seslendirme olmalı (5 × 36s = 180s)
-3. İlk 3 dakika izleyiciyi ÇEKMELİ - en ilginç ve aksiyon dolu sahneler
-4. Her sahne için AYRINTILI görsel betimleme yap
-5. Görsel betimlemeler ImageFX için uygun olmalı (detaylı, sinematik)
-6. Hikaye akışını bozma, içeriği koru
+⚠️ KRİTİK - ASLA YAPMA:
+- ASLA hikayeyi kısaltma veya özetleme
+- ASLA cümle, paragraf veya olay atlama
+- ASLA kendi kelimenle yeniden yazma
+
+✅ ZORUNLU KURALLAR:
+1. Her sahnenin metni HİKAYENİN ORİJİNAL METNİNDEN ALINMALI (kelimesi kelimesine)
+2. Hikayenin ilk bölümünü 5 parçaya BÖL (yeniden yazma, orijinal metni kullan)
+3. Her sahne MUTLAKA görsel içermeli (toplam 5 görsel)
+4. Her sahne ~36 saniye seslendirme olmalı (5 × 36s = 180s)
+5. İlk 3 dakika izleyiciyi ÇEKMELİ - en ilginç ve aksiyon dolu sahneler
+6. Her sahne için AYRINTILI görsel betimleme yap
+7. Görsel betimlemeler ImageFX için uygun olmalı (detaylı, sinematik)
+8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
 
 Her sahne için (JSON):
 - sceneNumber: Sahne numarası (1-5)
-- text: Sahne metni (~200-250 kelime, ~36 saniye ses için)
+- text: HİKAYENİN ORİJİNAL METNİ (özetlenmiş değil, kelimesi kelimesine)
 - visualDescription: DETAYLI görsel betimleme (karakterler, ortam, atmosfer, duygular, renkler)
 - estimatedDuration: Tahmini süre (saniye)
 - hasImage: true (her sahnede)
@@ -68,7 +140,7 @@ JSON FORMAT:
   "scenes": [
     {
       "sceneNumber": 1,
-      "text": "...",
+      "text": "Hikayenin orijinal metni aynen buraya...",
       "visualDescription": "Çok detaylı görsel betimleme...",
       "estimatedDuration": 36,
       "hasImage": true,
@@ -143,19 +215,26 @@ async function generateRemainingScenes(
 
 HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes + 10} sahneye böl, 5 tanesine görsel ekle.
 
-KURALLAR:
-1. Her sahne 15-20 saniye seslendirme (~150-200 kelime)
-2. Minimum ${minScenes} sahne oluştur (içerik kısa ise daha az olabilir)
-3. Bu sahnelerden tam 5 tanesine görsel ekle
-4. Görselli sahneleri EŞIT ARALIKLARLA dağıt
-5. Görselli sahneler için DETAYLI görsel betimleme yap
-6. Hikaye akışını koru, hiçbir şeyi atlama
-7. Her sahne akıcı ve tutarlı olmalı
-8. İçerik kısa ise daha az sahne oluşturabilirsin
+⚠️ KRİTİK - ASLA YAPMA:
+- ASLA hikayeyi kısaltma veya özetleme
+- ASLA cümle, paragraf veya olay atlama
+- ASLA kendi kelimenle yeniden yazma
+- ASLA hikayenin herhangi bir bölümünü çıkarma
+
+✅ ZORUNLU KURALLAR:
+1. Her sahnenin metni HİKAYENİN ORİJİNAL METNİNDEN ALINMALI (kelimesi kelimesine)
+2. TÜM HİKAYE dahil edilmeli - son kelimeye kadar
+3. Her sahne 15-20 saniye seslendirme (~150-200 kelime)
+4. Minimum ${minScenes} sahne oluştur (içerik kısa ise daha az olabilir)
+5. Bu sahnelerden tam 5 tanesine görsel ekle
+6. Görselli sahneleri EŞIT ARALIKLARLA dağıt
+7. Görselli sahneler için DETAYLI görsel betimleme yap
+8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
+9. Her sahne akıcı ve tutarlı olmalı
 
 Her sahne için (JSON):
 - sceneNumber: Sahne numarası (6'dan başla)
-- text: Sahne metni
+- text: HİKAYENİN ORİJİNAL METNİ (özetlenmiş değil, kelimesi kelimesine)
 - visualDescription: Görsel betimleme (sadece görselli sahnelerde)
 - estimatedDuration: Tahmini süre (15-20 saniye)
 - hasImage: true/false
@@ -167,7 +246,7 @@ JSON FORMAT:
   "scenes": [
     {
       "sceneNumber": 6,
-      "text": "...",
+      "text": "Hikayenin orijinal metni aynen buraya...",
       "visualDescription": "...",
       "estimatedDuration": 18,
       "hasImage": true,
@@ -176,7 +255,7 @@ JSON FORMAT:
     },
     {
       "sceneNumber": 7,
-      "text": "...",
+      "text": "Hikayenin devamı aynen...",
       "estimatedDuration": 17,
       "hasImage": false,
       "isFirstThreeMinutes": false
@@ -309,11 +388,22 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
     const allOriginal = [...firstThreeOriginal, ...remainingOriginal];
     const allAdapted = [...firstThreeAdapted, ...remainingAdapted];
 
-    // 7. Validasyon: Sahne sayıları eşit olmalı
+    // 7. Sahne sayılarını akıllıca eşitle (içerik bütünlüğünü koru)
+    let finalAdapted = allAdapted;
+    
     if (allOriginal.length !== allAdapted.length) {
-      throw new SceneValidationError(
-        `Sahne sayıları eşleşmiyor: ${allOriginal.length} vs ${allAdapted.length}`
-      );
+      logger.warn('Sahne sayıları eşleşmiyor, akıllı eşitleme yapılıyor...', {
+        original: allOriginal.length,
+        adapted: allAdapted.length
+      });
+      
+      // Adapte içeriği orijinal sahne sayısına göre yeniden dağıt
+      finalAdapted = redistributeScenes(allAdapted, allOriginal.length);
+      
+      logger.info('Sahne sayıları akıllıca eşitlendi', { 
+        from: allAdapted.length,
+        to: allOriginal.length 
+      });
     }
 
     // 8. Çift dil şemasında birleştir
@@ -326,7 +416,7 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       imageIndex: origScene.imageIndex,
       isFirstThreeMinutes: origScene.isFirstThreeMinutes,
       // Adapte metni de sakla (ayrı bir property olarak - model şemasında tutulacak)
-      textAdapted: allAdapted[idx].text
+      textAdapted: finalAdapted[idx].text
     } as any)); // Type assertion - SceneData interface'i güncellenecek
 
     // 9. Final validasyonlar

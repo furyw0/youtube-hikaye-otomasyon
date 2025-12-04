@@ -95,7 +95,8 @@ export async function createZipArchive(
 /scenes
   /scene-1
     - text-original.txt       # Orijinal metin
-    - text-adapted.txt        # Adapte edilmiş metin
+    - text-adapted.txt        # Adapte edilmiş metin (hedef dil)
+    - text-turkish.txt        # Türkçe çeviri (varsa)
     - image.png               # Sahne görseli (varsa)
     - audio.mp3               # Sahne sesi
     - metadata.json           # Sahne detayları
@@ -151,6 +152,13 @@ Video editörünüzde kullanabilirsiniz.
       archive.append(scene.sceneTextAdapted, {
         name: `${sceneDir}text-adapted.txt`
       });
+
+      // Türkçe metin (varsa)
+      if (scene.sceneTextTurkish) {
+        archive.append(scene.sceneTextTurkish, {
+          name: `${sceneDir}text-turkish.txt`
+        });
+      }
 
       // Görsel (varsa) - Blob URL'den indir
       if (scene.hasImage && scene.blobUrls?.image) {
@@ -265,6 +273,12 @@ export async function createQuickZip(
       archive.append(scene.sceneTextAdapted, {
         name: `${sceneDir}text-adapted.txt`
       });
+
+      if (scene.sceneTextTurkish) {
+        archive.append(scene.sceneTextTurkish, {
+          name: `${sceneDir}text-turkish.txt`
+        });
+      }
     }
 
     archive.finalize();

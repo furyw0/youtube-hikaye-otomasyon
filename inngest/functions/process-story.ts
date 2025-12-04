@@ -441,7 +441,57 @@ export const processStory = inngest.createFunction(
         });
       });
 
-      // --- 8. ZIP OLUŞTUR (98%) ---
+      // --- 8. TÜRKÇE ÇEVİRİ (96%) ---
+      // Eğer hedef dil Türkçe değilse, sahneleri Türkçe'ye çevir
+      if (storyData.targetLanguage !== 'tr') {
+        await step.run('translate-to-turkish', async () => {
+          await dbConnect();
+          await updateProgress(95, 'Türkçe çeviri yapılıyor...');
+
+          const { translateText } = await import('@/services/translation.service');
+          const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 });
+          let completedTranslations = 0;
+
+          for (const scene of scenes) {
+            try {
+              const turkishText = await translateText(
+                scene.sceneTextAdapted,
+                storyData.targetLanguage,
+                'tr',
+                storyData.openaiModel
+              );
+
+              await Scene.findOneAndUpdate(
+                { storyId: storyId, sceneNumber: scene.sceneNumber },
+                { sceneTextTurkish: turkishText }
+              );
+
+              completedTranslations++;
+              const translationProgress = 95 + (completedTranslations / scenes.length) * 2;
+              await updateProgress(
+                Math.round(translationProgress),
+                `Türkçe çeviri (${completedTranslations}/${scenes.length})...`
+              );
+
+            } catch (error) {
+              logger.warn('Türkçe çeviri başarısız', {
+                storyId,
+                sceneNumber: scene.sceneNumber,
+                error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+              });
+              // Devam et, kritik değil
+            }
+          }
+
+          logger.info('Türkçe çeviriler tamamlandı', {
+            storyId,
+            completed: completedTranslations,
+            total: scenes.length
+          });
+        });
+      }
+
+      // --- 9. ZIP OLUŞTUR (98%) ---
       await step.run('create-zip', async () => {
         await dbConnect();
         await updateProgress(97, 'ZIP dosyası oluşturuluyor...');

@@ -74,22 +74,30 @@ async function adaptChunk(
 ): Promise<{ adapted: string; notes: string[] }> {
   const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri hedef ülkenin kültürüne adapte ediyorsun.
 
-KURALLAR:
-1. Hikaye içeriğini ve uzunluğunu AYNEN koru (hiçbir şey çıkarma veya kısaltma)
-2. Kültürel referansları ${targetCountry} kültürüne uyarla
-3. Yerel deyimler ve ifadeler kullan
-4. İsimler ${targetCountry}'ye uygun olabilir (ama tutarlı olmalı)
-5. Yemek, giysi, gelenekler gibi unsurları yerelleştir
-6. Para birimi, ölçü birimleri vb. ${targetCountry} standardına uygun olsun
-7. Hikayenin akışını ve atmosferini koru
-8. Paragraf yapısını koru
+⚠️ KRİTİK - ASLA YAPMA:
+- ASLA içeriği kısaltma veya özetleme
+- ASLA paragraf, cümle veya kelime atlama
+- ASLA sahne, olay veya diyalog çıkarma
+- ASLA hikayenin uzunluğunu değiştirme
+
+✅ ZORUNLU KURALLAR:
+1. HER PARAGRAF, HER CÜMLE, HER KELİME adapte edilmeli (eksiksiz)
+2. Orijinal metin ne kadar uzunsa, adapte metin de o kadar uzun olmalı
+3. Hikayenin BÜTÜNLÜĞÜ ve AKIŞI korunmalı
+4. Kültürel referansları ${targetCountry} kültürüne uyarla
+5. Yerel deyimler ve ifadeler kullan
+6. İsimler ${targetCountry}'ye uygun olabilir (ama tutarlı olmalı)
+7. Yemek, giysi, gelenekler gibi unsurları yerelleştir
+8. Para birimi, ölçü birimleri vb. ${targetCountry} standardına uygun olsun
+9. Hikayenin akışını ve atmosferini koru
+10. Paragraf yapısını AYNEN koru
 
 Hedef Ülke: ${targetCountry}
 Hedef Dil: ${targetLanguage}
 
 JSON FORMAT (zorunlu):
 {
-  "adapted": "Adapte edilmiş metin",
+  "adapted": "Adapte edilmiş metin (AYNI UZUNLUKTA)",
   "notes": ["Yapılan değişiklik 1", "Yapılan değişiklik 2"]
 }
 
@@ -189,13 +197,20 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
     // 4. Chunk'ları birleştir
     const adaptedContent = adaptedChunks.join('\n\n');
 
-    // 5. Uzunluk kontrolü (adaptasyon çok kısaltmış/uzatmışsa uyar)
+    // 5. Uzunluk kontrolü - hikaye kısaltılmış olabilir mi?
     const lengthRatio = adaptedContent.length / content.length;
-    if (lengthRatio < 0.8 || lengthRatio > 1.2) {
-      logger.warn('Adaptasyon uzunluk oranı beklenenden farklı', {
+    if (lengthRatio < 0.7) {
+      logger.warn('⚠️ UYARI: Adaptasyon orijinalden çok kısa! Hikaye kısaltılmış olabilir.', {
         originalLength: content.length,
         adaptedLength: adaptedContent.length,
-        ratio: lengthRatio
+        ratio: Math.round(lengthRatio * 100) + '%',
+        expectedMinLength: Math.round(content.length * 0.7)
+      });
+    } else if (lengthRatio > 1.5) {
+      logger.warn('⚠️ UYARI: Adaptasyon orijinalden çok uzun!', {
+        originalLength: content.length,
+        adaptedLength: adaptedContent.length,
+        ratio: Math.round(lengthRatio * 100) + '%'
       });
     }
 

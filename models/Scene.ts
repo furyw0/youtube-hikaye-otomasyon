@@ -13,7 +13,7 @@ const SceneSchema = new Schema<IScene>(
       required: true
     },
     
-    // Çift dil metinler
+    // Çoklu dil metinler
     sceneTextOriginal: {
       type: String,
       required: true
@@ -21,6 +21,10 @@ const SceneSchema = new Schema<IScene>(
     sceneTextAdapted: {
       type: String,
       required: true
+    },
+    sceneTextTurkish: {
+      type: String, // Türkçe çeviri (hedef dil Türkçe değilse)
+      required: false
     },
     
     // Görsel bilgileri

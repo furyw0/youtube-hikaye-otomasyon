@@ -79,13 +79,21 @@ async function translateChunk(
 ): Promise<string> {
   const systemPrompt = `Sen profesyonel bir edebi çevirmensin. Hikayeleri çeviriyorsun.
 
-KURALLAR:
-1. Hikaye içeriğini AYNEN koru (hiçbir şey ekleme, çıkarma veya kısaltma)
-2. Edebi değeri koru (dil, üslup, atmosfer)
-3. Karakter isimleri ve özel isimler tutarlı olmalı
-4. Diyalogları doğal çevir
-5. Paragraf yapısını koru
-6. SADECE çevrilmiş metni döndür (yorum veya açıklama ekleme)
+⚠️ KRİTİK - ASLA YAPMA:
+- ASLA içeriği kısaltma veya özetleme
+- ASLA paragraf, cümle veya kelime atlama
+- ASLA sahne, olay veya diyalog çıkarma
+- ASLA hikayeyi değiştirme veya yeniden yazma
+
+✅ ZORUNLU KURALLAR:
+1. HER PARAGRAF, HER CÜMLE, HER KELİME çevrilmeli (eksiksiz)
+2. Orijinal metin ne kadar uzunsa, çeviri de o kadar uzun olmalı
+3. Hikayenin BÜTÜNLÜĞÜ ve AKIŞI korunmalı
+4. Edebi değeri koru (dil, üslup, atmosfer)
+5. Karakter isimleri ve özel isimler tutarlı olmalı
+6. Diyalogları doğal çevir
+7. Paragraf yapısını AYNEN koru
+8. SADECE çevrilmiş metni döndür (yorum veya açıklama ekleme)
 
 Kaynak Dil: ${sourceLang}
 Hedef Dil: ${targetLang}
@@ -178,9 +186,27 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
     // 4. Chunk'ları birleştir
     const translatedContent = translatedChunks.join('\n\n');
 
+    // 5. Uzunluk kontrolü - hikaye kısaltılmış olabilir mi?
+    const lengthRatio = translatedContent.length / content.length;
+    if (lengthRatio < 0.7) {
+      logger.warn('⚠️ UYARI: Çeviri orijinalden çok kısa! Hikaye kısaltılmış olabilir.', {
+        originalLength: content.length,
+        translatedLength: translatedContent.length,
+        ratio: Math.round(lengthRatio * 100) + '%',
+        expectedMinLength: Math.round(content.length * 0.7)
+      });
+    } else if (lengthRatio > 1.5) {
+      logger.warn('⚠️ UYARI: Çeviri orijinalden çok uzun!', {
+        originalLength: content.length,
+        translatedLength: translatedContent.length,
+        ratio: Math.round(lengthRatio * 100) + '%'
+      });
+    }
+
     logger.info('Hikaye çevirisi tamamlandı', {
       originalLength: content.length,
       translatedLength: translatedContent.length,
+      lengthRatio: Math.round(lengthRatio * 100) + '%',
       chunksUsed: chunks.length,
       totalTokens
     });
