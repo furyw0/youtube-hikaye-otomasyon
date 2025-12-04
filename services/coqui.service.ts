@@ -293,24 +293,45 @@ function estimateAudioDuration(buffer: Buffer, text: string): number {
 }
 
 /**
- * Coqui TTS ile ses üret
+ * Metni cümle bazında parçalara ayır (chunking)
+ * Coqui TTS uzun metinlerde sorun çıkarabiliyor
  */
-export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise<GeneratedCoquiAudio> {
-  const { text, tunnelUrl, language, voiceId } = options;
-  const url = normalizeUrl(tunnelUrl);
-  
-  logger.info('Coqui TTS ses üretimi başlatılıyor', {
-    textLength: text.length,
-    language,
-    voiceId
-  });
-  
+function splitTextIntoChunks(text: string, maxChunkLength: number = 500): string[] {
+  // Cümle sonu işaretlerine göre böl
+  const sentences = text.split(/(?<=[.!?।。？！])\s+/);
+  const chunks: string[] = [];
+  let currentChunk = '';
+
+  for (const sentence of sentences) {
+    if (currentChunk.length + sentence.length > maxChunkLength && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+    } else {
+      currentChunk += (currentChunk ? ' ' : '') + sentence;
+    }
+  }
+
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
+/**
+ * Tek bir metin parçası için ses üret
+ */
+async function generateSingleChunk(
+  url: string,
+  text: string,
+  language: string,
+  voiceId: string,
+  timeoutMs: number = 120000
+): Promise<Buffer> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const controller = new AbortController();
-    // Uzun metinler için daha fazla süre ver
-    const timeoutMs = Math.max(60000, text.length * 100); // En az 60 saniye, kelime başına 100ms
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    
     const response = await fetch(`${url}/api/tts`, {
       method: 'POST',
       signal: controller.signal,
@@ -324,23 +345,110 @@ export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise
         voice_id: voiceId
       })
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
-    
+
     const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = Buffer.from(arrayBuffer);
+    return Buffer.from(arrayBuffer);
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+/**
+ * WAV buffer'ları birleştir (basit concatenation)
+ */
+function concatenateWavBuffers(buffers: Buffer[]): Buffer {
+  if (buffers.length === 0) throw new Error('Birleştirilecek buffer yok');
+  if (buffers.length === 1) return buffers[0];
+
+  // İlk buffer'ın header'ını kullan (44 byte WAV header)
+  const headerSize = 44;
+  const header = buffers[0].slice(0, headerSize);
+  
+  // Tüm data'ları birleştir (header hariç)
+  const dataParts = buffers.map((buf, i) => 
+    i === 0 ? buf.slice(headerSize) : buf.slice(headerSize)
+  );
+  
+  const totalDataSize = dataParts.reduce((sum, part) => sum + part.length, 0);
+  const result = Buffer.alloc(headerSize + totalDataSize);
+  
+  // Header'ı kopyala
+  header.copy(result, 0);
+  
+  // Data boyutlarını güncelle
+  result.writeUInt32LE(totalDataSize + 36, 4); // ChunkSize
+  result.writeUInt32LE(totalDataSize, 40); // Subchunk2Size
+  
+  // Data'ları birleştir
+  let offset = headerSize;
+  for (const part of dataParts) {
+    part.copy(result, offset);
+    offset += part.length;
+  }
+  
+  return result;
+}
+
+/**
+ * Coqui TTS ile ses üret (chunking destekli)
+ */
+export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise<GeneratedCoquiAudio> {
+  const { text, tunnelUrl, language, voiceId } = options;
+  const url = normalizeUrl(tunnelUrl);
+  
+  // Metin çok uzunsa chunk'lara ayır
+  const MAX_CHUNK_LENGTH = 500; // ~500 karakter, Coqui için güvenli
+  const chunks = text.length > MAX_CHUNK_LENGTH 
+    ? splitTextIntoChunks(text, MAX_CHUNK_LENGTH)
+    : [text];
+  
+  logger.info('Coqui TTS ses üretimi başlatılıyor', {
+    textLength: text.length,
+    chunks: chunks.length,
+    language,
+    voiceId
+  });
+  
+  try {
+    const audioBuffers: Buffer[] = [];
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      logger.debug(`Chunk ${i + 1}/${chunks.length} işleniyor`, {
+        chunkLength: chunk.length,
+        preview: chunk.substring(0, 50)
+      });
+      
+      // Her chunk için 120 saniye timeout
+      const buffer = await generateSingleChunk(url, chunk, language, voiceId, 120000);
+      audioBuffers.push(buffer);
+      
+      logger.debug(`Chunk ${i + 1}/${chunks.length} tamamlandı`, {
+        bufferSize: buffer.length
+      });
+    }
+    
+    // Chunk'ları birleştir
+    const audioBuffer = chunks.length > 1 
+      ? concatenateWavBuffers(audioBuffers)
+      : audioBuffers[0];
     
     const duration = estimateAudioDuration(audioBuffer, text);
     
     logger.info('Coqui TTS ses üretimi tamamlandı', {
       bufferSize: audioBuffer.length,
       duration: `${duration}s`,
-      textPreview: text.substring(0, 100)
+      chunks: chunks.length
     });
     
     return {
