@@ -156,6 +156,7 @@ function redistributeScenes(scenes: SceneData[], targetCount: number): SceneData
 
 /**
  * AŞAMA 1: İlk 3 dakika için sahneler oluştur (6 görsel)
+ * NOT: Bu fonksiyona ADAPTE EDİLMİŞ metin gönderilir (isimler ve kültürel unsurlar değiştirilmiş)
  */
 async function generateFirstThreeMinutes(
   content: string,
@@ -166,25 +167,28 @@ async function generateFirstThreeMinutes(
 
 HEDEF: İlk 3 dakika (180 saniye) için 6 sahne oluştur, HER BİRİNDE GÖRSEL OLACAK.
 
+📌 ÖNEMLİ: Sana verilen metin zaten kültürel olarak adapte edilmiş (isimler, yerler, kültürel unsurlar hedef ülkeye uygun hale getirilmiş). Bu metni AYNEN kullan.
+
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA hikayeyi kısaltma veya özetleme
 - ASLA cümle, paragraf veya olay atlama
 - ASLA kendi kelimenle yeniden yazma
+- ASLA isimleri veya yerleri değiştirme (zaten adapte edilmiş)
 
 ✅ ZORUNLU KURALLAR:
-1. Her sahnenin metni HİKAYENİN ORİJİNAL METNİNDEN ALINMALI (kelimesi kelimesine)
-2. Hikayenin ilk bölümünü 6 parçaya BÖL (yeniden yazma, orijinal metni kullan)
+1. Her sahnenin metni VERİLEN METİNDEN ALINMALI (kelimesi kelimesine)
+2. Hikayenin ilk bölümünü 6 parçaya BÖL (yeniden yazma, verilen metni aynen kullan)
 3. Her sahne MUTLAKA görsel içermeli (toplam 6 görsel)
 4. Her sahne ~30 saniye seslendirme olmalı (6 × 30s = 180s)
 5. İlk 3 dakika izleyiciyi ÇEKMELİ - en ilginç ve aksiyon dolu sahneler
 6. Her sahne için AYRINTILI görsel betimleme yap
-7. Görsel betimlemeler ImageFX için uygun olmalı (detaylı, sinematik)
+7. Görsel betimlemeler ImageFX için uygun olmalı (detaylı, sinematik, FOTOREALİSTİK)
 8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
 
 Her sahne için (JSON):
 - sceneNumber: Sahne numarası (1-6)
-- text: HİKAYENİN ORİJİNAL METNİ (özetlenmiş değil, kelimesi kelimesine)
-- visualDescription: DETAYLI görsel betimleme (karakterler, ortam, atmosfer, duygular, renkler)
+- text: VERİLEN METİNDEN kesit (özetlenmiş değil, kelimesi kelimesine kopyala)
+- visualDescription: DETAYLI görsel betimleme (karakterler, ortam, atmosfer, duygular, renkler - FOTOREALİSTİK stil için)
 - estimatedDuration: Tahmini süre (saniye, ~30s)
 - hasImage: true (her sahnede)
 - imageIndex: Görsel sırası (1-6)
@@ -195,15 +199,15 @@ JSON FORMAT:
   "scenes": [
     {
       "sceneNumber": 1,
-      "text": "Hikayenin orijinal metni aynen buraya...",
-      "visualDescription": "Çok detaylı görsel betimleme...",
+      "text": "Verilen metnin bu sahneye ait kısmı aynen buraya...",
+      "visualDescription": "Çok detaylı görsel betimleme (fotorealistik sinematik fotoğraf stili)...",
       "estimatedDuration": 30,
       "hasImage": true,
       "imageIndex": 1,
       "isFirstThreeMinutes": true
     }
   ],
-  "notes": "Neden bu sahneleri seçtim..."
+  "notes": "Sahne bölümlemesi açıklaması..."
 }`;
 
   const response = await retryOpenAI(
@@ -256,7 +260,8 @@ JSON FORMAT:
 }
 
 /**
- * AŞAMA 2: Kalan hikaye için sahneler oluştur (5 görsel daha)
+ * AŞAMA 2: Kalan hikaye için sahneler oluştur (14 görsel hedef)
+ * NOT: Bu fonksiyona ADAPTE EDİLMİŞ metin gönderilir (isimler ve kültürel unsurlar değiştirilmiş)
  */
 async function generateRemainingScenes(
   content: string,
@@ -285,27 +290,30 @@ async function generateRemainingScenes(
 HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes} sahneye böl, bu sahnelerden ${targetImages} tanesine görsel ekle.
 NOT: Hikaye kısa ise daha az sahne ve görsel olabilir - önemli olan hikayenin TAMAMI dahil edilmesi.
 
+📌 ÖNEMLİ: Sana verilen metin zaten kültürel olarak adapte edilmiş (isimler, yerler, kültürel unsurlar hedef ülkeye uygun hale getirilmiş). Bu metni AYNEN kullan.
+
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA hikayeyi kısaltma veya özetleme
 - ASLA cümle, paragraf veya olay atlama
 - ASLA kendi kelimenle yeniden yazma
 - ASLA hikayenin herhangi bir bölümünü çıkarma
+- ASLA isimleri veya yerleri değiştirme (zaten adapte edilmiş)
 
 ✅ ZORUNLU KURALLAR:
-1. Her sahnenin metni HİKAYENİN ORİJİNAL METNİNDEN ALINMALI (kelimesi kelimesine)
+1. Her sahnenin metni VERİLEN METİNDEN ALINMALI (kelimesi kelimesine)
 2. TÜM HİKAYE dahil edilmeli - son kelimeye kadar
 3. Her sahne 12-20 saniye seslendirme (~100-200 kelime)
 4. En az 5 sahne oluştur, daha fazla olabilir
 5. Bu sahnelerden MÜMKÜN OLDUĞUNCA ÇOĞUNA görsel ekle (hedef: ${targetImages})
 6. Görselli sahneleri EŞIT ARALIKLARLA dağıt
-7. Görselli sahneler için DETAYLI görsel betimleme yap
+7. Görselli sahneler için DETAYLI görsel betimleme yap (FOTOREALİSTİK stil)
 8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
 9. Her sahne akıcı ve tutarlı olmalı
 
 Her sahne için (JSON):
 - sceneNumber: Sahne numarası (${startSceneNumber}'dan başla)
-- text: HİKAYENİN ORİJİNAL METNİ (özetlenmiş değil, kelimesi kelimesine)
-- visualDescription: Görsel betimleme (sadece görselli sahnelerde)
+- text: VERİLEN METİNDEN kesit (özetlenmiş değil, kelimesi kelimesine kopyala)
+- visualDescription: Görsel betimleme (sadece görselli sahnelerde, fotorealistik sinematik stil)
 - estimatedDuration: Tahmini süre (12-20 saniye)
 - hasImage: true/false
 - imageIndex: Görsel sırası (${startImageIndex}-${endImageIndex} arası, sadece görselli sahnelerde)
@@ -316,8 +324,8 @@ JSON FORMAT:
   "scenes": [
     {
       "sceneNumber": ${startSceneNumber},
-      "text": "Hikayenin orijinal metni aynen buraya...",
-      "visualDescription": "...",
+      "text": "Verilen metnin bu sahneye ait kısmı aynen buraya...",
+      "visualDescription": "Detaylı görsel betimleme (fotorealistik sinematik)...",
       "estimatedDuration": 15,
       "hasImage": true,
       "imageIndex": ${startImageIndex},
@@ -325,7 +333,7 @@ JSON FORMAT:
     },
     {
       "sceneNumber": ${startSceneNumber + 1},
-      "text": "Hikayenin devamı aynen...",
+      "text": "Verilen metnin devamı aynen...",
       "estimatedDuration": 17,
       "hasImage": false,
       "isFirstThreeMinutes": false

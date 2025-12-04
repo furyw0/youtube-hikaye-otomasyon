@@ -10,6 +10,7 @@ import Story from '@/models/Story';
 import Scene from '@/models/Scene';
 import logger from '@/lib/logger';
 import { auth } from '@/auth';
+import { deleteStoryFiles } from '@/services/blob.service';
 
 export async function GET(
   request: NextRequest,
@@ -107,13 +108,23 @@ export async function DELETE(
       }, { status: 404 });
     }
 
+    // Blob storage'dan dosyaları sil
+    try {
+      await deleteStoryFiles(storyId);
+      logger.info('Blob dosyaları silindi', { storyId });
+    } catch (blobError) {
+      // Blob silme hatası kritik değil, devam et
+      logger.warn('Blob dosyaları silinemedi (devam ediliyor)', {
+        storyId,
+        error: blobError instanceof Error ? blobError.message : 'Bilinmeyen hata'
+      });
+    }
+
     // Sahneleri sil
     await Scene.deleteMany({ storyId });
 
     // Story'yi sil
     await Story.findByIdAndDelete(storyId);
-
-    // TODO: Blob storage'dan dosyaları sil
 
     logger.info('Hikaye silindi', { storyId, userId });
 
