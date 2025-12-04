@@ -13,6 +13,7 @@ import { IMAGE_SETTINGS } from '@/lib/constants';
 interface SceneData {
   sceneNumber: number;
   text: string;
+  textAdapted?: string; // Adapte edilmiş metin
   visualDescription?: string;
   estimatedDuration: number;
   hasImage: boolean;
@@ -35,8 +36,62 @@ interface GenerateScenesResult {
 }
 
 /**
+ * Adapte edilmiş metni orijinal sahne oranlarına göre böler.
+ * Bu şekilde orijinal ve adapte metinler HER ZAMAN senkron kalır.
+ */
+function splitAdaptedContentByOriginalRatios(
+  adaptedContent: string,
+  originalScenes: SceneData[]
+): string[] {
+  // Orijinal toplam uzunluk
+  const totalOriginalLength = originalScenes.reduce((sum, s) => sum + s.text.length, 0);
+  
+  // Adapte metni cümlelere böl (daha doğal kesim için)
+  const sentences = adaptedContent.split(/(?<=[.!?।。？！])\s+/).filter(s => s.trim());
+  
+  const result: string[] = [];
+  let sentenceIndex = 0;
+  
+  for (let i = 0; i < originalScenes.length; i++) {
+    const scene = originalScenes[i];
+    
+    // Bu sahnenin oranı
+    const ratio = scene.text.length / totalOriginalLength;
+    
+    // Bu sahne için hedef karakter sayısı
+    const targetLength = Math.round(adaptedContent.length * ratio);
+    
+    // Cümleleri topla
+    let sceneText = '';
+    while (sentenceIndex < sentences.length) {
+      const sentence = sentences[sentenceIndex];
+      
+      // Eğer bu son sahne ise, kalan tüm cümleleri ekle
+      if (i === originalScenes.length - 1) {
+        sceneText += (sceneText ? ' ' : '') + sentence;
+        sentenceIndex++;
+        continue;
+      }
+      
+      // Hedef uzunluğa ulaştıysak ve en az bir cümle varsa dur
+      if (sceneText.length >= targetLength && sceneText.length > 0) {
+        break;
+      }
+      
+      sceneText += (sceneText ? ' ' : '') + sentence;
+      sentenceIndex++;
+    }
+    
+    result.push(sceneText.trim() || scene.text); // Boş kalmasın, orijinali kullan
+  }
+  
+  return result;
+}
+
+/**
  * Adapte sahneleri hedef sahne sayısına göre akıllıca yeniden dağıtır.
  * İçerik bütünlüğünü koruyarak sahneleri birleştirir veya böler.
+ * @deprecated splitAdaptedContentByOriginalRatios kullanın
  */
 function redistributeScenes(scenes: SceneData[], targetCount: number): SceneData[] {
   if (scenes.length === targetCount) return scenes;
@@ -329,54 +384,40 @@ JSON FORMAT:
 
 /**
  * ANA FONKSİYON: Tüm sahneleri oluştur (çift dil)
+ * YENİ YAKLAŞIM: Adapte metin üzerinden sahne oluştur, orijinali senkronize et
  */
 export async function generateScenes(options: GenerateScenesOptions): Promise<GenerateScenesResult> {
   const { originalContent, adaptedContent, model } = options;
 
-  logger.info('Sahne oluşturma başlatılıyor', {
+  logger.info('Sahne oluşturma başlatılıyor (ADAPTE metin bazlı)', {
     model,
     originalLength: originalContent.length,
     adaptedLength: adaptedContent.length
   });
 
   try {
-    // 1. İlk 3 dakika - Orijinal dil
-    logger.info('İlk 3 dakika sahneleri oluşturuluyor (orijinal)...');
-    const firstThreeOriginal = await generateFirstThreeMinutes(
-      originalContent,
-      'original',
-      model
-    );
-
-    // 2. İlk 3 dakika - Adapte dil
-    logger.info('İlk 3 dakika sahneleri oluşturuluyor (adapte)...');
+    // ===== ADAPTE METİN ÜZERİNDEN SAHNE OLUŞTUR =====
+    
+    // 1. İlk 3 dakika - ADAPTE metin için sahne oluştur
+    logger.info('İlk 3 dakika sahneleri oluşturuluyor (adapte metin)...');
     const firstThreeAdapted = await generateFirstThreeMinutes(
       adaptedContent,
       'adapted',
       model
     );
 
-    // 3. İlk 3 dakikanın bittiği pozisyonu hesapla
-    const firstThreeTextLength = firstThreeOriginal
+    // 2. İlk 3 dakikanın bittiği pozisyonu hesapla
+    const firstThreeTextLength = firstThreeAdapted
       .map(s => s.text.length)
       .reduce((a, b) => a + b, 0);
 
-    logger.debug('İlk 3 dakika metin uzunluğu', {
-      original: firstThreeTextLength,
-      percentage: Math.round((firstThreeTextLength / originalContent.length) * 100)
+    logger.debug('İlk 3 dakika metin uzunluğu (adapte)', {
+      adapted: firstThreeTextLength,
+      percentage: Math.round((firstThreeTextLength / adaptedContent.length) * 100)
     });
 
-    // 4. Kalan sahneler - Orijinal dil
-    logger.info('Kalan sahneler oluşturuluyor (orijinal)...');
-    const remainingOriginal = await generateRemainingScenes(
-      originalContent,
-      firstThreeTextLength,
-      'original',
-      model
-    );
-
-    // 5. Kalan sahneler - Adapte dil
-    logger.info('Kalan sahneler oluşturuluyor (adapte)...');
+    // 3. Kalan sahneler - ADAPTE metin için sahne oluştur
+    logger.info('Kalan sahneler oluşturuluyor (adapte metin)...');
     const remainingAdapted = await generateRemainingScenes(
       adaptedContent,
       firstThreeTextLength,
@@ -384,40 +425,42 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       model
     );
 
-    // 6. Birleştir
-    const allOriginal = [...firstThreeOriginal, ...remainingOriginal];
+    // 4. Tüm adapte sahneleri birleştir
     const allAdapted = [...firstThreeAdapted, ...remainingAdapted];
-
-    // 7. Sahne sayılarını akıllıca eşitle (içerik bütünlüğünü koru)
-    let finalAdapted = allAdapted;
     
-    if (allOriginal.length !== allAdapted.length) {
-      logger.warn('Sahne sayıları eşleşmiyor, akıllı eşitleme yapılıyor...', {
-        original: allOriginal.length,
-        adapted: allAdapted.length
-      });
-      
-      // Adapte içeriği orijinal sahne sayısına göre yeniden dağıt
-      finalAdapted = redistributeScenes(allAdapted, allOriginal.length);
-      
-      logger.info('Sahne sayıları akıllıca eşitlendi', { 
-        from: allAdapted.length,
-        to: allOriginal.length 
-      });
-    }
+    logger.info('Adapte sahneler oluşturuldu', { 
+      total: allAdapted.length,
+      firstThree: firstThreeAdapted.length,
+      remaining: remainingAdapted.length
+    });
 
-    // 8. Çift dil şemasında birleştir
-    const finalScenes: SceneData[] = allOriginal.map((origScene, idx) => ({
-      sceneNumber: origScene.sceneNumber,
-      text: origScene.text, // Orijinal metin
-      visualDescription: origScene.visualDescription,
-      estimatedDuration: origScene.estimatedDuration,
-      hasImage: origScene.hasImage,
-      imageIndex: origScene.imageIndex,
-      isFirstThreeMinutes: origScene.isFirstThreeMinutes,
-      // Adapte metni de sakla (ayrı bir property olarak - model şemasında tutulacak)
-      textAdapted: finalAdapted[idx].text
-    } as any)); // Type assertion - SceneData interface'i güncellenecek
+    // ===== ORİJİNAL METNİ ADAPTE ORANLARINDA BÖL =====
+    
+    // 5. Orijinal metni adapte sahne oranlarına göre böl
+    logger.info('Orijinal metin adapte sahne oranlarına göre bölünüyor...');
+    const originalSceneTexts = splitAdaptedContentByOriginalRatios(
+      originalContent,
+      allAdapted
+    );
+
+    // 6. Çift dil şemasında birleştir
+    // NOT: Ana metin artık ADAPTE metin (ses ve görsel için kullanılacak)
+    const finalScenes: SceneData[] = allAdapted.map((adaptedScene, idx) => ({
+      sceneNumber: adaptedScene.sceneNumber,
+      text: originalSceneTexts[idx] || adaptedScene.text, // Orijinal metin (panel için)
+      textAdapted: adaptedScene.text, // ANA METİN - Adapte (ses/görsel için)
+      visualDescription: adaptedScene.visualDescription,
+      estimatedDuration: adaptedScene.estimatedDuration,
+      hasImage: adaptedScene.hasImage,
+      imageIndex: adaptedScene.imageIndex,
+      isFirstThreeMinutes: adaptedScene.isFirstThreeMinutes,
+    }));
+    
+    logger.info('Sahneler birleştirildi', {
+      totalScenes: finalScenes.length,
+      withOriginalText: finalScenes.filter(s => s.text).length,
+      withAdaptedText: finalScenes.filter(s => s.textAdapted).length
+    });
 
     // 9. Final validasyonlar
     const totalImages = finalScenes.filter(s => s.hasImage).length;
@@ -444,7 +487,7 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
     logger.info('Sahne oluşturma tamamlandı', {
       totalScenes: finalScenes.length,
       totalImages,
-      firstThreeMinutesScenes: firstThreeOriginal.length,
+      firstThreeMinutesScenes: firstThreeAdapted.length,
       estimatedTotalDuration: `${Math.floor(estimatedTotalDuration / 60)}m ${estimatedTotalDuration % 60}s`
     });
 
@@ -452,7 +495,7 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       scenes: finalScenes,
       totalScenes: finalScenes.length,
       totalImages,
-      firstThreeMinutesScenes: firstThreeOriginal.length,
+      firstThreeMinutesScenes: firstThreeAdapted.length,
       estimatedTotalDuration
     };
 
