@@ -228,16 +228,40 @@ JSON FORMAT:
     ['scenes']
   );
 
-  // Validasyon (esnek - minimum 3 sahne yeterli, hedef 6)
-  if (!parsed.scenes || parsed.scenes.length < 3) {
+  // ===== KRİTİK VALİDASYON =====
+  // İlk 3 dakika için KESİNLİKLE 6 sahne olmalı (her biri ~30 saniye)
+  const MIN_FIRST_THREE_SCENES = 6;
+  
+  if (!parsed.scenes || parsed.scenes.length < MIN_FIRST_THREE_SCENES) {
+    logger.error(`İlk 3 dakika için ${MIN_FIRST_THREE_SCENES} sahne bekleniyor, ${parsed.scenes?.length || 0} alındı - RETRY gerekli`, {
+      receivedScenes: parsed.scenes?.length || 0,
+      expected: MIN_FIRST_THREE_SCENES
+    });
     throw new SceneValidationError(
-      `İlk 3 dakika için minimum 3 sahne bekleniyor, ${parsed.scenes?.length || 0} alındı`
+      `İlk 3 dakika için minimum ${MIN_FIRST_THREE_SCENES} sahne bekleniyor, ${parsed.scenes?.length || 0} alındı. Her sahne ~30 saniye olmalı.`
     );
   }
 
-  if (parsed.scenes.length < 6) {
-    logger.warn(`İlk 3 dakika için 6 sahne hedeflendi, ${parsed.scenes.length} oluşturuldu (hikaye kısa olabilir)`);
+  // Süre kontrolü - hiçbir sahne 45 saniyeyi geçmemeli
+  const MAX_SCENE_DURATION = 45;
+  for (const scene of parsed.scenes) {
+    if (scene.estimatedDuration > MAX_SCENE_DURATION) {
+      logger.warn(`Sahne ${scene.sceneNumber} çok uzun: ${scene.estimatedDuration}s, ${MAX_SCENE_DURATION}s'ye düşürülüyor`);
+      scene.estimatedDuration = 30; // Varsayılan 30 saniye
+    }
+    // Minimum süre kontrolü
+    if (!scene.estimatedDuration || scene.estimatedDuration < 10) {
+      scene.estimatedDuration = 30;
+    }
   }
+
+  // Toplam süre kontrolü (ilk 3 dakika = 180 saniye civarı olmalı)
+  const totalDuration = parsed.scenes.reduce((sum, s) => sum + (s.estimatedDuration || 30), 0);
+  logger.info(`İlk 3 dakika toplam süre: ${totalDuration}s (hedef: ~180s)`, {
+    scenes: parsed.scenes.length,
+    totalDuration,
+    avgPerScene: Math.round(totalDuration / parsed.scenes.length)
+  });
 
   // TÜM SAHNELERE görsel ekle (ilk 3 dakika için her sahne önemli)
   const targetImages = IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES; // 6
@@ -280,6 +304,7 @@ JSON FORMAT:
   logger.info(`İlk 3 dakika sahneleri oluşturuldu (${language})`, {
     scenes: parsed.scenes.length,
     images: imagesCount,
+    totalDuration,
     notes: parsed.notes
   });
 
@@ -453,13 +478,40 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
   try {
     // ===== ADAPTE METİN ÜZERİNDEN SAHNE OLUŞTUR =====
     
-    // 1. İlk 3 dakika - ADAPTE metin için sahne oluştur
+    // 1. İlk 3 dakika - ADAPTE metin için sahne oluştur (RETRY ile)
     logger.info('İlk 3 dakika sahneleri oluşturuluyor (adapte metin)...');
-    const firstThreeAdapted = await generateFirstThreeMinutes(
-      adaptedContent,
-      'adapted',
-      model
-    );
+    
+    let firstThreeAdapted: SceneData[] = [];
+    const MAX_FIRST_THREE_RETRIES = 3;
+    
+    for (let attempt = 1; attempt <= MAX_FIRST_THREE_RETRIES; attempt++) {
+      try {
+        firstThreeAdapted = await generateFirstThreeMinutes(
+          adaptedContent,
+          'adapted',
+          model
+        );
+        
+        // Başarılı - döngüden çık
+        logger.info(`İlk 3 dakika sahneleri oluşturuldu (deneme ${attempt})`, {
+          scenes: firstThreeAdapted.length
+        });
+        break;
+        
+      } catch (error) {
+        logger.warn(`İlk 3 dakika sahne oluşturma başarısız (deneme ${attempt}/${MAX_FIRST_THREE_RETRIES})`, {
+          error: error instanceof Error ? error.message : 'Bilinmeyen hata',
+          attempt
+        });
+        
+        if (attempt === MAX_FIRST_THREE_RETRIES) {
+          throw error; // Son deneme de başarısızsa hata fırlat
+        }
+        
+        // Bir sonraki deneme için bekle
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
 
     // 2. İlk 3 dakikanın bittiği pozisyonu hesapla
     const firstThreeTextLength = firstThreeAdapted

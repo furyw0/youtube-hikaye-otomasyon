@@ -478,16 +478,87 @@ export const processStory = inngest.createFunction(
         });
       }
 
+      // Başarısız görseller için FALLBACK retry (basitleştirilmiş prompt ile)
+      if (failedImageScenes.length > 0) {
+        logger.info('Başarısız görseller için fallback retry başlatılıyor', {
+          storyId,
+          failedCount: failedImageScenes.length,
+          failedScenes: failedImageScenes
+        });
+
+        for (const failedSceneNumber of failedImageScenes) {
+          await step.run(`retry-failed-image-${failedSceneNumber}`, async () => {
+            await dbConnect();
+            
+            const scene = await Scene.findOne({ storyId, sceneNumber: failedSceneNumber });
+            if (!scene) return { success: false, sceneNumber: failedSceneNumber };
+            
+            // Basitleştirilmiş generic prompt oluştur (insan içermeyen)
+            const fallbackPrompt = `Ultra realistic landscape photograph, cinematic lighting, professional photography, 8k resolution, dramatic atmosphere, beautiful scenery, no people, no text, no watermarks. Scene mood: dramatic storytelling moment.`;
+            
+            try {
+              logger.info(`Fallback görsel üretiliyor`, {
+                storyId,
+                sceneNumber: failedSceneNumber,
+                promptType: 'fallback-generic'
+              });
+
+              const image = await generateImage({
+                prompt: fallbackPrompt,
+                model: storyData.imagefxModel as any,
+                aspectRatio: storyData.imagefxAspectRatio as any,
+                seed: storyData.imagefxSeed
+              });
+
+              if (image?.imageBuffer && image.imageBuffer.length > 0) {
+                const uploaded = await uploadImage(
+                  storyId,
+                  failedSceneNumber,
+                  image.imageBuffer,
+                  scene.imageIndex || failedSceneNumber
+                );
+
+                await Scene.findOneAndUpdate(
+                  { storyId, sceneNumber: failedSceneNumber },
+                  { $set: { 'blobUrls.image': uploaded.url } }
+                );
+
+                logger.info(`Fallback görsel başarılı`, {
+                  storyId,
+                  sceneNumber: failedSceneNumber,
+                  url: uploaded.url
+                });
+                
+                completedImages++;
+                return { success: true, sceneNumber: failedSceneNumber };
+              }
+            } catch (error) {
+              logger.warn(`Fallback görsel de başarısız`, {
+                storyId,
+                sceneNumber: failedSceneNumber,
+                error: error instanceof Error ? error.message : 'Bilinmeyen'
+              });
+            }
+            
+            return { success: false, sceneNumber: failedSceneNumber };
+          });
+        }
+      }
+
       // Görsel üretimi özeti
       await step.run('finalize-images', async () => {
         await dbConnect();
         await updateProgress(80, 'Görseller tamamlandı');
         
+        // Güncel başarısız sayısını hesapla
+        const scenes = await Scene.find({ storyId, hasImage: true });
+        const stillFailed = scenes.filter(s => !s.blobUrls?.image).map(s => s.sceneNumber);
+        
         logger.info('Görseller üretildi', {
           storyId,
           completed: completedImages,
-          failed: failedImageScenes.length,
-          failedScenes: failedImageScenes.length > 0 ? failedImageScenes : undefined,
+          failed: stillFailed.length,
+          failedScenes: stillFailed.length > 0 ? stillFailed : undefined,
           total: totalImageScenes
         });
       });
