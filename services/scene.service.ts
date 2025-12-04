@@ -33,6 +33,7 @@ interface GenerateScenesResult {
   totalImages: number;
   firstThreeMinutesScenes: number;
   estimatedTotalDuration: number;
+  textCoverageRatio: number; // Adapte metnin ne kadarının sahnelere dahil edildiği (0-1 arası)
 }
 
 /**
@@ -163,51 +164,47 @@ async function generateFirstThreeMinutes(
   language: 'original' | 'adapted',
   model: string
 ): Promise<SceneData[]> {
-  const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin İLK 3 DAKİKASINI sahnelere ayırıyorsun.
+  // İlk 3 dakika için kullanılacak metin (ilk ~15.000 karakter)
+  const firstPartContent = content.substring(0, 15000);
+  const inputCharCount = firstPartContent.length;
+  
+  const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin İLK BÖLÜMÜNÜ sahnelere ayırıyorsun.
 
-HEDEF: İlk 3 dakika (180 saniye) için 6 sahne oluştur, HER BİRİNDE GÖRSEL OLACAK.
+⛔ EN ÖNEMLİ KURAL - KISALTMA YASAK:
+Sana verilen metin ${inputCharCount} karakter. 
+Çıktıdaki TÜM SAHNE METİNLERİNİN TOPLAMI da yaklaşık ${inputCharCount} karakter OLMALI!
+Eğer toplam çıktı çok kısaysa, EKSİK BÖLMÜŞSÜN demektir!
 
-📌 ÖNEMLİ: Sana verilen metin zaten kültürel olarak adapte edilmiş (isimler, yerler, kültürel unsurlar hedef ülkeye uygun hale getirilmiş). Bu metni AYNEN kullan.
+📏 UZUNLUK HEDEFİ:
+- Giriş: ~${inputCharCount} karakter
+- Çıkış: Tüm scene.text toplamı >= ${Math.round(inputCharCount * 0.90)} karakter olmalı
 
-⚠️ KRİTİK - ASLA YAPMA:
-- ASLA hikayeyi kısaltma veya özetleme
-- ASLA cümle, paragraf veya olay atlama
-- ASLA kendi kelimenle yeniden yazma
-- ASLA isimleri veya yerleri değiştirme (zaten adapte edilmiş)
+⛔ KESINLIKLE YASAK:
+- ❌ METNİ KISALTMA veya ÖZETLEME
+- ❌ Cümle, paragraf veya kelime ATLAMA
+- ❌ Kendi cümlelerinle YENİDEN YAZMA
+- ❌ "..." ile kısaltma yapma
+- ❌ Herhangi bir bölümü ÇIKARMA
 
-✅ ZORUNLU KURALLAR:
-1. Her sahnenin metni VERİLEN METİNDEN ALINMALI (kelimesi kelimesine)
-2. Hikayenin ilk bölümünü 6 parçaya BÖL (yeniden yazma, verilen metni aynen kullan)
-3. Her sahne MUTLAKA görsel içermeli (toplam 6 görsel)
-4. Her sahne ~30 saniye seslendirme olmalı (6 × 30s = 180s)
-5. İlk 3 dakika izleyiciyi ÇEKMELİ - en ilginç ve aksiyon dolu sahneler
-6. Her sahne için AYRINTILI görsel betimleme yap
-7. Görsel betimlemeler ImageFX için uygun olmalı (detaylı, sinematik, FOTOREALİSTİK)
-8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
+✅ ZORUNLU: METNİ AYNEN BÖL
+1. Verilen metni 6 PARÇAYA BÖL - her parça "text" alanına KELİMESİ KELİMESİNE kopyalanmalı
+2. Hiçbir şey ekleme, hiçbir şey çıkarma - SADECE BÖL
+3. Paragraf veya cümle sınırlarında böl (kelime ortasından kesme)
+4. Her sahne ~${Math.round(inputCharCount / 6)} karakter olmalı
 
-Her sahne için (JSON):
-- sceneNumber: Sahne numarası (1-6)
-- text: VERİLEN METİNDEN kesit (özetlenmiş değil, kelimesi kelimesine kopyala)
-- visualDescription: DETAYLI görsel betimleme (karakterler, ortam, atmosfer, duygular, renkler - FOTOREALİSTİK stil için)
-- estimatedDuration: Tahmini süre (saniye, ~30s)
-- hasImage: true (her sahnede)
-- imageIndex: Görsel sırası (1-6)
+📝 HER SAHNE İÇİN:
+- sceneNumber: 1-6 arası
+- text: VERİLEN METİNDEN KESİT (birebir kopyala, özetleme!)
+- visualDescription: Detaylı görsel betimleme (fotorealistik sinematik)
+- estimatedDuration: ~30 saniye
+- hasImage: true
+- imageIndex: 1-6 arası
 - isFirstThreeMinutes: true
 
 JSON FORMAT:
 {
-  "scenes": [
-    {
-      "sceneNumber": 1,
-      "text": "Verilen metnin bu sahneye ait kısmı aynen buraya...",
-      "visualDescription": "Çok detaylı görsel betimleme (fotorealistik sinematik fotoğraf stili)...",
-      "estimatedDuration": 30,
-      "hasImage": true,
-      "imageIndex": 1,
-      "isFirstThreeMinutes": true
-    }
-  ],
-  "notes": "Sahne bölümlemesi açıklaması..."
+  "scenes": [...],
+  "totalTextLength": <tüm scene.text uzunluklarının toplamı>
 }`;
 
   const response = await retryOpenAI(
@@ -217,10 +214,10 @@ JSON FORMAT:
         { role: 'system', content: systemPrompt },
         { 
           role: 'user', 
-          content: `Hikayenin başlangıcı (ilk ~2000 kelime):\n\n${content.substring(0, 15000)}`
+          content: `KISALTMADAN 6 SAHNEYE BÖL (toplam ~${inputCharCount} karakter korunmalı):\n\n${firstPartContent}`
         }
       ],
-      temperature: 0.4,
+      temperature: 0.3, // Daha düşük = daha az yaratıcılık = daha az kısaltma
       responseFormat: 'json_object'
     }),
     `İlk 3 dakika sahneleri (${language})`
@@ -315,60 +312,52 @@ async function generateRemainingScenes(
   const startImageIndex = firstThreeScenesCount + 1;
   const endImageIndex = startImageIndex + targetImages - 1;
   
+  // Kalan içeriğin karakter sayısı
+  const inputCharCount = remainingContent.length;
+  
+  // Tahmini sahne sayısı (~800 karakter/sahne)
+  const estimatedSceneCount = Math.max(minScenes, Math.ceil(inputCharCount / 800));
+  
   const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin KALAN KISMINI sahnelere ayırıyorsun.
 
-HEDEF: Hikayenin kalan kısmını ${minScenes}-${estimatedScenes} sahneye böl, bu sahnelerden ${targetImages} tanesine görsel ekle.
-NOT: Hikaye kısa ise daha az sahne ve görsel olabilir - önemli olan hikayenin TAMAMI dahil edilmesi.
+⛔ EN ÖNEMLİ KURAL - KISALTMA YASAK:
+Sana verilen metin ${inputCharCount} karakter.
+Çıktıdaki TÜM SAHNE METİNLERİNİN TOPLAMI da yaklaşık ${inputCharCount} karakter OLMALI!
+Eğer toplam çıktı çok kısaysa, EKSİK BÖLMÜŞSÜN demektir!
 
-📌 ÖNEMLİ: Sana verilen metin zaten kültürel olarak adapte edilmiş (isimler, yerler, kültürel unsurlar hedef ülkeye uygun hale getirilmiş). Bu metni AYNEN kullan.
+📏 UZUNLUK HEDEFİ:
+- Giriş: ${inputCharCount} karakter
+- Çıkış: Tüm scene.text toplamı >= ${Math.round(inputCharCount * 0.90)} karakter olmalı
+- Tahmini sahne sayısı: ${estimatedSceneCount} (her biri ~800 karakter)
 
-⚠️ KRİTİK - ASLA YAPMA:
-- ASLA hikayeyi kısaltma veya özetleme
-- ASLA cümle, paragraf veya olay atlama
-- ASLA kendi kelimenle yeniden yazma
-- ASLA hikayenin herhangi bir bölümünü çıkarma
-- ASLA isimleri veya yerleri değiştirme (zaten adapte edilmiş)
+⛔ KESINLIKLE YASAK:
+- ❌ METNİ KISALTMA veya ÖZETLEME
+- ❌ Cümle, paragraf veya kelime ATLAMA
+- ❌ Kendi cümlelerinle YENİDEN YAZMA
+- ❌ "..." ile kısaltma yapma
+- ❌ Herhangi bir bölümü ÇIKARMA
+- ❌ SON KELIMEYE KADAR her şey dahil edilmeli!
 
-✅ ZORUNLU KURALLAR:
-1. Her sahnenin metni VERİLEN METİNDEN ALINMALI (kelimesi kelimesine)
-2. TÜM HİKAYE dahil edilmeli - son kelimeye kadar
-3. Her sahne 12-20 saniye seslendirme (~100-200 kelime)
-4. En az 5 sahne oluştur, daha fazla olabilir
-5. Bu sahnelerden MÜMKÜN OLDUĞUNCA ÇOĞUNA görsel ekle (hedef: ${targetImages})
-6. Görselli sahneleri EŞIT ARALIKLARLA dağıt
-7. Görselli sahneler için DETAYLI görsel betimleme yap (FOTOREALİSTİK stil)
-8. Hikaye akışını ve BÜTÜNLÜĞÜNÜ koru
-9. Her sahne akıcı ve tutarlı olmalı
+✅ ZORUNLU: METNİ AYNEN BÖL
+1. Verilen metni ${estimatedSceneCount} PARÇAYA BÖL
+2. Her parça "text" alanına KELİMESİ KELİMESİNE kopyalanmalı
+3. Hiçbir şey ekleme, hiçbir şey çıkarma - SADECE BÖL
+4. Paragraf veya cümle sınırlarında böl
+5. TÜM METİN dahil edilmeli - SON KELİMEYE KADAR!
 
-Her sahne için (JSON):
-- sceneNumber: Sahne numarası (${startSceneNumber}'dan başla)
-- text: VERİLEN METİNDEN kesit (özetlenmiş değil, kelimesi kelimesine kopyala)
-- visualDescription: Görsel betimleme (sadece görselli sahnelerde, fotorealistik sinematik stil)
-- estimatedDuration: Tahmini süre (12-20 saniye)
-- hasImage: true/false
-- imageIndex: Görsel sırası (${startImageIndex}-${endImageIndex} arası, sadece görselli sahnelerde)
+📝 HER SAHNE İÇİN:
+- sceneNumber: ${startSceneNumber}'dan başla
+- text: VERİLEN METİNDEN KESİT (birebir kopyala!)
+- visualDescription: Görsel betimleme (görselli sahnelerde)
+- estimatedDuration: 12-20 saniye
+- hasImage: true/false (hedef: ${targetImages} görsel)
+- imageIndex: ${startImageIndex}-${endImageIndex} arası
 - isFirstThreeMinutes: false
 
 JSON FORMAT:
 {
-  "scenes": [
-    {
-      "sceneNumber": ${startSceneNumber},
-      "text": "Verilen metnin bu sahneye ait kısmı aynen buraya...",
-      "visualDescription": "Detaylı görsel betimleme (fotorealistik sinematik)...",
-      "estimatedDuration": 15,
-      "hasImage": true,
-      "imageIndex": ${startImageIndex},
-      "isFirstThreeMinutes": false
-    },
-    {
-      "sceneNumber": ${startSceneNumber + 1},
-      "text": "Verilen metnin devamı aynen...",
-      "estimatedDuration": 17,
-      "hasImage": false,
-      "isFirstThreeMinutes": false
-    }
-  ]
+  "scenes": [...],
+  "totalTextLength": <tüm scene.text uzunluklarının toplamı>
 }`;
 
   const response = await retryOpenAI(
@@ -376,7 +365,7 @@ JSON FORMAT:
       model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: remainingContent || 'Hikaye burada sona eriyor. Son 5 sahneyi oluştur.' }
+        { role: 'user', content: `KISALTMADAN ${estimatedSceneCount} SAHNEYE BÖL (toplam ${inputCharCount} karakter korunmalı):\n\n${remainingContent}` }
       ],
       temperature: 0.3,
       responseFormat: 'json_object'
@@ -563,11 +552,52 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       .map(s => s.estimatedDuration)
       .reduce((a, b) => a + b, 0);
 
+    // ===== METİN UZUNLUĞU KONTROLÜ (KRİTİK!) =====
+    const totalAdaptedSceneTextLength = finalScenes
+      .map(s => (s.textAdapted || '').length)
+      .reduce((a, b) => a + b, 0);
+    
+    const adaptedContentLength = adaptedContent.length;
+    const textCoverageRatio = totalAdaptedSceneTextLength / adaptedContentLength;
+    
+    logger.info('📏 Metin kapsama oranı kontrolü', {
+      adaptedContentLength,
+      totalAdaptedSceneTextLength,
+      textCoverageRatio: Math.round(textCoverageRatio * 100) + '%',
+      lostCharacters: adaptedContentLength - totalAdaptedSceneTextLength
+    });
+
+    // ALARM: Metin çok kısalmış!
+    if (textCoverageRatio < 0.50) {
+      logger.error('🚨 KRİTİK ALARM: Sahne metinleri orijinal içeriğin <%50! Hikaye ciddi şekilde kısaltılmış!', {
+        adaptedContentLength,
+        totalAdaptedSceneTextLength,
+        lostCharacters: adaptedContentLength - totalAdaptedSceneTextLength,
+        lostPercentage: Math.round((1 - textCoverageRatio) * 100) + '%',
+        expectedMinLength: Math.round(adaptedContentLength * 0.85)
+      });
+    } else if (textCoverageRatio < 0.70) {
+      logger.error('⚠️ UYARI: Sahne metinleri orijinal içeriğin <%70! Hikaye kısaltılmış olabilir.', {
+        adaptedContentLength,
+        totalAdaptedSceneTextLength,
+        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
+      });
+    } else if (textCoverageRatio < 0.85) {
+      logger.warn('📉 Metin kapsama oranı düşük (<%85)', {
+        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
+      });
+    } else {
+      logger.info('✅ Metin kapsama oranı iyi', {
+        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
+      });
+    }
+
     logger.info('Sahne oluşturma tamamlandı', {
       totalScenes: finalScenes.length,
       totalImages,
       firstThreeMinutesScenes: firstThreeAdapted.length,
-      estimatedTotalDuration: `${Math.floor(estimatedTotalDuration / 60)}m ${estimatedTotalDuration % 60}s`
+      estimatedTotalDuration: `${Math.floor(estimatedTotalDuration / 60)}m ${estimatedTotalDuration % 60}s`,
+      textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
     });
 
     return {
@@ -575,7 +605,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       totalScenes: finalScenes.length,
       totalImages,
       firstThreeMinutesScenes: firstThreeAdapted.length,
-      estimatedTotalDuration
+      estimatedTotalDuration,
+      textCoverageRatio // Yeni: kapsama oranını da döndür
     };
 
   } catch (error) {

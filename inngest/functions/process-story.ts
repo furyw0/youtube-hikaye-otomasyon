@@ -260,10 +260,27 @@ export const processStory = inngest.createFunction(
 
         await updateProgress(50, 'Sahneler oluşturuldu');
 
+        // Metin kapsama oranı kontrolü
+        const coveragePercent = Math.round(result.textCoverageRatio * 100);
+        
+        if (result.textCoverageRatio < 0.50) {
+          logger.error('🚨 KRİTİK: Sahne bölme sırasında hikaye %50\'den fazla kısaltılmış!', {
+            storyId,
+            textCoverageRatio: coveragePercent + '%',
+            adaptedLength: adaptationData.adaptedContent.length
+          });
+        } else if (result.textCoverageRatio < 0.70) {
+          logger.warn('⚠️ UYARI: Sahne bölme sırasında hikaye kısaltılmış olabilir', {
+            storyId,
+            textCoverageRatio: coveragePercent + '%'
+          });
+        }
+
         logger.info('Sahneler oluşturuldu', {
           storyId,
           totalScenes: result.totalScenes,
-          totalImages: result.totalImages
+          totalImages: result.totalImages,
+          textCoverageRatio: coveragePercent + '%'
         });
 
         // Plain array olarak dön
