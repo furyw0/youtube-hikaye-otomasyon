@@ -188,6 +188,7 @@ export const processStory = inngest.createFunction(
         });
 
         // Sahneleri MongoDB'ye kaydet
+        // NOT: blobUrls objesini baştan initialize et, yoksa nested update çalışmaz
         const scenePromises = result.scenes.map(sceneData =>
           Scene.create({
             storyId: storyId,
@@ -200,7 +201,12 @@ export const processStory = inngest.createFunction(
             isFirstThreeMinutes: sceneData.isFirstThreeMinutes,
             estimatedDuration: sceneData.estimatedDuration,
             status: 'pending',
-            retryCount: 0
+            retryCount: 0,
+            blobUrls: {
+              image: null,
+              audio: null,
+              metadata: null
+            }
           })
         );
 
