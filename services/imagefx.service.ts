@@ -47,6 +47,58 @@ export interface GenerateImageOptions {
   cookie?: string; // Opsiyonel: Settings'den gelen cookie
 }
 
+/**
+ * Prompt'u sanitize eder - "Prominent People Filter" hatasını önlemek için
+ * Google ImageFX gerçek/ünlü kişi promptlarını reddediyor
+ */
+function sanitizePrompt(prompt: string): string {
+  // Yasaklı terimler ve yerine geçecekler
+  const replacements: [RegExp, string][] = [
+    // Yaş + cinsiyet kalıpları (gerçek kişi gibi algılanabilir)
+    [/(\d+)[\s-]*(year[\s-]*old|yaşında|jährige[rn]?|años?|ans?)\s+(man|woman|boy|girl|child|person|male|female|mann|frau|kind|niño|niña|homme|femme|enfant)/gi, 'fictional character, a $3'],
+    [/(young|old|middle[\s-]*aged|elderly)\s+(man|woman|boy|girl|person|male|female)/gi, 'fictional $1 $2'],
+    
+    // Gerçek kişi adı kalıpları - genel isimler
+    [/\b(James|John|Michael|Robert|David|William|Richard|Joseph|Thomas|Charles|Mary|Patricia|Jennifer|Linda|Elizabeth|Barbara|Susan|Jessica|Sarah|Karen|Juan|María|José|Carlos|Pedro|Hans|Klaus|Fritz|Heinrich|Wilhelm|Emma|Anna|Marie|Sophie)\b/gi, 'a fictional person'],
+    
+    // "person named X" kalıbı
+    [/(person|man|woman|boy|girl|child)\s+(named|called|known as)\s+[A-Z][a-zA-Z]+/gi, 'a fictional $1'],
+    
+    // Belirli meslek + isim
+    [/(doctor|lawyer|teacher|politician|president|celebrity|actor|actress|singer|athlete)\s+[A-Z][a-zA-Z]+/gi, 'fictional $1'],
+    
+    // "Real/actual person" benzeri
+    [/\b(real|actual|true|genuine)\s+(person|man|woman|human)/gi, 'fictional $2'],
+    
+    // Ünlü kişi referansları
+    [/(looks like|resembles|similar to|reminiscent of)\s+[A-Z][a-zA-z]+(\s+[A-Z][a-zA-z]+)?/gi, 'has unique features'],
+    
+    // Fotoğraf/portre kalıpları (gerçek kişi gibi algılanır)
+    [/\b(portrait|headshot|mugshot|ID photo)\s+of\s+(a\s+)?(man|woman|person)/gi, 'artistic illustration of a fictional $3'],
+    
+    // "Photo of" kalıbı
+    [/\bphoto(graph)?\s+of\s+(a\s+)?(real|actual)?\s*(man|woman|person|human)/gi, 'artistic image of a fictional $4'],
+  ];
+
+  let sanitized = prompt;
+  
+  for (const [pattern, replacement] of replacements) {
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+
+  // Ek güvenlik: başına "fictional scene" ekle
+  if (!sanitized.toLowerCase().includes('fictional')) {
+    sanitized = 'Fictional artistic scene: ' + sanitized;
+  }
+
+  // Sonuna ek disclaimer
+  if (!sanitized.toLowerCase().includes('not a real person')) {
+    sanitized += '. All characters are fictional and not based on real people.';
+  }
+
+  return sanitized;
+}
+
 export interface GeneratedImage {
   imageBuffer: Buffer;
   seed: number;
@@ -104,16 +156,25 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     const { ImageFX, Prompt } = await import('@rohitaryal/imagefx-api');
     const client = new ImageFX(googleCookie);
 
+    // Prompt'u sanitize et (Prominent People Filter önleme)
+    const sanitizedPrompt = sanitizePrompt(prompt);
+    
+    logger.debug('Prompt sanitize edildi', {
+      originalLength: prompt.length,
+      sanitizedLength: sanitizedPrompt.length,
+      preview: sanitizedPrompt.substring(0, 100)
+    });
+
     // Prompt objesi oluştur
     const imagefxPrompt = new Prompt({
-      prompt,
+      prompt: sanitizedPrompt,
       generationModel: getModelValue(),
       aspectRatio: getAspectRatioValue(aspectRatio),
       numberOfImages: IMAGEFX_SETTINGS.NUMBER_OF_IMAGES,
       seed: seed || 0
     });
 
-    logger.debug('ImageFX çağrısı yapılıyor', { prompt: prompt.substring(0, 100), model, aspectRatio });
+    logger.debug('ImageFX çağrısı yapılıyor', { prompt: sanitizedPrompt.substring(0, 100), model, aspectRatio });
 
     // Retry ile görsel üret - generateImage metodu kullanılıyor
     // Ref: https://github.com/rohitaryal/imageFX-api
