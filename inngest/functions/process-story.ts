@@ -422,73 +422,74 @@ export const processStory = inngest.createFunction(
         coquiSelectedVoiceId: storyData.coquiVoiceId
       };
 
-      // Her sahne için ayrı step (5'erli gruplar halinde)
-      const BATCH_SIZE = 5;
-      for (let i = 0; i < audioSceneNumbers.length; i += BATCH_SIZE) {
-        const batchSceneNumbers = audioSceneNumbers.slice(i, i + BATCH_SIZE);
-        const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(audioSceneNumbers.length / BATCH_SIZE);
+      // Her sahne için ayrı step (timeout önlemek için tek tek)
+      const totalScenes = audioSceneNumbers.length;
+      
+      for (let i = 0; i < totalScenes; i++) {
+        const sceneNumber = audioSceneNumbers[i];
         
-        await step.run(`generate-audio-batch-${batchIndex}`, async () => {
+        await step.run(`generate-audio-scene-${sceneNumber}`, async () => {
           await dbConnect();
           
-          for (const sceneNumber of batchSceneNumbers) {
-            try {
-              // Sahneyi tekrar kontrol et (başka bir batch'te işlenmiş olabilir)
-              const scene = await Scene.findOne({ storyId, sceneNumber });
-              if (!scene || scene.blobUrls?.audio) {
-                logger.debug(`Sahne ${sceneNumber} zaten işlenmiş, atlanıyor`);
-                continue;
-              }
-
-              logger.info(`Sahne ${sceneNumber} seslendiriliyor...`, {
-                textLength: scene.sceneTextAdapted.length,
-                provider: ttsSettings.ttsProvider
-              });
-
-              // TTS Router ile ses üret
-              const audio = await generateSpeech({
-                text: scene.sceneTextAdapted,
-                settings: ttsSettings as any,
-                language: storyData.targetLanguage
-              });
-
-              // Blob'a yükle
-              const uploaded = await uploadAudio(
-                storyId,
-                sceneNumber,
-                audio.audioBuffer
-              );
-
-              // Scene'i güncelle
-              await Scene.findOneAndUpdate(
-                { storyId, sceneNumber },
-                {
-                  'blobUrls.audio': uploaded.url,
-                  actualDuration: audio.duration,
-                  status: 'completed'
-                }
-              );
-
-              logger.info(`Sahne ${sceneNumber} seslendirme tamamlandı`, {
-                duration: audio.duration,
-                provider: audio.provider
-              });
-
-            } catch (error) {
-              logger.error(`Sahne ${sceneNumber} seslendirme hatası`, {
-                error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-              });
-              // Bu sahneyi atla, devam et
+          try {
+            // Sahneyi kontrol et (zaten işlenmiş olabilir)
+            const scene = await Scene.findOne({ storyId, sceneNumber });
+            if (!scene) {
+              logger.warn(`Sahne ${sceneNumber} bulunamadı`);
+              return;
             }
+            
+            if (scene.blobUrls?.audio) {
+              logger.debug(`Sahne ${sceneNumber} zaten işlenmiş, atlanıyor`);
+              return;
+            }
+
+            logger.info(`Sahne ${sceneNumber}/${totalScenes} seslendiriliyor...`, {
+              textLength: scene.sceneTextAdapted.length,
+              provider: ttsSettings.ttsProvider
+            });
+
+            // TTS Router ile ses üret
+            const audio = await generateSpeech({
+              text: scene.sceneTextAdapted,
+              settings: ttsSettings as any,
+              language: storyData.targetLanguage
+            });
+
+            // Blob'a yükle
+            const uploaded = await uploadAudio(
+              storyId,
+              sceneNumber,
+              audio.audioBuffer
+            );
+
+            // Scene'i güncelle
+            await Scene.findOneAndUpdate(
+              { storyId, sceneNumber },
+              {
+                'blobUrls.audio': uploaded.url,
+                actualDuration: audio.duration,
+                status: 'completed'
+              }
+            );
+
+            logger.info(`Sahne ${sceneNumber} seslendirme tamamlandı`, {
+              duration: audio.duration,
+              provider: audio.provider
+            });
+
+          } catch (error) {
+            logger.error(`Sahne ${sceneNumber} seslendirme hatası`, {
+              error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+            });
+            // Bu sahneyi atla, hata fırlatma (diğer sahneler devam etsin)
           }
 
           // Progress güncelle
-          const completedCount = i + batchSceneNumbers.length;
-          const audioProgress = 85 + (completedCount / audioSceneNumbers.length) * 10;
+          const audioProgress = 85 + ((i + 1) / totalScenes) * 10;
           await updateProgress(
             Math.round(audioProgress),
-            `Seslendirme (${batchIndex}/${totalBatches})...`
+            `Seslendirme (${i + 1}/${totalScenes})...`
           );
         });
       }
