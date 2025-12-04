@@ -50,51 +50,50 @@ export interface GenerateImageOptions {
 /**
  * Prompt'u sanitize eder - "Prominent People Filter" hatasını önlemek için
  * Google ImageFX gerçek/ünlü kişi promptlarını reddediyor
+ * 
+ * NOT: "Fictional", "artistic", "illustration" gibi kelimeler ÇİZGİ FİLM tarzını tetikleyebilir!
+ * Bunun yerine fotorealistik terimleri güçlendiriyoruz.
  */
 function sanitizePrompt(prompt: string): string {
-  // Yasaklı terimler ve yerine geçecekler
-  const replacements: [RegExp, string][] = [
-    // Yaş + cinsiyet kalıpları (gerçek kişi gibi algılanabilir)
-    [/(\d+)[\s-]*(year[\s-]*old|yaşında|jährige[rn]?|años?|ans?)\s+(man|woman|boy|girl|child|person|male|female|mann|frau|kind|niño|niña|homme|femme|enfant)/gi, 'fictional character, a $3'],
-    [/(young|old|middle[\s-]*aged|elderly)\s+(man|woman|boy|girl|person|male|female)/gi, 'fictional $1 $2'],
+  // İsim temizleme - gerçek kişi isimlerini jenerik tanımlarla değiştir
+  const nameReplacements: [RegExp, string][] = [
+    // Yaş + cinsiyet kalıpları - yaşı kaldır, sadece tanımı bırak
+    [/(\d+)[\s-]*(year[\s-]*old|yaşında|jährige[rn]?|años?|ans?)\s+(man|woman|boy|girl|child|person|male|female|mann|frau|kind|niño|niña|homme|femme|enfant)/gi, 'a $3'],
     
-    // Gerçek kişi adı kalıpları - genel isimler
-    [/\b(James|John|Michael|Robert|David|William|Richard|Joseph|Thomas|Charles|Mary|Patricia|Jennifer|Linda|Elizabeth|Barbara|Susan|Jessica|Sarah|Karen|Juan|María|José|Carlos|Pedro|Hans|Klaus|Fritz|Heinrich|Wilhelm|Emma|Anna|Marie|Sophie)\b/gi, 'a fictional person'],
+    // İsimli kalıpları temizle - ismi tamamen kaldır
+    [/\b[A-Z][a-z]+\s+(Morales|García|López|Martínez|González|Rodríguez|Hernández|Pérez|Sánchez|Ramírez|Torres|Flores|Rivera|Gómez|Díaz|Reyes|Cruz|Ortiz|Moreno|Jiménez)\b/gi, 'a person'],
+    [/\b(Santiago|Carlos|Miguel|José|Juan|María|Ana|Carmen|Luis|Pedro|Roberto|Fernando|Diego|Antonio|Manuel|Francisco|David|Daniel|Pablo|Alejandro)\s+[A-Z][a-z]+/gi, 'a person'],
     
     // "person named X" kalıbı
-    [/(person|man|woman|boy|girl|child)\s+(named|called|known as)\s+[A-Z][a-zA-Z]+/gi, 'a fictional $1'],
+    [/(person|man|woman|boy|girl|child)\s+(named|called|known as)\s+[A-Z][a-zA-Z]+(\s+[A-Z][a-zA-Z]+)?/gi, 'a $1'],
     
-    // Belirli meslek + isim
-    [/(doctor|lawyer|teacher|politician|president|celebrity|actor|actress|singer|athlete)\s+[A-Z][a-zA-Z]+/gi, 'fictional $1'],
-    
-    // "Real/actual person" benzeri
-    [/\b(real|actual|true|genuine)\s+(person|man|woman|human)/gi, 'fictional $2'],
-    
-    // Ünlü kişi referansları
-    [/(looks like|resembles|similar to|reminiscent of)\s+[A-Z][a-zA-z]+(\s+[A-Z][a-zA-z]+)?/gi, 'has unique features'],
-    
-    // Fotoğraf/portre kalıpları (gerçek kişi gibi algılanır)
-    [/\b(portrait|headshot|mugshot|ID photo)\s+of\s+(a\s+)?(man|woman|person)/gi, 'artistic illustration of a fictional $3'],
-    
-    // "Photo of" kalıbı
-    [/\bphoto(graph)?\s+of\s+(a\s+)?(real|actual)?\s*(man|woman|person|human)/gi, 'artistic image of a fictional $4'],
+    // Tek başına isimler (cümle başında büyük harfle)
+    [/\b(Santiago|Carlos|Miguel|José|Juan|María|Roberto|Fernando|Diego)\b/gi, 'the person'],
   ];
 
   let sanitized = prompt;
   
-  for (const [pattern, replacement] of replacements) {
+  for (const [pattern, replacement] of nameReplacements) {
     sanitized = sanitized.replace(pattern, replacement);
   }
 
-  // Ek güvenlik: başına "fictional scene" ekle
-  if (!sanitized.toLowerCase().includes('fictional')) {
-    sanitized = 'Fictional artistic scene: ' + sanitized;
+  // ÇİZGİ FİLM ÖNLEME: Anti-cartoon direktifleri ekle
+  const antiCartoonSuffix = '. Style: Ultra realistic photograph, NOT cartoon, NOT anime, NOT illustration, NOT 3D render, NOT CGI, NOT digital art. Real human skin texture, real lighting, DSLR camera quality, 85mm lens, shallow depth of field.';
+  
+  // Eğer prompt zaten "photorealistic" içeriyorsa, güçlendir
+  if (sanitized.toLowerCase().includes('photorealistic')) {
+    // "Photorealistic" kelimesini daha güçlü versiyonla değiştir
+    sanitized = sanitized.replace(
+      /photorealistic/gi, 
+      'hyper-realistic photograph like taken with Sony A7R IV camera'
+    );
+  } else {
+    // Başına ekle
+    sanitized = 'Hyper-realistic photograph, real human, real environment, ' + sanitized;
   }
 
-  // Sonuna ek disclaimer
-  if (!sanitized.toLowerCase().includes('not a real person')) {
-    sanitized += '. All characters are fictional and not based on real people.';
-  }
+  // Sonuna anti-cartoon direktiflerini ekle
+  sanitized += antiCartoonSuffix;
 
   return sanitized;
 }

@@ -685,20 +685,18 @@ ImageFX için detaylı prompt oluştur. ASLA metin/altyazı ekleme!`
       `Görsel prompt - Sahne ${scene.sceneNumber}`
     );
 
-    // Prompt'u temizle ve standart prefix ekle
+    // Prompt'u temizle ve GÜÇLÜ anti-cartoon prefix ekle
     let cleanPrompt = response.trim();
     
-    // Eğer prompt standart prefix ile başlamıyorsa ekle
-    const requiredPrefix = 'Photorealistic cinematic photograph, no text, no subtitles, no captions, no watermarks, clean image,';
-    if (!cleanPrompt.toLowerCase().includes('no text') && !cleanPrompt.toLowerCase().includes('no subtitle')) {
-      cleanPrompt = `${requiredPrefix} ${cleanPrompt}`;
-    }
+    // ÇİZGİ FİLM ÖNLEME: Çok güçlü fotorealistik prefix
+    const requiredPrefix = 'Ultra realistic photograph shot with Sony A7R IV camera, 85mm f/1.4 lens, real human skin texture with pores and imperfections, real fabric textures, natural lighting, NOT cartoon, NOT anime, NOT illustration, NOT 3D render, NOT CGI, NOT digital art, NOT painting, no text, no subtitles, no captions, no watermarks, clean image,';
     
-    // Negatif prompt ekle (sona)
-    const negativeAddition = ' --no text, subtitles, captions, watermarks, letters, words, writing, cartoon, anime, illustration, drawing';
-    if (!cleanPrompt.includes('--no')) {
-      cleanPrompt += negativeAddition;
-    }
+    // Her zaman prefix ekle (çizgi film önleme için kritik)
+    cleanPrompt = `${requiredPrefix} ${cleanPrompt}`;
+    
+    // Sonuna da GÜÇLÜ stil direktifleri ekle
+    const styleSuffix = '. Shot on RED cinema camera, cinematic color grading, shallow depth of field, film grain, real photography, hyper-realistic, photojournalistic style. --no cartoon, anime, illustration, drawing, sketch, 3D render, CGI, digital art, painting, watercolor, comic, manga, pixar, disney, animated';
+    cleanPrompt += styleSuffix;
 
     prompts.set(scene.sceneNumber, cleanPrompt);
     
