@@ -22,6 +22,7 @@ interface Story {
   totalScenes: number;
   totalImages: number;
   actualDuration?: number;
+  processingDuration?: number; // Saniye cinsinden üretim süresi
   createdAt: string;
   updatedAt: string;
 }
@@ -108,6 +109,17 @@ function StoriesContent() {
       case 'failed': return 'Başarısız';
       default: return 'Oluşturuldu';
     }
+  };
+
+  // Süreyi okunabilir formata çevir
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '-';
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (minutes > 0) {
+      return `${minutes}dk ${secs}sn`;
+    }
+    return `${secs}sn`;
   };
 
   if (loading) {
@@ -234,6 +246,12 @@ function StoriesContent() {
                       <span className="text-gray-500">Görseller:</span>
                       <p className="font-medium">{story.totalImages || '-'}</p>
                     </div>
+                    {story.status === 'completed' && story.processingDuration && (
+                      <div className="col-span-2">
+                        <span className="text-gray-500">⏱️ Üretim Süresi:</span>
+                        <p className="font-medium text-green-600">{formatDuration(story.processingDuration)}</p>
+                      </div>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 mt-3">
                     {new Date(story.createdAt).toLocaleDateString('tr-TR', {

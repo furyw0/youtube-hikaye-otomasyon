@@ -61,7 +61,20 @@ export const processStory = inngest.createFunction(
       return story;
     };
 
+    // İşleme başlangıç zamanı
+    const processingStartTime = Date.now();
+
     try {
+      // --- 0. İŞLEME BAŞLANGICI ---
+      await step.run('mark-processing-start', async () => {
+        await dbConnect();
+        await Story.findByIdAndUpdate(storyId, {
+          processingStartedAt: new Date(),
+          status: 'processing'
+        });
+        logger.info('İşleme başlangıç zamanı kaydedildi', { storyId });
+      });
+
       // --- 1. DİL ALGILAMA (5%) ---
       const storyData = await step.run('detect-language', async () => {
         await dbConnect();
@@ -773,18 +786,33 @@ export const processStory = inngest.createFunction(
         });
       });
 
-      // --- 9. TAMAMLANDI (100%) ---
+      // --- 10. TAMAMLANDI (100%) ---
       await step.run('complete', async () => {
         await dbConnect();
+        
+        // İşleme süresini hesapla
+        const processingEndTime = Date.now();
+        const processingDuration = Math.round((processingEndTime - processingStartTime) / 1000); // Saniye
         
         // findByIdAndUpdate kullan
         await Story.findByIdAndUpdate(storyId, {
           status: 'completed',
           progress: 100,
-          currentStep: 'İşlem tamamlandı!'
+          currentStep: 'İşlem tamamlandı!',
+          processingCompletedAt: new Date(),
+          processingDuration: processingDuration
         });
 
-        logger.info('Hikaye işleme tamamlandı', { storyId });
+        // Süreyi okunabilir formata çevir
+        const minutes = Math.floor(processingDuration / 60);
+        const seconds = processingDuration % 60;
+        const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
+
+        logger.info('Hikaye işleme tamamlandı', { 
+          storyId,
+          processingDuration,
+          durationText
+        });
       });
 
       return {

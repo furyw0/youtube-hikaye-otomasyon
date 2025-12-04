@@ -58,6 +58,11 @@ export interface IStory {
   estimatedTokens: number;
   actualDuration?: number;
   
+  // İşleme Süreleri
+  processingStartedAt?: Date;
+  processingCompletedAt?: Date;
+  processingDuration?: number; // Saniye cinsinden toplam üretim süresi
+  
   // İlişkiler
   scenes: Types.ObjectId[];
   processLogs: Types.ObjectId[];

@@ -154,6 +154,17 @@ const StorySchema = new Schema<IStory>(
       type: Number
     },
     
+    // İşleme Süreleri
+    processingStartedAt: {
+      type: Date
+    },
+    processingCompletedAt: {
+      type: Date
+    },
+    processingDuration: {
+      type: Number // Saniye cinsinden toplam üretim süresi
+    },
+    
     // İlişkiler
     scenes: [{
       type: Schema.Types.ObjectId,
