@@ -33,15 +33,20 @@ async function adaptTitle(
   targetLanguage: string,
   model: string
 ): Promise<string> {
-  const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne adapte ediyorsun.
+  const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
 
 KURALLAR:
-1. Başlığın temel anlamını koru
-2. ${targetCountry} kültürüne uygun yap
-3. Yerel ifadeleri ve kültürel referansları kullan
-4. Uzunluğu benzer tut
-5. Çekici ve merak uyandırıcı olsun
-6. Sadece adapte edilmiş başlığı döndür
+1. Başlıktaki İSİMLERİ ${targetCountry}'de yaygın isimlerle DEĞİŞTİR
+2. Başlıktaki YER İSİMLERİNİ ${targetCountry}'deki yerlerle DEĞİŞTİR
+3. Başlığın temel anlamını ve çekiciliğini koru
+4. ${targetCountry} kültürüne uygun yerel ifadeler kullan
+5. Uzunluğu benzer tut
+6. Çekici ve merak uyandırıcı olsun
+7. Sadece adapte edilmiş başlığı döndür
+
+Örnekler:
+- "John's Secret Garden" → "El Jardín Secreto de Juan" (İspanya)
+- "A Night in Paris" → "Madridde Bir Gece" (İspanya/Türkçe)
 
 Hedef Ülke: ${targetCountry}
 Hedef Dil: ${targetLanguage}`;
@@ -72,7 +77,7 @@ async function adaptChunk(
   chunkIndex: number,
   totalChunks: number
 ): Promise<{ adapted: string; notes: string[] }> {
-  const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri hedef ülkenin kültürüne adapte ediyorsun.
+  const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
 
 ⚠️ KRİTİK - ASLA YAPMA:
 - ASLA içeriği kısaltma veya özetleme
@@ -80,28 +85,50 @@ async function adaptChunk(
 - ASLA sahne, olay veya diyalog çıkarma
 - ASLA hikayenin uzunluğunu değiştirme
 
-✅ ZORUNLU KURALLAR:
-1. HER PARAGRAF, HER CÜMLE, HER KELİME adapte edilmeli (eksiksiz)
-2. Orijinal metin ne kadar uzunsa, adapte metin de o kadar uzun olmalı
-3. Hikayenin BÜTÜNLÜĞÜ ve AKIŞI korunmalı
-4. Kültürel referansları ${targetCountry} kültürüne uyarla
-5. Yerel deyimler ve ifadeler kullan
-6. İsimler ${targetCountry}'ye uygun olabilir (ama tutarlı olmalı)
-7. Yemek, giysi, gelenekler gibi unsurları yerelleştir
-8. Para birimi, ölçü birimleri vb. ${targetCountry} standardına uygun olsun
-9. Hikayenin akışını ve atmosferini koru
-10. Paragraf yapısını AYNEN koru
+🔄 ZORUNLU DEĞİŞİKLİKLER (MUTLAKA YAP):
+
+1. **KİŞİ İSİMLERİ** - TÜM karakter isimlerini ${targetCountry}'de yaygın isimlerle DEĞİŞTİR:
+   - Örnek: "John" → "Juan" (İspanya için), "Ahmet" (Türkiye için), "Hans" (Almanya için)
+   - Ana karakterler ve yan karakterler dahil
+   - İsimler hikaye boyunca TUTARLI olmalı
+
+2. **YER İSİMLERİ** - Şehir, mahalle, sokak isimlerini ${targetCountry}'deki yerlerle DEĞİŞTİR:
+   - Örnek: "New York" → "Madrid" (İspanya için), "İstanbul" (Türkiye için)
+   - Okul, hastane, restoran isimleri de yerelleştirilmeli
+
+3. **KÜLTÜREL UNSURLAR** - Tamamen yerelleştir:
+   - Yemekler: Yerel mutfaktan yemekler kullan
+   - Bayramlar/Tatiller: Yerel bayramlarla değiştir
+   - Gelenekler: Yerel gelenekleri yansıt
+   - Giyim: Yerel kıyafet tanımları
+
+4. **PARA BİRİMİ & ÖLÇÜLER**:
+   - Para: ${targetCountry} para birimine çevir
+   - Uzunluk/Ağırlık: Metrik/İmperial sisteme göre ayarla
+
+5. **DİL & İFADELER**:
+   - Yerel deyimler ve atasözleri kullan
+   - Selamlaşma şekilleri yerel olmalı
+   - Hitap şekilleri kültüre uygun olmalı
+
+✅ KORUMASI GEREKENLER:
+- Hikayenin OLAY ÖRGÜSÜ aynı kalmalı
+- Karakter KİŞİLİKLERİ aynı kalmalı
+- Duygusal ton ve atmosfer korunmalı
+- Metin uzunluğu AYNI kalmalı
+- Paragraf yapısı AYNEN korunmalı
 
 Hedef Ülke: ${targetCountry}
 Hedef Dil: ${targetLanguage}
 
 JSON FORMAT (zorunlu):
 {
-  "adapted": "Adapte edilmiş metin (AYNI UZUNLUKTA)",
-  "notes": ["Yapılan değişiklik 1", "Yapılan değişiklik 2"]
+  "adapted": "TAMAMEN adapte edilmiş metin (isimler, yerler değişmiş)",
+  "notes": ["John → Juan olarak değiştirildi", "New York → Madrid olarak değiştirildi", ...]
 }
 
-Bu metin ${totalChunks} parçanın ${chunkIndex + 1}. parçası.`;
+Bu metin ${totalChunks} parçanın ${chunkIndex + 1}. parçası.
+${chunkIndex > 0 ? 'ÖNCEKİ CHUNK\'LARDA DEĞİŞTİRİLEN İSİMLERİ AYNI KULLAN!' : ''}`;
 
   const response = await retryOpenAI(
     () => createChatCompletion({

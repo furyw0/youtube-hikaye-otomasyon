@@ -471,6 +471,7 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
 
 /**
  * Görsel promptları oluştur (ImageFX için)
+ * Stil tutarlılığı ve metin/altyazı engelleme içerir
  */
 export async function generateVisualPrompts(
   scenes: SceneData[],
@@ -484,8 +485,13 @@ export async function generateVisualPrompts(
 
   const prompts = new Map<number, string>();
   const imageScenes = scenes.filter(s => s.hasImage);
+  
+  // İlk görsel için karakter tanımları (tutarlılık için)
+  let characterDescriptions = '';
 
-  for (const scene of imageScenes) {
+  for (let i = 0; i < imageScenes.length; i++) {
+    const scene = imageScenes[i];
+    const isFirstImage = i === 0;
     const isFirstThreeMinutes = scene.isFirstThreeMinutes;
     
     const systemPrompt = `Sen ImageFX için görsel prompt uzmanısın.
@@ -494,15 +500,39 @@ ${isFirstThreeMinutes ?
   'BU İLK 3 DAKİKA! İzleyicinin dikkatini ÇEKMELİ!' : 
   'Hikayenin devamı için görsel.'}
 
-KURALLAR:
-1. İngilizce prompt yaz
-2. Cinematic, 4K, ultra detailed
-3. Karakterlerin görünümü ve duygusal durumu DETAYLI
-4. Işık, gölge, renk paleti, atmosfer BELİRT
-5. Sahne kompozisyonu ve perspektif
-6. ${isFirstThreeMinutes ? '150-200 kelime (ÇOK DETAYLI)' : '100-150 kelime'}
-7. "Photograph", "realistic", "cinematic" gibi kelimeler kullan
-8. Sadece prompt yaz, açıklama ekleme
+⚠️ KRİTİK - ASLA EKLEME:
+- ASLA metin, yazı, harf, kelime ekleme
+- ASLA altyazı, subtitle, caption ekleme
+- ASLA filigran, watermark ekleme
+- ASLA logo, marka, işaret ekleme
+- Görsel SADECE sahneyi göstermeli, hiçbir yazı içermemeli
+
+✅ STİL KURALLARI (TÜM GÖRSELLER İÇİN AYNI):
+1. SADECE "photorealistic cinematic photograph" stili
+2. ASLA çizgi film, anime, illüstrasyon, cartoon YAPMA
+3. Gerçek insan fotoğrafı gibi görünmeli
+4. 4K, ultra detailed, cinematic lighting
+5. Film seti kalitesinde, profesyonel fotoğraf
+
+${isFirstImage ? `
+🎭 KARAKTER TANIMLARI (İLK GÖRSEL):
+- Bu ilk görseldir, karakterlerin DETAYLI fiziksel özelliklerini tanımla
+- Yaş, saç rengi, göz rengi, ten rengi, yüz özellikleri
+- Kıyafet detayları
+- Bu tanımlar sonraki görsellerde AYNI tutulacak
+` : `
+🎭 KARAKTER TUTARLILIĞI:
+${characterDescriptions || 'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan'}
+`}
+
+📝 PROMPT KURALLARI:
+1. İngilizce yaz
+2. ${isFirstThreeMinutes ? '150-200 kelime' : '100-150 kelime'}
+3. Prompt MUTLAKA şununla başlamalı: "Photorealistic cinematic photograph, no text, no subtitles, clean image,"
+4. Karakterlerin duygusal durumu DETAYLI
+5. Işık, gölge, renk paleti, atmosfer
+6. Sahne kompozisyonu ve perspektif
+7. Sadece prompt yaz, açıklama ekleme
 
 Hikaye Bağlamı: ${storyContext.substring(0, 500)}...`;
 
@@ -521,19 +551,44 @@ ${scene.text.substring(0, 1000)}
 Görsel Betimleme:
 ${scene.visualDescription || 'N/A'}
 
-ImageFX için detaylı prompt oluştur.`
+${isFirstImage ? 
+  'Bu İLK GÖRSEL - Karakterlerin fiziksel özelliklerini DETAYLI tanımla.' :
+  'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan.'}
+
+ImageFX için detaylı prompt oluştur. ASLA metin/altyazı ekleme!`
           }
         ],
-        temperature: isFirstThreeMinutes ? 0.7 : 0.6
+        temperature: isFirstThreeMinutes ? 0.6 : 0.5 // Tutarlılık için daha düşük
       }),
       `Görsel prompt - Sahne ${scene.sceneNumber}`
     );
 
-    prompts.set(scene.sceneNumber, response.trim());
+    // Prompt'u temizle ve standart prefix ekle
+    let cleanPrompt = response.trim();
+    
+    // Eğer prompt standart prefix ile başlamıyorsa ekle
+    const requiredPrefix = 'Photorealistic cinematic photograph, no text, no subtitles, no captions, no watermarks, clean image,';
+    if (!cleanPrompt.toLowerCase().includes('no text') && !cleanPrompt.toLowerCase().includes('no subtitle')) {
+      cleanPrompt = `${requiredPrefix} ${cleanPrompt}`;
+    }
+    
+    // Negatif prompt ekle (sona)
+    const negativeAddition = ' --no text, subtitles, captions, watermarks, letters, words, writing, cartoon, anime, illustration, drawing';
+    if (!cleanPrompt.includes('--no')) {
+      cleanPrompt += negativeAddition;
+    }
+
+    prompts.set(scene.sceneNumber, cleanPrompt);
+    
+    // İlk görsel için karakter tanımlarını kaydet (sonraki görseller için)
+    if (isFirstImage) {
+      characterDescriptions = cleanPrompt.substring(0, 500); // İlk 500 karakter karakter tanımı olarak kullanılır
+    }
     
     logger.debug(`Görsel prompt oluşturuldu - Sahne ${scene.sceneNumber}`, {
-      promptLength: response.length,
-      isFirstThreeMinutes
+      promptLength: cleanPrompt.length,
+      isFirstThreeMinutes,
+      hasNoTextPrefix: cleanPrompt.includes('no text')
     });
   }
 
