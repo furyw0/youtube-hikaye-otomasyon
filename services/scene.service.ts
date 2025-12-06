@@ -692,123 +692,101 @@ export async function generateVisualPrompts(
   const imageScenes = scenes.filter(s => s.hasImage);
   
   // İlk görsel için karakter tanımları (tutarlılık için)
-  let characterDescriptions = '';
+  let mainCharacterDescription = '';
 
   for (let i = 0; i < imageScenes.length; i++) {
     const scene = imageScenes[i];
     const isFirstImage = i === 0;
     const isFirstThreeMinutes = scene.isFirstThreeMinutes;
     
-    const systemPrompt = `Sen ImageFX için görsel prompt uzmanısın.
+    // ===== SADELEŞTIRILMIŞ VE SAHNE ODAKLI SYSTEM PROMPT =====
+    const systemPrompt = `Sen sinematik görsel prompt yazarısın. Verilen sahne için ImageFX'te kullanılacak İNGİLİZCE prompt yaz.
 
-${isFirstThreeMinutes ? 
-  'BU İLK 3 DAKİKA! İzleyicinin dikkatini ÇEKMELİ!' : 
-  'Hikayenin devamı için görsel.'}
+🎯 ANA GÖREV: Sahnenin ANLAMINI ve DUYGUSUNU yansıtan görsel prompt oluştur.
 
-⛔ GOOGLE IMAGEFX KISITLAMALARI (ÇOK ÖNEMLİ!):
-ImageFX "Prominent People Filter" kullanıyor. Şunlar YASAK:
-- ❌ ASLA isim kullanma (Santiago, Carlos, Maria, John vb.)
-- ❌ ASLA spesifik yaş belirtme (35-year-old, 8 yaşındaki vb.)
-- ❌ ASLA "named X" veya "called X" kalıpları
-- ❌ ASLA gerçek kişi referansları
-- ❌ ASLA ünlü/tanınmış kişi benzerlikleri
+📸 TEKNİK KURALLAR:
+- Fotorealistik sinematik fotoğraf stili
+- Kamera açısı, ışık yönü, renk paleti belirt
+- Karakterleri fiziksel özelliklerle tanımla (isim KULLANMA)
+- Sahnenin duygusal atmosferini yansıt
 
-✅ BUNLARI KULLAN:
-- "a man", "a woman", "a child", "a teenager", "an elderly person"
-- "middle-aged", "young adult", "teenager" (yaş yerine)
-- "dark-haired man", "blonde woman" (isim yerine fiziksel özellik)
-
-⚠️ KRİTİK - ASLA EKLEME:
-- ASLA metin, yazı, harf, kelime ekleme
-- ASLA altyazı, subtitle, caption ekleme
-- ASLA filigran, watermark ekleme
-- ASLA logo, marka, işaret ekleme
-
-✅ STİL KURALLARI:
-1. SADECE "photorealistic cinematic photograph" stili
-2. ASLA çizgi film, anime, illüstrasyon, cartoon YAPMA
-3. 4K, ultra detailed, cinematic lighting
-4. Film seti kalitesinde, profesyonel fotoğraf
+⛔ YASAKLAR:
+- İsim kullanma → "the man", "the woman" kullan
+- Yaş belirtme → "middle-aged", "young" kullan  
+- Metin/yazı/logo ekleme
+- Çizgi film/anime stili
 
 ${isFirstImage ? `
-🎭 KARAKTER TANIMLARI (İLK GÖRSEL - İSİMSİZ!):
-- Karakterlerin fiziksel özelliklerini tanımla AMA İSİM KULLANMA
-- "the protagonist", "the main character", "a man with..." şeklinde
-- Saç rengi, göz rengi, ten rengi, yüz özellikleri
-- Kıyafet detayları
-- Bu tanımlar sonraki görsellerde tutarlı kalacak
+🎭 İLK GÖRSEL - Karakter tanımı oluştur:
+Ana karakteri detaylı tanımla: saç rengi/stili, ten rengi, yüz özellikleri, kıyafet.
+Bu tanım sonraki görsellerde kullanılacak.
 ` : `
-🎭 KARAKTER TUTARLILIĞI (İSİMSİZ!):
-${characterDescriptions || 'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan - İSİM KULLANMA'}
+🎭 KARAKTER TUTARLILIĞI:
+${mainCharacterDescription}
 `}
 
-📝 PROMPT KURALLARI:
-1. İngilizce yaz
-2. ${isFirstThreeMinutes ? '150-200 kelime' : '100-150 kelime'}
-3. Prompt MUTLAKA şununla başlamalı: "Photorealistic cinematic photograph, no text, no watermarks,"
-4. Karakterleri İSİMSİZ tanımla: "the man", "the woman", "the child"
-5. Işık, gölge, renk paleti, atmosfer detaylı olsun
-6. Sahne kompozisyonu ve perspektif
-7. Sadece prompt yaz, açıklama ekleme
+Hikaye: ${storyContext.substring(0, 300)}`;
 
-Hikaye Bağlamı: ${storyContext.substring(0, 500)}...`;
+    // ===== SAHNE ODAKLI USER PROMPT =====
+    const userPrompt = `SAHNE ${scene.sceneNumber}:
+
+"${scene.text.substring(0, 800)}"
+
+${scene.visualDescription ? `Görsel ipucu: ${scene.visualDescription.substring(0, 200)}` : ''}
+
+Bu sahne için sinematik fotoğraf prompt'u yaz. Sahnenin:
+- Ana aksiyonu/olayı
+- Karakterlerin duygu durumu
+- Ortam/mekan detayları
+- Işık ve atmosfer
+
+${isFirstImage ? 'Ana karakteri detaylı tanımla.' : 'Karakteri önceki tanımla tutarlı tut.'}
+
+SADECE İngilizce prompt yaz, başka açıklama ekleme.`;
 
     const response = await retryOpenAI(
       () => createChatCompletion({
         model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { 
-            role: 'user', 
-            content: `Sahne ${scene.sceneNumber}${isFirstThreeMinutes ? ' (İLK 3 DAKİKA)' : ''}:
-
-Sahne Metni:
-${scene.text.substring(0, 1000)}
-
-Görsel Betimleme:
-${scene.visualDescription || 'N/A'}
-
-${isFirstImage ? 
-  'Bu İLK GÖRSEL - Karakterlerin fiziksel özelliklerini DETAYLI tanımla AMA İSİM KULLANMA!' :
-  'Önceki görsellerdeki karakterlerle AYNI fiziksel özellikleri kullan - İSİM KULLANMA!'}
-
-⚠️ HATIRLATMA: 
-- ASLA isim kullanma (hikayede isim geçse bile "the man", "the woman" yaz)
-- ASLA yaş belirtme ("35-year-old" yerine "middle-aged" yaz)
-- İsim yerine: "the protagonist", "the main character", "a dark-haired man" vb.
-
-ImageFX için detaylı prompt oluştur. İSİM KULLANMA! Metin/altyazı ekleme!`
-          }
+          { role: 'user', content: userPrompt }
         ],
-        temperature: isFirstThreeMinutes ? 0.6 : 0.5 // Tutarlılık için daha düşük
+        temperature: 0.5
       }),
       `Görsel prompt - Sahne ${scene.sceneNumber}`
     );
 
-    // Prompt'u temizle ve GÜÇLÜ anti-cartoon prefix ekle
-    let cleanPrompt = response.trim();
+    // GPT'den gelen prompt'u temizle
+    let scenePrompt = response.trim();
     
-    // ÇİZGİ FİLM ÖNLEME: Çok güçlü fotorealistik prefix
-    const requiredPrefix = 'Ultra realistic photograph shot with Sony A7R IV camera, 85mm f/1.4 lens, real human skin texture with pores and imperfections, real fabric textures, natural lighting, NOT cartoon, NOT anime, NOT illustration, NOT 3D render, NOT CGI, NOT digital art, NOT painting, no text, no subtitles, no captions, no watermarks, clean image,';
+    // Eğer prompt "Photorealistic" ile başlamıyorsa başına ekle
+    if (!scenePrompt.toLowerCase().startsWith('photorealistic')) {
+      scenePrompt = `Photorealistic cinematic photograph, ${scenePrompt}`;
+    }
     
-    // Her zaman prefix ekle (çizgi film önleme için kritik)
-    cleanPrompt = `${requiredPrefix} ${cleanPrompt}`;
+    // ===== TEK, TEMİZ PREFIX (tekrar yok) =====
+    const technicalPrefix = 'Shot on Sony A7R IV, 85mm f/1.4 lens, natural lighting, film grain, shallow depth of field';
     
-    // Sonuna da GÜÇLÜ stil direktifleri ekle
-    const styleSuffix = '. Shot on RED cinema camera, cinematic color grading, shallow depth of field, film grain, real photography, hyper-realistic, photojournalistic style. --no cartoon, anime, illustration, drawing, sketch, 3D render, CGI, digital art, painting, watercolor, comic, manga, pixar, disney, animated';
-    cleanPrompt += styleSuffix;
+    // ===== TEK, TEMİZ SUFFIX (tekrar yok) =====
+    const styleSuffix = '--style raw --no text, watermark, logo, cartoon, anime, illustration, 3D render, CGI, drawing';
+    
+    // Final prompt: [Technical] + [Scene Content] + [Style]
+    const finalPrompt = `${technicalPrefix}. ${scenePrompt}. ${styleSuffix}`;
 
-    prompts.set(scene.sceneNumber, cleanPrompt);
+    prompts.set(scene.sceneNumber, finalPrompt);
     
-    // İlk görsel için karakter tanımlarını kaydet (sonraki görseller için)
+    // İlk görsel için karakter tanımını çıkar ve kaydet
     if (isFirstImage) {
-      characterDescriptions = cleanPrompt.substring(0, 500); // İlk 500 karakter karakter tanımı olarak kullanılır
+      // GPT'nin oluşturduğu karakter tanımını bul
+      const characterMatch = scenePrompt.match(/(?:man|woman|person|character)[^.]*(?:with|wearing|has)[^.]+/i);
+      mainCharacterDescription = characterMatch 
+        ? `Ana karakter: ${characterMatch[0]}` 
+        : `Önceki görseldeki karakterle aynı özellikleri kullan`;
     }
     
     logger.debug(`Görsel prompt oluşturuldu - Sahne ${scene.sceneNumber}`, {
-      promptLength: cleanPrompt.length,
-      isFirstThreeMinutes,
-      hasNoTextPrefix: cleanPrompt.includes('no text')
+      promptLength: finalPrompt.length,
+      isFirstThreeMinutes
     });
   }
 
