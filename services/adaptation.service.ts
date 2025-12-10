@@ -79,52 +79,92 @@ async function adaptChunk(
   previousNotes?: string[]  // Önceki chunk'lardaki isim değişiklikleri
 ): Promise<{ adapted: string; notes: string[] }> {
   const originalLength = chunk.length;
-  const MIN_LENGTH_RATIO = 0.80; // Adaptasyon en az orijinalin %80'i olmalı
+  const MIN_LENGTH_RATIO = 0.90; // Adaptasyon en az orijinalin %90'ı olmalı
   const MAX_RETRIES = 3;
+
+  // Metin istatistiklerini hesapla
+  const paragraphCount = chunk.split(/\n\s*\n/).filter(p => p.trim().length > 0).length;
+  const sentenceCount = chunk.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+  const wordCount = chunk.split(/\s+/).filter(w => w.length > 0).length;
 
   // Önceki değişiklikleri formatla
   const previousChanges = previousNotes && previousNotes.length > 0
     ? `\n🔄 ÖNCEKİ DEĞİŞİKLİKLER (AYNI KULLAN!):\n${previousNotes.slice(-20).map(n => `- ${n}`).join('\n')}\n`
     : '';
 
+  let lastAttemptLength = 0;
+  let lastAttemptRatio = 0;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri KISALTMADAN adapte ediyorsun.
+    // Önceki deneme bilgisi (retry için)
+    const retryWarning = attempt > 1 && lastAttemptLength > 0
+      ? `\n🚨 ÖNCEKİ DENEME HATASI:\n- Önceki çıktı: ${lastAttemptLength} karakter (${Math.round(lastAttemptRatio * 100)}%)\n- Bu çok kısa! Bu sefer EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter olmalı!\n- Her cümleyi, her paragrafı, her detayı koru!\n`
+      : '';
+
+    const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri BİREBİR adapte ediyorsun - KISALTMA YOK!
+
+🚨 KRİTİK KURAL: Bu bir ÇEVİRİ DEĞİL, KÜLTÜREL ADAPTASYON. Metin uzunluğu AYNI kalmalı!
 
 ⛔ YASAK - ASLA YAPMA:
-- ❌ ASLA içeriği KISALTMA veya ÖZETLEME
-- ❌ ASLA paragraf, cümle veya kelime ATLAMA
-- ❌ ASLA sahne, olay veya diyalog ÇIKARMA
-- ❌ ASLA "..." ile kısaltma yapma
+- ❌ ASLA içeriği KISALTMA, ÖZETLEME veya KONDENSE ETME
+- ❌ ASLA paragraf, cümle, kelime veya karakter ATLAMA
+- ❌ ASLA sahne, olay, diyalog veya detay ÇIKARMA
+- ❌ ASLA "..." veya "[...]" ile kısaltma yapma
+- ❌ ASLA "özellikle", "özellikle", "kısaca" gibi özetleme ifadeleri kullanma
+- ❌ ASLA birden fazla cümleyi tek cümleye indirgeme
 
-📏 UZUNLUK KONTROLÜ (ÇOK KRİTİK):
-- Orijinal metin: ~${originalLength} karakter
-- Adapte edilmiş metin EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI
-- Eğer çıktı çok kısa ise, YANLIŞ YAPTIN demektir!
+📊 ORİJİNAL METİN İSTATİSTİKLERİ (BUNLARI KORU!):
+- Karakter sayısı: ${originalLength} karakter
+- Kelime sayısı: ~${wordCount} kelime
+- Cümle sayısı: ~${sentenceCount} cümle
+- Paragraf sayısı: ~${paragraphCount} paragraf
+
+📏 UZUNLUK KONTROLÜ (ZORUNLU):
+- Adapte edilmiş metin EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI (%90 minimum)
+- İdeal: ${originalLength} karakter (±%5 tolerans)
+- Eğer çıktı ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakterden az ise, YANLIŞ YAPTIN!
+- Her paragraf, her cümle, her detay korunmalı
 
 🔄 SADECE BU DEĞİŞİKLİKLERİ YAP:
-1. KİŞİ İSİMLERİ → ${targetCountry}'de yaygın isimlerle değiştir
-2. YER İSİMLERİ → ${targetCountry}'deki yerlerle değiştir  
-3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi yerelleştir
+1. KİŞİ İSİMLERİ → ${targetCountry}'de yaygın isimlerle değiştir (örn: "John" → "Juan", "Maria" → "María")
+2. YER İSİMLERİ → ${targetCountry}'deki yerlerle değiştir (örn: "New York" → "Madrid", "London" → "Barcelona")
+3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi, ölçü birimleri yerelleştir
+4. DİL STİLİ → ${targetLanguage} dilinde doğal ve akıcı ifadeler kullan
 
-✅ KORU (DEĞİŞTİRME):
-- Paragraf sayısı AYNI kalmalı
-- Cümle sayısı AYNI kalmalı
-- Hikaye uzunluğu AYNI kalmalı
-${previousChanges}
+✅ KORU (DEĞİŞTİRME - ÇOK ÖNEMLİ):
+- ✅ Paragraf sayısı AYNI kalmalı (~${paragraphCount} paragraf)
+- ✅ Cümle sayısı AYNI kalmalı (~${sentenceCount} cümle)
+- ✅ Kelime sayısı BENZER kalmalı (~${wordCount} kelime)
+- ✅ Karakter sayısı BENZER kalmalı (~${originalLength} karakter)
+- ✅ Her olay, her diyalog, her detay korunmalı
+- ✅ Hikaye akışı ve yapısı AYNI kalmalı
+
+💡 ÖRNEK (DOĞRU):
+Orijinal: "John walked slowly through the garden. He saw beautiful red roses. The sun was setting."
+Adapte: "Juan caminó lentamente por el jardín. Vio hermosas rosas rojas. El sol se estaba poniendo."
+→ Aynı cümle sayısı, benzer uzunluk, sadece isim ve dil değişti
+
+💡 ÖRNEK (YANLIŞ - YAPMA!):
+Orijinal: "John walked slowly through the garden. He saw beautiful red roses. The sun was setting."
+Yanlış: "Juan caminó por el jardín y vio rosas mientras se ponía el sol."
+→ Cümleler birleştirildi, detaylar kayboldu, uzunluk azaldı!
+
+${retryWarning}${previousChanges}
 Hedef: ${targetCountry} / ${targetLanguage}
 Parça: ${chunkIndex + 1}/${totalChunks}
+Deneme: ${attempt}/${MAX_RETRIES}
 
 JSON FORMAT:
-{"adapted": "TAM METİN (kısaltılmamış)", "notes": ["değişiklik1", "değişiklik2"]}`;
+{"adapted": "TAM METİN (kısaltılmamış, ${originalLength} karakter civarı)", "notes": ["değişiklik1", "değişiklik2"]}`;
 
     const response = await retryOpenAI(
       () => createChatCompletion({
         model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `ADAPTE ET (KISALTMADAN!):\n\n${chunk}` }
+          { role: 'user', content: `ADAPTE ET (BİREBİR - KISALTMA YOK!):\n\n${chunk}` }
         ],
-        temperature: 0.4,
+        temperature: 0.2, // Daha düşük temperature = daha tutarlı, daha az yaratıcılık
         responseFormat: 'json_object'
       }),
       `Chunk ${chunkIndex + 1}/${totalChunks} adaptasyonu (Deneme ${attempt})`
@@ -150,22 +190,35 @@ JSON FORMAT:
       }
 
       // Adaptasyon çok kısa - tekrar dene
+      const loss = originalLength - adaptedLength;
+      const lossPercentage = Math.round((1 - ratio) * 100);
+      
+      // Önceki deneme sonuçlarını kaydet (retry için)
+      lastAttemptLength = adaptedLength;
+      lastAttemptRatio = ratio;
+      
       logger.warn(`⚠️ Adaptasyon çok kısa! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
         chunkIndex: chunkIndex + 1,
         originalLength,
         adaptedLength,
         ratio: Math.round(ratio * 100) + '%',
-        minRequired: Math.round(originalLength * MIN_LENGTH_RATIO)
+        minRequired: Math.round(originalLength * MIN_LENGTH_RATIO),
+        loss,
+        lossPercentage: lossPercentage + '%'
       });
 
+      // Son denemede bile kısa ise, orijinal chunk'ı kullan (kısaltmaktansa)
       if (attempt === MAX_RETRIES) {
-        logger.error(`❌ Adaptasyon ${MAX_RETRIES} denemede de kısa kaldı!`, {
+        logger.error(`❌ Adaptasyon ${MAX_RETRIES} denemede de kısa kaldı! Orijinal chunk kullanılıyor.`, {
           chunkIndex: chunkIndex + 1,
-          ratio: Math.round(ratio * 100) + '%'
+          ratio: Math.round(ratio * 100) + '%',
+          loss,
+          lossPercentage: lossPercentage + '%'
         });
+        // Orijinal chunk'ı kullan (kısaltmaktansa hiç adaptasyon yapmamak daha iyi)
         return {
-          adapted: adaptedText,
-          notes: parsed.notes || []
+          adapted: chunk,
+          notes: []
         };
       }
 
@@ -258,15 +311,30 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
 
     // 5. Uzunluk kontrolü - hikaye kısaltılmış olabilir mi?
     const lengthRatio = adaptedContent.length / content.length;
-    if (lengthRatio < 0.7) {
-      logger.warn('⚠️ UYARI: Adaptasyon orijinalden çok kısa! Hikaye kısaltılmış olabilir.', {
+    if (lengthRatio < 0.85) {
+      logger.error('❌ HATA: Adaptasyon orijinalden çok kısa! Hikaye kısaltılmış olabilir.', {
         originalLength: content.length,
         adaptedLength: adaptedContent.length,
         ratio: Math.round(lengthRatio * 100) + '%',
-        expectedMinLength: Math.round(content.length * 0.7)
+        expectedMinLength: Math.round(content.length * 0.85),
+        loss: content.length - adaptedContent.length,
+        lossPercentage: Math.round((1 - lengthRatio) * 100) + '%'
       });
-    } else if (lengthRatio > 1.5) {
+    } else if (lengthRatio < 0.90) {
+      logger.warn('⚠️ UYARI: Adaptasyon orijinalden biraz kısa.', {
+        originalLength: content.length,
+        adaptedLength: adaptedContent.length,
+        ratio: Math.round(lengthRatio * 100) + '%',
+        expectedMinLength: Math.round(content.length * 0.90)
+      });
+    } else if (lengthRatio > 1.3) {
       logger.warn('⚠️ UYARI: Adaptasyon orijinalden çok uzun!', {
+        originalLength: content.length,
+        adaptedLength: adaptedContent.length,
+        ratio: Math.round(lengthRatio * 100) + '%'
+      });
+    } else {
+      logger.info('✅ Adaptasyon uzunluğu uygun', {
         originalLength: content.length,
         adaptedLength: adaptedContent.length,
         ratio: Math.round(lengthRatio * 100) + '%'
