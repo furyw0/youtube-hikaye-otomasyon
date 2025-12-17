@@ -25,7 +25,7 @@ export async function GET() {
 
     // Kullanıcının ayarlarını getir (API key'leri dahil et ama maskele)
     let settings = await Settings.findOne({ userId: session.user.id })
-      .select('+openaiApiKey +elevenlabsApiKey +imagefxCookie');
+      .select('+openaiApiKey +claudeApiKey +elevenlabsApiKey +imagefxCookie');
 
     // Eğer ayar yoksa varsayılan oluştur
     if (!settings) {
@@ -36,6 +36,8 @@ export async function GET() {
     // API key'leri maskele
     const maskedSettings = {
       _id: settings._id,
+      // LLM Sağlayıcı
+      llmProvider: settings.llmProvider || 'openai',
       // TTS Sağlayıcı
       ttsProvider: settings.ttsProvider || 'elevenlabs',
       // Coqui TTS Ayarları
@@ -44,6 +46,7 @@ export async function GET() {
       coquiSelectedVoiceId: settings.coquiSelectedVoiceId || '',
       // Varsayılan ayarlar
       defaultOpenaiModel: settings.defaultOpenaiModel,
+      defaultClaudeModel: settings.defaultClaudeModel || 'claude-sonnet-4-20250514',
       defaultElevenlabsModel: settings.defaultElevenlabsModel,
       defaultVoiceId: settings.defaultVoiceId,
       defaultVoiceName: settings.defaultVoiceName,
@@ -53,11 +56,15 @@ export async function GET() {
       maxConcurrentProcessing: settings.maxConcurrentProcessing,
       // API key'leri maskele (sadece var/yok bilgisi)
       hasOpenaiApiKey: !!settings.openaiApiKey,
+      hasClaudeApiKey: !!settings.claudeApiKey,
       hasElevenlabsApiKey: !!settings.elevenlabsApiKey,
       hasImagefxCookie: !!settings.imagefxCookie,
       // Maskelenmiş değerler (son 4 karakter)
       openaiApiKeyMasked: settings.openaiApiKey 
         ? `sk-...${settings.openaiApiKey.slice(-4)}` 
+        : null,
+      claudeApiKeyMasked: settings.claudeApiKey 
+        ? `sk-ant-...${settings.claudeApiKey.slice(-4)}` 
         : null,
       elevenlabsApiKeyMasked: settings.elevenlabsApiKey 
         ? `...${settings.elevenlabsApiKey.slice(-4)}` 
@@ -109,6 +116,13 @@ export async function PUT(request: NextRequest) {
     // Güncellenecek alanlar
     const updateFields: Record<string, any> = {};
 
+    // LLM Sağlayıcı
+    if (body.llmProvider !== undefined) {
+      if (['openai', 'claude'].includes(body.llmProvider)) {
+        updateFields.llmProvider = body.llmProvider;
+      }
+    }
+
     // TTS Sağlayıcı
     if (body.ttsProvider !== undefined) {
       if (['elevenlabs', 'coqui'].includes(body.ttsProvider)) {
@@ -131,6 +145,9 @@ export async function PUT(request: NextRequest) {
     if (body.openaiApiKey !== undefined) {
       updateFields.openaiApiKey = body.openaiApiKey || undefined;
     }
+    if (body.claudeApiKey !== undefined) {
+      updateFields.claudeApiKey = body.claudeApiKey || undefined;
+    }
     if (body.elevenlabsApiKey !== undefined) {
       updateFields.elevenlabsApiKey = body.elevenlabsApiKey || undefined;
     }
@@ -141,6 +158,9 @@ export async function PUT(request: NextRequest) {
     // Varsayılan ayarlar
     if (body.defaultOpenaiModel) {
       updateFields.defaultOpenaiModel = body.defaultOpenaiModel;
+    }
+    if (body.defaultClaudeModel) {
+      updateFields.defaultClaudeModel = body.defaultClaudeModel;
     }
     if (body.defaultElevenlabsModel) {
       updateFields.defaultElevenlabsModel = body.defaultElevenlabsModel;

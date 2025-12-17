@@ -7,7 +7,12 @@
 import logger from '@/lib/logger';
 import { OpenAIError, SceneValidationError } from '@/lib/errors';
 import { retryOpenAI } from './retry.service';
-import { createChatCompletion, parseJSONResponse, estimateTokens } from './openai.service';
+import { 
+  createCompletion, 
+  parseJSONResponse, 
+  estimateTokens, 
+  type LLMProvider 
+} from './llm-router.service';
 import { IMAGE_SETTINGS } from '@/lib/constants';
 
 interface SceneData {
@@ -25,6 +30,7 @@ interface GenerateScenesOptions {
   originalContent: string;
   adaptedContent: string;
   model: string;
+  provider?: LLMProvider;
 }
 
 interface GenerateScenesResult {
@@ -162,7 +168,8 @@ function redistributeScenes(scenes: SceneData[], targetCount: number): SceneData
 async function generateFirstThreeMinutes(
   content: string,
   language: 'original' | 'adapted',
-  model: string
+  model: string,
+  provider: LLMProvider = 'openai'
 ): Promise<SceneData[]> {
   // İlk 3 dakika için kullanılacak metin (ilk ~15.000 karakter)
   const firstPartContent = content.substring(0, 15000);
@@ -208,13 +215,16 @@ JSON FORMAT:
 }`;
 
   const response = await retryOpenAI(
-    () => createChatCompletion({
+    () => createCompletion({
+      provider,
       model,
+      systemPrompt,
+      cacheableContent: firstPartContent, // Cache için içerik
+      cacheTTL: '1h',
       messages: [
-        { role: 'system', content: systemPrompt },
         { 
           role: 'user', 
-          content: `KISALTMADAN 6 SAHNEYE BÖL (toplam ~${inputCharCount} karakter korunmalı):\n\n${firstPartContent}`
+          content: `KISALTMADAN 6 SAHNEYE BÖL (toplam ~${inputCharCount} karakter korunmalı)`
         }
       ],
       temperature: 0.3, // Daha düşük = daha az yaratıcılık = daha az kısaltma
@@ -320,7 +330,8 @@ async function generateRemainingScenes(
   firstThreeMinutesEndPosition: number,
   language: 'original' | 'adapted',
   model: string,
-  firstThreeScenesCount: number = 6  // İlk 3 dakikada kaç sahne oluşturuldu
+  firstThreeScenesCount: number = 6,  // İlk 3 dakikada kaç sahne oluşturuldu
+  provider: LLMProvider = 'openai'
 ): Promise<SceneData[]> {
   const remainingContent = content.substring(firstThreeMinutesEndPosition);
   
@@ -386,11 +397,14 @@ JSON FORMAT:
 }`;
 
   const response = await retryOpenAI(
-    () => createChatCompletion({
+    () => createCompletion({
+      provider,
       model,
+      systemPrompt,
+      cacheableContent: remainingContent, // Cache için içerik
+      cacheTTL: '1h',
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `KISALTMADAN ${estimatedSceneCount} SAHNEYE BÖL (toplam ${inputCharCount} karakter korunmalı):\n\n${remainingContent}` }
+        { role: 'user', content: `KISALTMADAN ${estimatedSceneCount} SAHNEYE BÖL (toplam ${inputCharCount} karakter korunmalı)` }
       ],
       temperature: 0.3,
       responseFormat: 'json_object'
@@ -467,7 +481,7 @@ JSON FORMAT:
  * YENİ YAKLAŞIM: Adapte metin üzerinden sahne oluştur, orijinali senkronize et
  */
 export async function generateScenes(options: GenerateScenesOptions): Promise<GenerateScenesResult> {
-  const { originalContent, adaptedContent, model } = options;
+  const { originalContent, adaptedContent, model, provider = 'openai' } = options;
 
   logger.info('Sahne oluşturma başlatılıyor (ADAPTE metin bazlı)', {
     model,
@@ -489,7 +503,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
         firstThreeAdapted = await generateFirstThreeMinutes(
           adaptedContent,
           'adapted',
-          model
+          model,
+          provider
         );
         
         // Başarılı - döngüden çık
@@ -530,7 +545,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       firstThreeTextLength,
       'adapted',
       model,
-      firstThreeAdapted.length  // İlk 3 dakikadaki sahne sayısı
+      firstThreeAdapted.length,  // İlk 3 dakikadaki sahne sayısı
+      provider
     );
 
     // 4. Tüm adapte sahneleri birleştir
@@ -681,7 +697,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
 export async function generateVisualPrompts(
   scenes: SceneData[],
   storyContext: string,
-  model: string
+  model: string,
+  provider: LLMProvider = 'openai'
 ): Promise<Map<number, string>> {
   logger.info('Görsel promptları oluşturuluyor', {
     totalScenes: scenes.length,
@@ -745,10 +762,13 @@ ${isFirstImage ? 'Ana karakteri detaylı tanımla.' : 'Karakteri önceki tanıml
 SADECE İngilizce prompt yaz, başka açıklama ekleme.`;
 
     const response = await retryOpenAI(
-      () => createChatCompletion({
+      () => createCompletion({
+        provider,
         model,
+        systemPrompt,
+        cacheableContent: storyContext, // Hikaye context cache'lenir
+        cacheTTL: '1h',
         messages: [
-          { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.5

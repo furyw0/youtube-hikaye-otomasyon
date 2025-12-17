@@ -25,6 +25,29 @@ export const OPENAI_MODELS = [
   }
 ];
 
+export const CLAUDE_MODELS = [
+  { 
+    id: 'claude-sonnet-4-20250514', 
+    name: 'Claude Sonnet 4 (Önerilen)', 
+    description: 'En güçlü model, prompt caching (200K token)'
+  },
+  { 
+    id: 'claude-opus-4-20250514', 
+    name: 'Claude Opus 4', 
+    description: 'En yüksek performans (200K token)'
+  },
+  { 
+    id: 'claude-3-5-sonnet-20241022', 
+    name: 'Claude 3.5 Sonnet', 
+    description: 'Dengeli performans, ekonomik (200K token)'
+  },
+  { 
+    id: 'claude-3-5-haiku-20241022', 
+    name: 'Claude 3.5 Haiku', 
+    description: 'Hızlı ve ekonomik (200K token)'
+  }
+];
+
 export const TARGET_LANGUAGES = [
   { code: 'en', name: '🇬🇧 English (İngilizce)' },
   { code: 'es', name: '🇪🇸 Español (İspanyolca)' },

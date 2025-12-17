@@ -14,10 +14,12 @@ import { detectLanguage } from '@/services/language-detection.service';
 import { translateStory } from '@/services/translation.service';
 import { adaptStory } from '@/services/adaptation.service';
 import { generateScenes, generateVisualPrompts } from '@/services/scene.service';
+import { generateYouTubeMetadata } from '@/services/metadata.service';
 import { generateImage } from '@/services/imagefx.service';
 import { generateSpeech } from '@/services/tts-router.service';
 import { uploadImage, uploadAudio, uploadZip } from '@/services/blob.service';
 import { createZipArchive } from '@/services/zip.service';
+import { getLLMConfig } from '@/services/llm-router.service';
 import Settings from '@/models/Settings';
 
 export const processStory = inngest.createFunction(
@@ -89,10 +91,16 @@ export const processStory = inngest.createFunction(
           originalLanguage: detection.language
         });
 
+        // Settings'den LLM provider bilgisini al
+        const settings = await Settings.findOne({ userId: story.userId });
+        const llmConfig = settings ? getLLMConfig(settings) : { provider: 'openai' as const, model: story.openaiModel };
+
         logger.info('Dil algılandı', {
           storyId,
           detectedLanguage: detection.language,
-          confidence: detection.confidence
+          confidence: detection.confidence,
+          llmProvider: llmConfig.provider,
+          llmModel: llmConfig.model
         });
 
         // Plain object olarak dön (Inngest serialize edebilsin)
@@ -101,10 +109,14 @@ export const processStory = inngest.createFunction(
           userId: story.userId?.toString(),
           originalContent: story.originalContent,
           originalTitle: story.originalTitle,
+          originalYoutubeDescription: story.originalYoutubeDescription,
+          originalCoverText: story.originalCoverText,
           originalLanguage: detection.language,
           targetLanguage: story.targetLanguage,
           targetCountry: story.targetCountry,
           openaiModel: story.openaiModel,
+          llmProvider: llmConfig.provider,
+          llmModel: llmConfig.model,
           // TTS Ayarları
           ttsProvider: story.ttsProvider || 'elevenlabs',
           // ElevenLabs
@@ -133,7 +145,8 @@ export const processStory = inngest.createFunction(
           title: storyData.originalTitle,
           sourceLang: storyData.originalLanguage,
           targetLang: storyData.targetLanguage,
-          model: storyData.openaiModel
+          model: storyData.llmModel,
+          provider: storyData.llmProvider
         });
 
         // UZUNLUK KONTROLÜ - Çeviri orijinalin en az %70'i olmalı
@@ -223,8 +236,57 @@ export const processStory = inngest.createFunction(
 
         return {
           adaptedTitle: result.title,
-          adaptedContent: result.content
+          adaptedContent: result.content,
+          adaptationNotes: result.adaptations
         };
+      });
+
+      // --- 3.5. YOUTUBE METADATA OLUŞTURMA (32%) ---
+      const metadataData = await step.run('generate-metadata', async () => {
+        await dbConnect();
+        await updateProgress(32, 'YouTube metadata oluşturuluyor...');
+        
+        const story = await getStory();
+        
+        // Eğer orijinal YouTube bilgileri yoksa bu adımı atla
+        if (!story.originalYoutubeDescription && !story.originalCoverText) {
+          logger.info('Orijinal YouTube metadata yok, metadata oluşturma atlanıyor', { storyId });
+          return null;
+        }
+        
+        // Settings'den LLM provider/model bilgisini al
+        const settings = await Settings.findOne({ userId: story.userId });
+        if (!settings) {
+          throw new Error('Kullanıcı ayarları bulunamadı');
+        }
+        
+        const { provider, model } = getLLMConfig(settings);
+        
+        const result = await generateYouTubeMetadata({
+          adaptedTitle: adaptationData.adaptedTitle,
+          adaptedContent: adaptationData.adaptedContent,
+          originalDescription: story.originalYoutubeDescription,
+          originalCoverText: story.originalCoverText,
+          targetLanguage: story.targetLanguage,
+          targetCountry: story.targetCountry,
+          model,
+          provider,
+          adaptationNotes: adaptationData.adaptationNotes || []
+        });
+        
+        // Metadata'yı Story'ye kaydet
+        await Story.findByIdAndUpdate(storyId, {
+          adaptedYoutubeDescription: result.youtubeDescription,
+          adaptedCoverText: result.coverText
+        });
+        
+        logger.info('YouTube metadata oluşturuldu', {
+          storyId,
+          descriptionLength: result.youtubeDescription.length,
+          coverTextLength: result.coverText.length
+        });
+        
+        return result;
       });
 
       // --- 4. SAHNE OLUŞTURMA (50%) ---
@@ -235,7 +297,8 @@ export const processStory = inngest.createFunction(
         const result = await generateScenes({
           originalContent: storyData.originalContent,
           adaptedContent: adaptationData.adaptedContent,
-          model: storyData.openaiModel
+          model: storyData.llmModel,
+          provider: storyData.llmProvider
         });
 
         // Sahneleri MongoDB'ye kaydet
@@ -318,7 +381,8 @@ export const processStory = inngest.createFunction(
         const prompts = await generateVisualPrompts(
           scenesData,
           storyContext,
-          storyData.openaiModel
+          storyData.llmModel,
+          storyData.llmProvider
         );
 
         // Promptları sahnelere kaydet

@@ -10,11 +10,13 @@ import { useTranslations } from 'next-intl';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface Settings {
+  llmProvider: 'openai' | 'claude';
   ttsProvider: 'elevenlabs' | 'coqui';
   coquiTunnelUrl: string;
   coquiLanguage: string;
   coquiSelectedVoiceId: string;
   defaultOpenaiModel: string;
+  defaultClaudeModel: string;
   defaultElevenlabsModel: string;
   defaultVoiceId?: string;
   defaultVoiceName?: string;
@@ -23,9 +25,11 @@ interface Settings {
   maxDailyStories: number;
   maxConcurrentProcessing: number;
   hasOpenaiApiKey: boolean;
+  hasClaudeApiKey: boolean;
   hasElevenlabsApiKey: boolean;
   hasImagefxCookie: boolean;
   openaiApiKeyMasked?: string;
+  claudeApiKeyMasked?: string;
   elevenlabsApiKeyMasked?: string;
   imagefxCookieMasked?: string;
 }

@@ -48,6 +48,8 @@ export function StoryForm() {
   const [formData, setFormData] = useState({
     title: '',
     content: '',
+    youtubeDescription: '',
+    coverText: '',
     targetLanguage: 'en',
     targetCountry: 'USA',
     openaiModel: 'gpt-4o-mini',

@@ -10,6 +10,8 @@ export interface IStory {
   originalTitle: string;
   originalContent: string;
   originalLanguage: string;
+  originalYoutubeDescription?: string;
+  originalCoverText?: string;
   
   // Hedef
   targetLanguage: string;
@@ -18,6 +20,8 @@ export interface IStory {
   // Uyarlanmış hikaye
   adaptedTitle?: string;
   adaptedContent?: string;
+  adaptedYoutubeDescription?: string;
+  adaptedCoverText?: string;
   
   // AI Ayarları
   openaiModel: string;
@@ -79,6 +83,8 @@ export interface IStory {
 export interface CreateStoryInput {
   title: string;
   content: string;
+  youtubeDescription?: string;
+  coverText?: string;
   targetLanguage: string;
   targetCountry: string;
   openaiModel: string;

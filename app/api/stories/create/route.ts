@@ -17,6 +17,8 @@ import { IMAGE_SETTINGS } from '@/lib/constants';
 const createStorySchema = z.object({
   title: z.string().min(3).max(200),
   content: z.string().min(1000).max(100000),
+  youtubeDescription: z.string().max(5000).optional(),
+  coverText: z.string().max(100).optional(),
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
   openaiModel: z.string(),
@@ -110,6 +112,8 @@ export async function POST(request: NextRequest) {
       userId, // Kullanıcı ID'si
       originalTitle: validated.title,
       originalContent: validated.content,
+      originalYoutubeDescription: validated.youtubeDescription,
+      originalCoverText: validated.coverText,
       originalLanguage: detection.language,
       targetLanguage: validated.targetLanguage,
       targetCountry: validated.targetCountry,

@@ -7,11 +7,12 @@ import logger from '@/lib/logger';
 import { OpenAIError } from '@/lib/errors';
 import { retryOpenAI } from './retry.service';
 import { 
-  createChatCompletion, 
-  parseJSONResponse, 
-  chunkByTokenLimit, 
-  estimateTokens 
-} from './openai.service';
+  createCompletion,
+  parseJSONResponse,
+  chunkByTokenLimit,
+  estimateTokens,
+  type LLMProvider
+} from './llm-router.service';
 
 interface TranslationOptions {
   content: string;
@@ -19,6 +20,7 @@ interface TranslationOptions {
   sourceLang: string;
   targetLang: string;
   model: string;
+  provider?: LLMProvider;
 }
 
 interface TranslationResult {
@@ -37,7 +39,8 @@ async function translateTitle(
   title: string,
   sourceLang: string,
   targetLang: string,
-  model: string
+  model: string,
+  provider: LLMProvider = 'openai'
 ): Promise<string> {
   const systemPrompt = `Sen profesyonel bir çevirmensin. Hikaye başlıklarını çeviriyorsun.
 
@@ -51,10 +54,11 @@ Kaynak Dil: ${sourceLang}
 Hedef Dil: ${targetLang}`;
 
   const response = await retryOpenAI(
-    () => createChatCompletion({
+    () => createCompletion({
+      provider,
       model,
+      systemPrompt,
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: `Başlık: "${title}"` }
       ],
       temperature: 0.5
@@ -75,7 +79,8 @@ async function translateChunk(
   model: string,
   chunkIndex: number,
   totalChunks: number,
-  previousContext?: string
+  previousContext?: string,
+  provider: LLMProvider = 'openai'
 ): Promise<string> {
   const originalLength = chunk.length;
   const MIN_LENGTH_RATIO = 0.75; // Çeviri en az orijinalin %75'i olmalı
@@ -111,10 +116,11 @@ ${previousContext ? `\n[Bağlam: ...${previousContext}]\n` : ''}
 Parça: ${chunkIndex + 1}/${totalChunks}`;
 
     const response = await retryOpenAI(
-      () => createChatCompletion({
+      () => createCompletion({
+        provider,
         model,
+        systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           { role: 'user', content: `ÇEVİR (KISALTMADAN!):\n\n${chunk}` }
         ],
         temperature: 0.3
@@ -161,20 +167,21 @@ Parça: ${chunkIndex + 1}/${totalChunks}`;
  * Tam hikayeyi çevirir (chunk-based)
  */
 export async function translateStory(options: TranslationOptions): Promise<TranslationResult> {
-  const { content, title, sourceLang, targetLang, model } = options;
+  const { content, title, sourceLang, targetLang, model, provider = 'openai' } = options;
 
   logger.info('Hikaye çevirisi başlatılıyor', {
     sourceLang,
     targetLang,
     model,
+    provider,
     contentLength: content.length,
-    estimatedTokens: estimateTokens(content)
+    estimatedTokens: estimateTokens(content, provider)
   });
 
   try {
     // 1. Başlık çevirisi
     logger.debug('Başlık çevriliyor...');
-    const translatedTitle = await translateTitle(title, sourceLang, targetLang, model);
+    const translatedTitle = await translateTitle(title, sourceLang, targetLang, model, provider);
     
     logger.info('Başlık çevirildi', { 
       original: title, 
@@ -182,7 +189,7 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
     });
 
     // 2. İçeriği chunk'lara böl
-    const chunks = chunkByTokenLimit(content, model, 2000); // 2000 token reserve (çeviri için)
+    const chunks = chunkByTokenLimit(content, model, provider, 2000); // 2000 token reserve (çeviri için)
     
     logger.info("İçerik chunk'lara bölündü", {
       totalChunks: chunks.length,
@@ -198,7 +205,7 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
       
       logger.debug(`Chunk ${i + 1}/${chunks.length} çevriliyor...`, {
         chunkLength: chunk.length,
-        chunkTokens: estimateTokens(chunk)
+        chunkTokens: estimateTokens(chunk, provider)
       });
 
       // Son chunk'ın son 200 karakterini context olarak kullan (tutarlılık için)
@@ -213,11 +220,12 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
         model,
         i,
         chunks.length,
-        previousContext
+        previousContext,
+        provider
       );
 
       translatedChunks.push(translatedChunk);
-      totalTokens += estimateTokens(chunk) + estimateTokens(translatedChunk);
+      totalTokens += estimateTokens(chunk, provider) + estimateTokens(translatedChunk, provider);
 
       logger.debug(`Chunk ${i + 1}/${chunks.length} tamamlandı`);
     }
@@ -280,12 +288,13 @@ export async function translateText(
   text: string,
   sourceLang: string,
   targetLang: string,
-  model: string = 'gpt-4o-mini'
+  model: string = 'gpt-4o-mini',
+  provider: LLMProvider = 'openai'
 ): Promise<string> {
-  if (estimateTokens(text) > 8000) {
+  if (estimateTokens(text, provider) > 8000) {
     throw new OpenAIError('Metin çok uzun, translateStory() kullanın');
   }
 
-  return await translateChunk(text, sourceLang, targetLang, model, 0, 1);
+  return await translateChunk(text, sourceLang, targetLang, model, 0, 1, undefined, provider);
 }
 

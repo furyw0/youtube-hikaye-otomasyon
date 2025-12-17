@@ -6,7 +6,12 @@
 import logger from '@/lib/logger';
 import { OpenAIError } from '@/lib/errors';
 import { retryOpenAI } from './retry.service';
-import { createChatCompletion, chunkByTokenLimit, estimateTokens } from './openai.service';
+import { 
+  createCompletion, 
+  chunkByTokenLimit, 
+  estimateTokens, 
+  type LLMProvider 
+} from './llm-router.service';
 
 interface AdaptationOptions {
   content: string;
@@ -31,7 +36,8 @@ async function adaptTitle(
   title: string,
   targetCountry: string,
   targetLanguage: string,
-  model: string
+  model: string,
+  provider: LLMProvider = 'openai'
 ): Promise<string> {
   const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
 
@@ -57,10 +63,11 @@ Hedef Ülke: ${targetCountry}
 Hedef Dil: ${targetLanguage}`;
 
   const response = await retryOpenAI(
-    () => createChatCompletion({
+    () => createCompletion({
+      provider,
       model,
+      systemPrompt,
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: `Başlık: "${title}"` }
       ],
       temperature: 0.6 // Biraz daha yaratıcı
@@ -81,7 +88,8 @@ async function adaptChunk(
   model: string,
   chunkIndex: number,
   totalChunks: number,
-  previousNotes?: string[]  // Önceki chunk'lardaki isim değişiklikleri
+  previousNotes?: string[],  // Önceki chunk'lardaki isim değişiklikleri
+  provider: LLMProvider = 'openai'
 ): Promise<{ adapted: string; notes: string[] }> {
   const originalLength = chunk.length;
   const MIN_LENGTH_RATIO = 0.90; // Adaptasyon en az orijinalin %90'ı olmalı
@@ -173,10 +181,11 @@ JSON FORMAT:
 {"adapted": "TAM METİN (kısaltılmamış, ${originalLength} karakter civarı)", "notes": ["değişiklik1", "değişiklik2"]}`;
 
     const response = await retryOpenAI(
-      () => createChatCompletion({
+      () => createCompletion({
+        provider,
         model,
+        systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           { role: 'user', content: `ADAPTE ET (BİREBİR - KISALTMA YOK!):\n\n${chunk}` }
         ],
         temperature: 0.2, // Daha düşük temperature = daha tutarlı, daha az yaratıcılık
@@ -261,20 +270,21 @@ JSON FORMAT:
  * Tam hikayeyi adapte eder
  */
 export async function adaptStory(options: AdaptationOptions): Promise<AdaptationResult> {
-  const { content, title, targetCountry, targetLanguage, model } = options;
+  const { content, title, targetCountry, targetLanguage, model, provider = 'openai' } = options;
 
   logger.info('Kültürel adaptasyon başlatılıyor', {
     targetCountry,
     targetLanguage,
     model,
+    provider,
     contentLength: content.length,
-    estimatedTokens: estimateTokens(content)
+    estimatedTokens: estimateTokens(content, provider)
   });
 
   try {
     // 1. Başlık adaptasyonu
     logger.debug('Başlık adapte ediliyor...');
-    const adaptedTitle = await adaptTitle(title, targetCountry, targetLanguage, model);
+    const adaptedTitle = await adaptTitle(title, targetCountry, targetLanguage, model, provider);
     
     logger.info('Başlık adapte edildi', { 
       original: title, 
@@ -282,7 +292,7 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
     });
 
     // 2. İçeriği chunk'lara böl
-    const chunks = chunkByTokenLimit(content, model, 2000);
+    const chunks = chunkByTokenLimit(content, model, provider, 2000);
     
     logger.info("İçerik chunk'lara bölündü", {
       totalChunks: chunks.length,
@@ -309,7 +319,8 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
         model,
         i,
         chunks.length,
-        i > 0 ? allNotes : undefined  // İlk chunk hariç önceki notları geçir
+        i > 0 ? allNotes : undefined,  // İlk chunk hariç önceki notları geçir
+        provider
       );
 
       adaptedChunks.push(result.adapted);
@@ -391,13 +402,14 @@ export async function adaptText(
   text: string,
   targetCountry: string,
   targetLanguage: string,
-  model: string = 'gpt-4o-mini'
+  model: string = 'gpt-4o-mini',
+  provider: LLMProvider = 'openai'
 ): Promise<string> {
-  if (estimateTokens(text) > 8000) {
+  if (estimateTokens(text, provider) > 8000) {
     throw new OpenAIError('Metin çok uzun, adaptStory() kullanın');
   }
 
-  const result = await adaptChunk(text, targetCountry, targetLanguage, model, 0, 1, undefined);
+  const result = await adaptChunk(text, targetCountry, targetLanguage, model, 0, 1, undefined, provider);
   return result.adapted;
 }
 

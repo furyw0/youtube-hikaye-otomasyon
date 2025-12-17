@@ -26,6 +26,12 @@ const StorySchema = new Schema<IStory>(
       required: true,
       default: 'unknown'
     },
+    originalYoutubeDescription: {
+      type: String
+    },
+    originalCoverText: {
+      type: String
+    },
     
     // Hedef
     targetLanguage: {
@@ -42,6 +48,12 @@ const StorySchema = new Schema<IStory>(
       type: String
     },
     adaptedContent: {
+      type: String
+    },
+    adaptedYoutubeDescription: {
+      type: String
+    },
+    adaptedCoverText: {
       type: String
     },
     

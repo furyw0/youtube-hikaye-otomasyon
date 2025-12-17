@@ -1,6 +1,7 @@
 import mongoose, { Schema, Model, Types } from 'mongoose';
 
 export type TTSProvider = 'elevenlabs' | 'coqui';
+export type LLMProvider = 'openai' | 'claude';
 
 export interface ISettings {
   _id: Types.ObjectId;
@@ -8,8 +9,12 @@ export interface ISettings {
   
   // API Keys (şifrelenmiş saklanır)
   openaiApiKey?: string;
+  claudeApiKey?: string;
   elevenlabsApiKey?: string;
   imagefxCookie?: string; // Google Cookie for ImageFX
+  
+  // LLM Sağlayıcı Ayarları
+  llmProvider: LLMProvider;
   
   // TTS Sağlayıcı Ayarları
   ttsProvider: TTSProvider;
@@ -21,6 +26,7 @@ export interface ISettings {
   
   // Varsayılan ayarlar
   defaultOpenaiModel: string;
+  defaultClaudeModel: string;
   defaultElevenlabsModel: string;
   defaultVoiceId?: string;
   defaultVoiceName?: string;
@@ -51,6 +57,10 @@ const SettingsSchema = new Schema<ISettings>(
       type: String,
       select: false // Güvenlik için varsayılan olarak getirme
     },
+    claudeApiKey: {
+      type: String,
+      select: false
+    },
     elevenlabsApiKey: {
       type: String,
       select: false
@@ -58,6 +68,13 @@ const SettingsSchema = new Schema<ISettings>(
     imagefxCookie: {
       type: String,
       select: false
+    },
+    
+    // LLM Sağlayıcı
+    llmProvider: {
+      type: String,
+      enum: ['openai', 'claude'],
+      default: 'openai'
     },
     
     // TTS Sağlayıcı
@@ -83,6 +100,10 @@ const SettingsSchema = new Schema<ISettings>(
     defaultOpenaiModel: {
       type: String,
       default: 'gpt-4o-mini'
+    },
+    defaultClaudeModel: {
+      type: String,
+      default: 'claude-sonnet-4-20250514'
     },
     defaultElevenlabsModel: {
       type: String,
