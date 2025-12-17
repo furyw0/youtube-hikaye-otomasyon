@@ -40,7 +40,8 @@ export function StoryForm() {
   const tCommon = useTranslations('common');
   const router = useRouter();
 
-  // TTS Provider state
+  // Providers state
+  const [llmProvider, setLlmProvider] = useState<'openai' | 'claude'>('openai');
   const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'coqui'>('elevenlabs');
   const [coquiTunnelUrl, setCoquiTunnelUrl] = useState('');
 
@@ -52,7 +53,9 @@ export function StoryForm() {
     coverText: '',
     targetLanguage: 'en',
     targetCountry: 'USA',
+    // LLM
     openaiModel: 'gpt-4o-mini',
+    claudeModel: 'claude-sonnet-4-20250514',
     // ElevenLabs
     elevenlabsModel: 'eleven_flash_v2_5',
     voiceId: '',
@@ -90,6 +93,9 @@ export function StoryForm() {
         if (data.success && data.settings) {
           const settings = data.settings;
           
+          // LLM Provider ayarla
+          setLlmProvider(settings.llmProvider || 'openai');
+          
           // TTS Provider ayarla
           setTtsProvider(settings.ttsProvider || 'elevenlabs');
           setCoquiTunnelUrl(settings.coquiTunnelUrl || '');
@@ -97,6 +103,7 @@ export function StoryForm() {
           setFormData(prev => ({
             ...prev,
             openaiModel: settings.defaultOpenaiModel || prev.openaiModel,
+            claudeModel: settings.defaultClaudeModel || prev.claudeModel,
             elevenlabsModel: settings.defaultElevenlabsModel || prev.elevenlabsModel,
             imagefxModel: settings.defaultImagefxModel || prev.imagefxModel,
             imagefxAspectRatio: settings.defaultImagefxAspectRatio || prev.imagefxAspectRatio,
@@ -230,13 +237,14 @@ export function StoryForm() {
     }
   }, [ttsProvider, coquiTunnelUrl, loadingSettings]);
 
-  // Load OpenAI models
+  // Load LLM models (OpenAI or Claude based on provider)
   useEffect(() => {
     async function fetchModels() {
       try {
-        const response = await fetch('/api/openai/models');
+        const endpoint = llmProvider === 'claude' ? '/api/claude/models' : '/api/openai/models';
+        const response = await fetch(endpoint);
         const data = await response.json();
-        
+
         if (data.success) {
           setModels(data.models);
         }
@@ -248,7 +256,7 @@ export function StoryForm() {
     }
 
     fetchModels();
-  }, []);
+  }, [llmProvider]); // Provider değiştiğinde modelleri yeniden yükle
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,9 +265,13 @@ export function StoryForm() {
     setErrorDetails(null);
 
     try {
-      // TTS Provider bilgisini ekle
+      // Kullanılan model'i belirle (LLM provider'a göre)
+      const selectedModel = llmProvider === 'claude' ? formData.claudeModel : formData.openaiModel;
+      
+      // Provider bilgilerini ekle
       const submitData = {
         ...formData,
+        openaiModel: selectedModel, // Backend hala openaiModel field'ını kullanıyor, ikisi için de buraya yazıyoruz
         ttsProvider,
         coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined
       };
@@ -473,17 +485,20 @@ export function StoryForm() {
         </div>
       </div>
 
-      {/* OpenAI Model */}
+      {/* LLM Model Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          {t('fields.openaiModel')}
+          {llmProvider === 'claude' ? 'Claude Modeli' : 'OpenAI Modeli'}
         </label>
         {loadingModels ? (
           <div className="text-sm text-gray-500">{tCommon('loading')}</div>
         ) : (
           <select
-            value={formData.openaiModel}
-            onChange={(e) => setFormData({ ...formData, openaiModel: e.target.value })}
+            value={llmProvider === 'claude' ? formData.claudeModel : formData.openaiModel}
+            onChange={(e) => setFormData({ 
+              ...formData, 
+              [llmProvider === 'claude' ? 'claudeModel' : 'openaiModel']: e.target.value 
+            })}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
             required
           >
@@ -494,6 +509,11 @@ export function StoryForm() {
             ))}
           </select>
         )}
+        <p className="text-xs text-gray-500 mt-1">
+          {llmProvider === 'claude' 
+            ? '✨ Prompt Caching ile %90 maliyet tasarrufu' 
+            : 'Çeviri, adaptasyon ve sahne oluşturma için kullanılacak'}
+        </p>
       </div>
 
       {/* TTS Settings - Conditional based on provider */}

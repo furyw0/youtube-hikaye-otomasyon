@@ -1319,21 +1319,42 @@ function SettingsContent() {
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* OpenAI Model */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('defaultModel')}
-                </label>
-                <select
-                  value={formData.defaultOpenaiModel}
-                  onChange={(e) => setFormData({ ...formData, defaultOpenaiModel: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
-                >
-                  <option value="gpt-4o-mini">GPT-4o Mini (Önerilen)</option>
-                  <option value="gpt-4o">GPT-4o</option>
-                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                </select>
-              </div>
+              {/* LLM Model - OpenAI */}
+              {formData.llmProvider === 'openai' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Varsayılan Model (OpenAI)
+                  </label>
+                  <select
+                    value={formData.defaultOpenaiModel}
+                    onChange={(e) => setFormData({ ...formData, defaultOpenaiModel: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="gpt-4o-mini">GPT-4o Mini (Önerilen)</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                  </select>
+                </div>
+              )}
+
+              {/* LLM Model - Claude */}
+              {formData.llmProvider === 'claude' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Varsayılan Model (Claude)
+                  </label>
+                  <select
+                    value={formData.defaultClaudeModel}
+                    onChange={(e) => setFormData({ ...formData, defaultClaudeModel: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Önerilen)</option>
+                    <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                    <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+                  </select>
+                </div>
+              )}
 
               {/* ElevenLabs Model (only when ElevenLabs selected) */}
               {formData.ttsProvider === 'elevenlabs' && (
