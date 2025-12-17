@@ -19,6 +19,7 @@ interface AdaptationOptions {
   targetCountry: string;
   targetLanguage: string;
   model: string;
+  provider?: LLMProvider;
 }
 
 interface AdaptationResult {
