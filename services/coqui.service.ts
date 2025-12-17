@@ -293,29 +293,242 @@ function estimateAudioDuration(buffer: Buffer, text: string): number {
 }
 
 /**
- * Metni cümle bazında parçalara ayır (chunking)
- * Coqui TTS uzun metinlerde sorun çıkarabiliyor
+ * Chunk ayarları - adaptif boyutlandırma
  */
-function splitTextIntoChunks(text: string, maxChunkLength: number = 500): string[] {
-  // Cümle sonu işaretlerine göre böl
-  const sentences = text.split(/(?<=[.!?।。？！])\s+/);
-  const chunks: string[] = [];
-  let currentChunk = '';
+interface ChunkOptions {
+  minLength: number;      // Minimum chunk boyutu
+  targetLength: number;   // Hedef chunk boyutu
+  maxLength: number;      // Maksimum chunk boyutu
+}
 
-  for (const sentence of sentences) {
-    if (currentChunk.length + sentence.length > maxChunkLength && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = sentence;
-    } else {
-      currentChunk += (currentChunk ? ' ' : '') + sentence;
+const DEFAULT_CHUNK_OPTIONS: ChunkOptions = {
+  minLength: 150,   // Çok kısa parçaları önle (sessizlik sorunu)
+  targetLength: 400, // İdeal boyut
+  maxLength: 600    // Coqui için güvenli üst limit
+};
+
+/**
+ * Yaygın kısaltmaları korumak için placeholder ile değiştir
+ * Bu sayede kısaltmalardaki nokta cümle sonu olarak algılanmaz
+ */
+const ABBREVIATIONS: Array<{ pattern: RegExp; placeholder: string; original: string }> = [
+  { pattern: /Dr\./gi, placeholder: '§DR§', original: 'Dr.' },
+  { pattern: /Prof\./gi, placeholder: '§PROF§', original: 'Prof.' },
+  { pattern: /Mr\./gi, placeholder: '§MR§', original: 'Mr.' },
+  { pattern: /Mrs\./gi, placeholder: '§MRS§', original: 'Mrs.' },
+  { pattern: /Ms\./gi, placeholder: '§MS§', original: 'Ms.' },
+  { pattern: /Jr\./gi, placeholder: '§JR§', original: 'Jr.' },
+  { pattern: /Sr\./gi, placeholder: '§SR§', original: 'Sr.' },
+  { pattern: /vs\./gi, placeholder: '§VS§', original: 'vs.' },
+  { pattern: /vb\./gi, placeholder: '§VB§', original: 'vb.' },
+  { pattern: /örn\./gi, placeholder: '§ORN§', original: 'örn.' },
+  { pattern: /yy\./gi, placeholder: '§YY§', original: 'yy.' },
+  { pattern: /no\./gi, placeholder: '§NO§', original: 'no.' },
+  { pattern: /St\./gi, placeholder: '§ST§', original: 'St.' },
+  { pattern: /Ave\./gi, placeholder: '§AVE§', original: 'Ave.' },
+  { pattern: /Ltd\./gi, placeholder: '§LTD§', original: 'Ltd.' },
+  { pattern: /Inc\./gi, placeholder: '§INC§', original: 'Inc.' },
+  { pattern: /etc\./gi, placeholder: '§ETC§', original: 'etc.' },
+];
+
+/**
+ * Kısaltmaları placeholder ile değiştir
+ */
+function protectAbbreviations(text: string): string {
+  let result = text;
+  for (const abbr of ABBREVIATIONS) {
+    result = result.replace(abbr.pattern, abbr.placeholder);
+  }
+  return result;
+}
+
+/**
+ * Placeholder'ları orijinal kısaltmalarla değiştir
+ */
+function restoreAbbreviations(text: string): string {
+  let result = text;
+  for (const abbr of ABBREVIATIONS) {
+    result = result.replace(new RegExp(abbr.placeholder, 'g'), abbr.original);
+  }
+  return result;
+}
+
+/**
+ * Metni öncelik sırasına göre bölme noktalarından ayır
+ * Öncelik: Paragraf > Satır sonu > Cümle sonu > Noktalı virgül > Virgül
+ */
+function findBestSplitPoint(text: string, maxLength: number): number {
+  if (text.length <= maxLength) return text.length;
+  
+  const searchRange = text.substring(0, maxLength);
+  
+  // 1. Öncelik: Paragraf sonu (\n\n)
+  const paragraphEnd = searchRange.lastIndexOf('\n\n');
+  if (paragraphEnd > maxLength * 0.3) {
+    return paragraphEnd + 2; // \n\n dahil
+  }
+  
+  // 2. Öncelik: Satır sonu (\n)
+  const lineEnd = searchRange.lastIndexOf('\n');
+  if (lineEnd > maxLength * 0.3) {
+    return lineEnd + 1;
+  }
+  
+  // 3. Öncelik: Cümle sonu (.!?)
+  // Son cümle sonunu bul (lookbehind olmadan)
+  let lastSentenceEnd = -1;
+  for (let i = searchRange.length - 1; i >= Math.floor(maxLength * 0.3); i--) {
+    const char = searchRange[i];
+    if (char === '.' || char === '!' || char === '?' || char === '।' || char === '。' || char === '？' || char === '！') {
+      // Kısaltma placeholder'ı değilse
+      if (searchRange[i + 1] === ' ' || searchRange[i + 1] === '\n' || i === searchRange.length - 1) {
+        lastSentenceEnd = i;
+        break;
+      }
     }
   }
-
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
+  if (lastSentenceEnd > maxLength * 0.3) {
+    return lastSentenceEnd + 1;
   }
+  
+  // 4. Öncelik: Noktalı virgül veya iki nokta (;:)
+  let lastSemicolon = -1;
+  for (let i = searchRange.length - 1; i >= Math.floor(maxLength * 0.4); i--) {
+    const char = searchRange[i];
+    if (char === ';' || char === ':') {
+      lastSemicolon = i;
+      break;
+    }
+  }
+  if (lastSemicolon > maxLength * 0.4) {
+    return lastSemicolon + 1;
+  }
+  
+  // 5. Öncelik: Virgül (son çare)
+  const lastComma = searchRange.lastIndexOf(',');
+  if (lastComma > maxLength * 0.5) {
+    return lastComma + 1;
+  }
+  
+  // 6. Son çare: Boşluk
+  const lastSpace = searchRange.lastIndexOf(' ');
+  if (lastSpace > maxLength * 0.6) {
+    return lastSpace + 1;
+  }
+  
+  // Hiçbir bölme noktası bulunamadı, maxLength'te kes
+  return maxLength;
+}
 
-  return chunks.length > 0 ? chunks : [text];
+/**
+ * Çok kısa chunk'ları bir sonraki chunk ile birleştir
+ */
+function mergeShortChunks(chunks: string[], minLength: number): string[] {
+  if (chunks.length <= 1) return chunks;
+  
+  const merged: string[] = [];
+  let pendingChunk = '';
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    
+    if (pendingChunk) {
+      // Önceki kısa chunk'ı bu chunk ile birleştir
+      pendingChunk = pendingChunk + ' ' + chunk;
+      
+      if (pendingChunk.length >= minLength || i === chunks.length - 1) {
+        merged.push(pendingChunk.trim());
+        pendingChunk = '';
+      }
+    } else if (chunk.length < minLength && i < chunks.length - 1) {
+      // Bu chunk çok kısa, bir sonraki ile birleştir
+      pendingChunk = chunk;
+    } else {
+      merged.push(chunk.trim());
+    }
+  }
+  
+  // Kalan pending chunk varsa ekle
+  if (pendingChunk) {
+    if (merged.length > 0) {
+      // Son chunk ile birleştir
+      merged[merged.length - 1] = merged[merged.length - 1] + ' ' + pendingChunk;
+    } else {
+      merged.push(pendingChunk.trim());
+    }
+  }
+  
+  return merged.filter(c => c.length > 0);
+}
+
+/**
+ * Metni akıllı şekilde parçalara ayır (gelişmiş chunking)
+ * - Paragraf yapısını korur
+ * - Cümle bütünlüğünü korur
+ * - Kısaltmaları korur
+ * - Çok kısa parçaları birleştirir (sessizlik sorununu önler)
+ */
+function splitTextIntoChunks(text: string, options: Partial<ChunkOptions> = {}): string[] {
+  const opts = { ...DEFAULT_CHUNK_OPTIONS, ...options };
+  
+  // Boş veya çok kısa metin
+  if (!text || text.trim().length === 0) {
+    return [];
+  }
+  
+  if (text.length <= opts.maxLength) {
+    return [text.trim()];
+  }
+  
+  // Kısaltmaları koru
+  let processedText = protectAbbreviations(text);
+  
+  const chunks: string[] = [];
+  let remaining = processedText;
+  
+  while (remaining.length > 0) {
+    if (remaining.length <= opts.maxLength) {
+      // Kalan metin max uzunluktan kısa, direkt ekle
+      chunks.push(remaining.trim());
+      break;
+    }
+    
+    // En iyi bölme noktasını bul
+    const splitPoint = findBestSplitPoint(remaining, opts.maxLength);
+    
+    const chunk = remaining.substring(0, splitPoint).trim();
+    remaining = remaining.substring(splitPoint).trim();
+    
+    if (chunk.length > 0) {
+      chunks.push(chunk);
+    }
+    
+    // Sonsuz döngü koruması
+    if (splitPoint === 0) {
+      logger.warn('Metin bölme sonsuz döngü riski, kalan metin ekleniyor', {
+        remainingLength: remaining.length
+      });
+      if (remaining.length > 0) {
+        chunks.push(remaining.trim());
+      }
+      break;
+    }
+  }
+  
+  // Kısaltmaları geri yükle
+  const restoredChunks = chunks.map(chunk => restoreAbbreviations(chunk));
+  
+  // Çok kısa chunk'ları birleştir
+  const mergedChunks = mergeShortChunks(restoredChunks, opts.minLength);
+  
+  logger.debug('Metin chunklara ayrıldı', {
+    originalLength: text.length,
+    chunkCount: mergedChunks.length,
+    chunkLengths: mergedChunks.map(c => c.length),
+    options: opts
+  });
+  
+  return mergedChunks.length > 0 ? mergedChunks : [text.trim()];
 }
 
 /**
@@ -363,9 +576,43 @@ async function generateSingleChunk(
 }
 
 /**
- * WAV buffer'ları birleştir (basit concatenation)
+ * WAV header'dan sample rate ve diğer bilgileri oku
  */
-function concatenateWavBuffers(buffers: Buffer[]): Buffer {
+function parseWavHeader(buffer: Buffer): { sampleRate: number; bitsPerSample: number; numChannels: number } {
+  return {
+    numChannels: buffer.readUInt16LE(22),
+    sampleRate: buffer.readUInt32LE(24),
+    bitsPerSample: buffer.readUInt16LE(34)
+  };
+}
+
+/**
+ * Belirli sürede sessizlik buffer'ı oluştur
+ * @param durationMs Sessizlik süresi (milisaniye)
+ * @param sampleRate Sample rate (Hz)
+ * @param bitsPerSample Bit derinliği
+ * @param numChannels Kanal sayısı
+ */
+function createSilenceBuffer(
+  durationMs: number, 
+  sampleRate: number = 24000, 
+  bitsPerSample: number = 16, 
+  numChannels: number = 1
+): Buffer {
+  const bytesPerSample = bitsPerSample / 8;
+  const numSamples = Math.floor((durationMs / 1000) * sampleRate);
+  const dataSize = numSamples * bytesPerSample * numChannels;
+  
+  // Sessizlik = sıfır değerli samples
+  return Buffer.alloc(dataSize, 0);
+}
+
+/**
+ * WAV buffer'ları birleştir (gelişmiş - sessizlik ekleme destekli)
+ * @param buffers Birleştirilecek WAV buffer'ları
+ * @param silenceMs Parçalar arası eklenecek sessizlik süresi (milisaniye)
+ */
+function concatenateWavBuffers(buffers: Buffer[], silenceMs: number = 50): Buffer {
   if (buffers.length === 0) throw new Error('Birleştirilecek buffer yok');
   if (buffers.length === 1) return buffers[0];
 
@@ -373,10 +620,26 @@ function concatenateWavBuffers(buffers: Buffer[]): Buffer {
   const headerSize = 44;
   const header = buffers[0].slice(0, headerSize);
   
-  // Tüm data'ları birleştir (header hariç)
-  const dataParts = buffers.map((buf, i) => 
-    i === 0 ? buf.slice(headerSize) : buf.slice(headerSize)
-  );
+  // WAV bilgilerini oku
+  const wavInfo = parseWavHeader(buffers[0]);
+  
+  // Parçalar arası sessizlik buffer'ı oluştur
+  const silenceBuffer = silenceMs > 0 
+    ? createSilenceBuffer(silenceMs, wavInfo.sampleRate, wavInfo.bitsPerSample, wavInfo.numChannels)
+    : Buffer.alloc(0);
+  
+  // Tüm data'ları topla (header hariç, aralarına sessizlik ekle)
+  const dataParts: Buffer[] = [];
+  
+  for (let i = 0; i < buffers.length; i++) {
+    // Buffer'ın data kısmını ekle
+    dataParts.push(buffers[i].slice(headerSize));
+    
+    // Son buffer değilse araya sessizlik ekle
+    if (i < buffers.length - 1 && silenceBuffer.length > 0) {
+      dataParts.push(silenceBuffer);
+    }
+  }
   
   const totalDataSize = dataParts.reduce((sum, part) => sum + part.length, 0);
   const result = Buffer.alloc(headerSize + totalDataSize);
@@ -395,21 +658,25 @@ function concatenateWavBuffers(buffers: Buffer[]): Buffer {
     offset += part.length;
   }
   
+  logger.debug('WAV buffer\'ları birleştirildi', {
+    bufferCount: buffers.length,
+    silenceMs,
+    totalDataSize,
+    resultSize: result.length
+  });
+  
   return result;
 }
 
 /**
- * Coqui TTS ile ses üret (chunking destekli)
+ * Coqui TTS ile ses üret (gelişmiş chunking destekli)
  */
 export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise<GeneratedCoquiAudio> {
   const { text, tunnelUrl, language, voiceId } = options;
   const url = normalizeUrl(tunnelUrl);
   
-  // Metin çok uzunsa chunk'lara ayır
-  const MAX_CHUNK_LENGTH = 500; // ~500 karakter, Coqui için güvenli
-  const chunks = text.length > MAX_CHUNK_LENGTH 
-    ? splitTextIntoChunks(text, MAX_CHUNK_LENGTH)
-    : [text];
+  // Metin çok uzunsa akıllı chunk'lara ayır
+  const chunks = splitTextIntoChunks(text, DEFAULT_CHUNK_OPTIONS);
   
   logger.info('Coqui TTS ses üretimi başlatılıyor', {
     textLength: text.length,
@@ -438,9 +705,9 @@ export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise
       });
     }
     
-    // Chunk'ları birleştir
+    // Chunk'ları birleştir (parçalar arası 50ms sessizlik ekle)
     const audioBuffer = chunks.length > 1 
-      ? concatenateWavBuffers(audioBuffers)
+      ? concatenateWavBuffers(audioBuffers, 50)
       : audioBuffers[0];
     
     const duration = estimateAudioDuration(audioBuffer, text);

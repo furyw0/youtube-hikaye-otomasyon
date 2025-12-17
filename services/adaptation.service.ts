@@ -44,6 +44,11 @@ KURALLAR:
 6. Çekici ve merak uyandırıcı olsun
 7. Sadece adapte edilmiş başlığı döndür
 
+🎙️ SESLENDİRME UYGUNLUĞU:
+- Kısaltmaları aç (Dr. → Doktor)
+- Sayıları yazıyla yaz (3 → üç)
+- Özel karakterleri kullanma
+
 Örnekler:
 - "John's Secret Garden" → "El Jardín Secreto de Juan" (İspanya)
 - "A Night in Paris" → "Madridde Bir Gece" (İspanya/Türkçe)
@@ -130,6 +135,16 @@ async function adaptChunk(
 2. YER İSİMLERİ → ${targetCountry}'deki yerlerle değiştir (örn: "New York" → "Madrid", "London" → "Barcelona")
 3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi, ölçü birimleri yerelleştir
 4. DİL STİLİ → ${targetLanguage} dilinde doğal ve akıcı ifadeler kullan
+
+🎙️ SESLENDİRME UYGUNLUĞU (TTS İÇİN ÖNEMLİ):
+1. KISALTMALARI AÇ: "Dr." → "Doktor", "Prof." → "Profesör", "vb." → "ve benzeri", "vs." → "vesaire", "örn." → "örneğin"
+2. SAYILARI YAZIYLA YAZ: "3" → "üç", "1990" → "bin dokuz yüz doksan", "15:30" → "on beş otuz"
+3. PARANTEZLERİ KALDIR: Parantez içi açıklamaları cümleye entegre et veya tamamen çıkar
+4. UZUN CÜMLELERİ BÖL: 150 karakterden uzun cümleleri nokta ile ayır
+5. ÖZEL KARAKTERLERİ KALDIR: *, #, @, &, %, $ gibi karakterleri kaldır veya yazıyla yaz
+6. URL/E-POSTA KALDIR: Web adresleri ve e-posta adreslerini kaldır
+7. DİYALOG TIRNAKLARINI KORU: Konuşma tırnakları seslendirmede önemli
+8. DOĞAL DURAKLAMALAR: Virgül yerine nokta tercih et (daha doğal duraklamalar için)
 
 ✅ KORU (DEĞİŞTİRME - ÇOK ÖNEMLİ):
 - ✅ Paragraf sayısı AYNI kalmalı (~${paragraphCount} paragraf)
