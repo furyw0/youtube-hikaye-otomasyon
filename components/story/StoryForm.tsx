@@ -389,6 +389,51 @@ export function StoryForm() {
         </p>
       </div>
 
+      {/* YouTube Metadata (Optional) */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-blue-900 mb-3 flex items-center">
+          📺 YouTube Metadata (İsteğe Bağlı)
+        </h3>
+        <p className="text-xs text-blue-700 mb-3">
+          Orjinal YouTube açıklaması ve kapak yazısı verin, adapte edilmiş versiyonları otomatik oluşturulsun.
+        </p>
+        
+        {/* YouTube Description */}
+        <div className="mb-3">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            YouTube Açıklaması (Orijinal)
+          </label>
+          <textarea
+            value={formData.youtubeDescription}
+            onChange={(e) => setFormData({ ...formData, youtubeDescription: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 text-sm bg-white text-gray-900 placeholder:text-gray-400"
+            placeholder="Opsiyonel: Orijinal hikayenin YouTube açıklaması..."
+            maxLength={5000}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            {formData.youtubeDescription.length} / 5,000 karakter
+          </p>
+        </div>
+
+        {/* Cover Text */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Kapak Görseli Yazısı (Orijinal)
+          </label>
+          <input
+            type="text"
+            value={formData.coverText}
+            onChange={(e) => setFormData({ ...formData, coverText: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white text-gray-900 placeholder:text-gray-400"
+            placeholder="Opsiyonel: Orijinal kapak görseli yazısı..."
+            maxLength={100}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            {formData.coverText.length} / 100 karakter · Yeni yazı dikkat çekici ve clickbait tarzı olacak
+          </p>
+        </div>
+      </div>
+
       {/* Target Language & Country */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
