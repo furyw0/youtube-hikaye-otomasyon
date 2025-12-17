@@ -235,6 +235,7 @@ JSON FORMAT:
 
   const parsed = parseJSONResponse<{ scenes: SceneData[]; notes?: string }>(
     response,
+    provider,
     ['scenes']
   );
 
@@ -412,7 +413,7 @@ JSON FORMAT:
     `Kalan sahneler (${language})`
   );
 
-  const parsed = parseJSONResponse<{ scenes: SceneData[] }>(response, ['scenes']);
+  const parsed = parseJSONResponse<{ scenes: SceneData[] }>(response, provider, ['scenes']);
 
   // Validasyon - esnek: minimum 3 sahne yeterli (hikaye kısa olabilir)
   if (!parsed.scenes || parsed.scenes.length < 3) {
