@@ -82,14 +82,17 @@ function SettingsContent() {
 
   // Form state
   const [formData, setFormData] = useState({
+    llmProvider: 'openai' as 'openai' | 'claude',
     ttsProvider: 'elevenlabs' as 'elevenlabs' | 'coqui',
     coquiTunnelUrl: '',
     coquiLanguage: 'tr',
     coquiSelectedVoiceId: '',
     openaiApiKey: '',
+    claudeApiKey: '',
     elevenlabsApiKey: '',
     imagefxCookie: '',
     defaultOpenaiModel: 'gpt-4o-mini',
+    defaultClaudeModel: 'claude-sonnet-4-20250514',
     defaultElevenlabsModel: 'eleven_flash_v2_5',
     defaultVoiceId: '',
     defaultVoiceName: '',
@@ -455,21 +458,24 @@ function SettingsContent() {
   };
 
   // Tek bir API key'i kaydet
-  const saveApiKey = async (type: 'openai' | 'elevenlabs' | 'imagefx') => {
+  const saveApiKey = async (type: 'openai' | 'claude' | 'elevenlabs' | 'imagefx') => {
     const setterMap = {
       openai: setSavingOpenai,
+      claude: setSavingOpenai,
       elevenlabs: setSavingElevenlabs,
       imagefx: setSavingImagefx
     };
     
     const valueMap = {
       openai: formData.openaiApiKey,
+      claude: formData.claudeApiKey,
       elevenlabs: formData.elevenlabsApiKey,
       imagefx: formData.imagefxCookie
     };
 
     const keyMap = {
       openai: 'openaiApiKey',
+      claude: 'claudeApiKey',
       elevenlabs: 'elevenlabsApiKey',
       imagefx: 'imagefxCookie'
     };
@@ -507,7 +513,9 @@ function SettingsContent() {
         // Input'u temizle ve ayarları yenile
         setFormData(prev => ({
           ...prev,
-          [type === 'openai' ? 'openaiApiKey' : type === 'elevenlabs' ? 'elevenlabsApiKey' : 'imagefxCookie']: ''
+          [type === 'openai' ? 'openaiApiKey' : 
+           type === 'claude' ? 'claudeApiKey' :
+           type === 'elevenlabs' ? 'elevenlabsApiKey' : 'imagefxCookie']: ''
         }));
         fetchSettings();
         // 3 saniye sonra mesajı temizle
@@ -550,9 +558,15 @@ function SettingsContent() {
         dataToSend.coquiSelectedVoiceId = formData.coquiSelectedVoiceId;
       }
       
+      // LLM Provider
+      dataToSend.llmProvider = formData.llmProvider;
+      
       // API Keys
       if (formData.openaiApiKey.trim()) {
         dataToSend.openaiApiKey = formData.openaiApiKey.trim();
+      }
+      if (formData.claudeApiKey.trim()) {
+        dataToSend.claudeApiKey = formData.claudeApiKey.trim();
       }
       if (formData.elevenlabsApiKey.trim()) {
         dataToSend.elevenlabsApiKey = formData.elevenlabsApiKey.trim();
@@ -563,6 +577,7 @@ function SettingsContent() {
       
       // Varsayılan ayarlar
       dataToSend.defaultOpenaiModel = formData.defaultOpenaiModel;
+      dataToSend.defaultClaudeModel = formData.defaultClaudeModel;
       dataToSend.defaultElevenlabsModel = formData.defaultElevenlabsModel;
       dataToSend.defaultImagefxModel = formData.defaultImagefxModel;
       dataToSend.defaultImagefxAspectRatio = formData.defaultImagefxAspectRatio;
@@ -589,6 +604,7 @@ function SettingsContent() {
         setFormData(prev => ({
           ...prev,
           openaiApiKey: '',
+          claudeApiKey: '',
           elevenlabsApiKey: '',
           imagefxCookie: ''
         }));
@@ -1074,52 +1090,127 @@ function SettingsContent() {
               <span className="text-2xl">🔑</span> {t('apiKeys')}
             </h2>
             
-            {/* OpenAI API Key */}
+            {/* LLM Provider Seçimi */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                OpenAI API Key
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                🤖 LLM Provider (Çeviri, Adaptasyon, Sahne)
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  placeholder={settings?.hasOpenaiApiKey ? settings.openaiApiKeyMasked || '••••••••' : 'sk-... API anahtarınızı girin'}
-                  value={formData.openaiApiKey}
-                  onChange={(e) => setFormData({ ...formData, openaiApiKey: e.target.value })}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                />
-                {settings?.hasOpenaiApiKey && (
-                  <span className="px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm flex items-center">
-                    ✓ {t('configured')}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => saveApiKey('openai')}
-                  disabled={savingOpenai || !formData.openaiApiKey.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                >
-                  {savingOpenai ? '⏳...' : '💾 Kaydet'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => testApi('openai')}
-                  disabled={testingOpenai || !settings?.hasOpenaiApiKey}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
-                >
-                  {testingOpenai ? '⏳ Test...' : '🧪 Test'}
-                </button>
+              <div className="flex gap-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="llmProvider"
+                    value="openai"
+                    checked={formData.llmProvider === 'openai'}
+                    onChange={(e) => setFormData({ ...formData, llmProvider: 'openai' })}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">OpenAI (GPT-4o)</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="llmProvider"
+                    value="claude"
+                    checked={formData.llmProvider === 'claude'}
+                    onChange={(e) => setFormData({ ...formData, llmProvider: 'claude' })}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">Claude (Prompt Caching 🚀)</span>
+                </label>
               </div>
-              {apiSaveMessage.openai && (
-                <div className={`mt-2 p-2 rounded text-sm ${apiSaveMessage.openai.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {apiSaveMessage.openai.type === 'success' ? '✅' : '❌'} {apiSaveMessage.openai.text}
-                </div>
-              )}
-              {testResults.openai && (
-                <div className={`mt-2 p-2 rounded text-sm ${testResults.openai.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {testResults.openai.success ? '✅' : '❌'} {testResults.openai.message}
-                </div>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.llmProvider === 'claude' ? '✨ Prompt Caching: %90 maliyet, %80 gecikme azaltma' : 'Hızlı ve güvenilir'}
+              </p>
             </div>
+
+            {/* OpenAI API Key */}
+            {formData.llmProvider === 'openai' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  OpenAI API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder={settings?.hasOpenaiApiKey ? settings.openaiApiKeyMasked || '••••••••' : 'sk-... API anahtarınızı girin'}
+                    value={formData.openaiApiKey}
+                    onChange={(e) => setFormData({ ...formData, openaiApiKey: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {settings?.hasOpenaiApiKey && (
+                    <span className="px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm flex items-center">
+                      ✓ {t('configured')}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => saveApiKey('openai')}
+                    disabled={savingOpenai || !formData.openaiApiKey.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {savingOpenai ? '⏳...' : '💾 Kaydet'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => testApi('openai')}
+                    disabled={testingOpenai || !settings?.hasOpenaiApiKey}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {testingOpenai ? '⏳ Test...' : '🧪 Test'}
+                  </button>
+                </div>
+                {apiSaveMessage.openai && (
+                  <div className={`mt-2 p-2 rounded text-sm ${apiSaveMessage.openai.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {apiSaveMessage.openai.type === 'success' ? '✅' : '❌'} {apiSaveMessage.openai.text}
+                  </div>
+                )}
+                {testResults.openai && (
+                  <div className={`mt-2 p-2 rounded text-sm ${testResults.openai.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {testResults.openai.success ? '✅' : '❌'} {testResults.openai.message}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Claude API Key */}
+            {formData.llmProvider === 'claude' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Claude API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder={settings?.hasClaudeApiKey ? settings.claudeApiKeyMasked || '••••••••' : 'sk-ant-... API anahtarınızı girin'}
+                    value={formData.claudeApiKey}
+                    onChange={(e) => setFormData({ ...formData, claudeApiKey: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {settings?.hasClaudeApiKey && (
+                    <span className="px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm flex items-center">
+                      ✓ {t('configured')}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => saveApiKey('claude')}
+                    disabled={savingOpenai || !formData.claudeApiKey.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {savingOpenai ? '⏳...' : '💾 Kaydet'}
+                  </button>
+                </div>
+                {apiSaveMessage.claude && (
+                  <div className={`mt-2 p-2 rounded text-sm ${apiSaveMessage.claude.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {apiSaveMessage.claude.type === 'success' ? '✅' : '❌'} {apiSaveMessage.claude.text}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  💡 Claude API Key almak için: <a href="https://console.anthropic.com/" target="_blank" rel="noopener" className="text-blue-600 hover:underline">console.anthropic.com</a>
+                </p>
+              </div>
+            )}
 
             {/* ElevenLabs API Key */}
             {formData.ttsProvider === 'elevenlabs' && (
