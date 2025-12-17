@@ -120,6 +120,7 @@ function SettingsContent() {
   const [savingImagefx, setSavingImagefx] = useState(false);
   const [apiSaveMessage, setApiSaveMessage] = useState<{
     openai?: { type: 'success' | 'error'; text: string };
+    claude?: { type: 'success' | 'error'; text: string };
     elevenlabs?: { type: 'success' | 'error'; text: string };
     imagefx?: { type: 'success' | 'error'; text: string };
   }>({});
