@@ -59,6 +59,11 @@ interface Story {
   originalContentLength?: number;
   translatedContentLength?: number;
   adaptedContentLength?: number;
+  // Dosyalar
+  blobUrls?: {
+    zipFile?: string;
+    thumbnail?: string;
+  };
   scenes: Scene[];
   createdAt: string;
   updatedAt: string;
@@ -425,10 +430,50 @@ function StoryDetailContent() {
         {/* Metadata Tab */}
         {activeTab === 'metadata' && (
           <div className="space-y-6">
+            {/* YouTube Thumbnail (Kapak Görseli) */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">🎬 YouTube Kapak Görseli</h3>
+                {story.blobUrls?.thumbnail && (
+                  <button
+                    onClick={() => handleDownload(story.blobUrls!.thumbnail!, 'thumbnail.png')}
+                    className="px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    ⬇️ İndir
+                  </button>
+                )}
+              </div>
+              
+              {story.blobUrls?.thumbnail ? (
+                <div className="relative">
+                  <img 
+                    src={story.blobUrls.thumbnail} 
+                    alt="YouTube Thumbnail"
+                    className="w-full max-w-2xl rounded-lg shadow-lg mx-auto"
+                  />
+                  {story.adaptedCoverText && (
+                    <div className="absolute bottom-4 left-4 right-4 bg-black/70 text-white p-3 rounded-lg">
+                      <p className="text-lg font-bold text-center">{story.adaptedCoverText}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-gray-100 rounded-lg p-12 text-center text-gray-500">
+                  <div className="text-4xl mb-2">🖼️</div>
+                  <p>Kapak görseli henüz oluşturulmamış</p>
+                  <p className="text-xs mt-1">Hikaye işlendikten sonra otomatik oluşturulacak</p>
+                </div>
+              )}
+              
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                💡 Bu görsel YouTube video kapağı olarak kullanılabilir. Üzerine metin ekleyerek daha dikkat çekici hale getirebilirsiniz.
+              </div>
+            </div>
+
             {/* Kapak Yazısı */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">🖼️ Kapak Yazısı (Thumbnail)</h3>
+                <h3 className="text-lg font-semibold text-gray-900">✏️ Kapak Yazısı (Thumbnail Text)</h3>
                 {story.adaptedCoverText && (
                   <button
                     onClick={() => copyToClipboard(story.adaptedCoverText!, 'Kapak yazısı')}
@@ -438,7 +483,7 @@ function StoryDetailContent() {
                   </button>
                 )}
               </div>
-              
+
               {story.adaptedCoverText ? (
                 <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-6 text-white">
                   <p className="text-xl font-bold">{story.adaptedCoverText}</p>
@@ -448,7 +493,7 @@ function StoryDetailContent() {
                   Kapak yazısı henüz oluşturulmamış
                 </div>
               )}
-              
+
               {story.originalCoverText && (
                 <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm text-gray-500 mb-1">Orijinal Kapak Yazısı:</p>

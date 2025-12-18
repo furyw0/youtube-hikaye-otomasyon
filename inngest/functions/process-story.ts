@@ -14,10 +14,10 @@ import { detectLanguage } from '@/services/language-detection.service';
 import { translateStory } from '@/services/translation.service';
 import { adaptStory } from '@/services/adaptation.service';
 import { generateScenes, generateVisualPrompts } from '@/services/scene.service';
-import { generateYouTubeMetadata } from '@/services/metadata.service';
+import { generateYouTubeMetadata, generateThumbnailPrompt } from '@/services/metadata.service';
 import { generateImage } from '@/services/imagefx.service';
 import { generateSpeech } from '@/services/tts-router.service';
-import { uploadImage, uploadAudio, uploadZip } from '@/services/blob.service';
+import { uploadImage, uploadAudio, uploadZip, uploadThumbnail } from '@/services/blob.service';
 import { createZipArchive } from '@/services/zip.service';
 import { getLLMConfig } from '@/services/llm-router.service';
 import Settings from '@/models/Settings';
@@ -374,8 +374,80 @@ export const processStory = inngest.createFunction(
           descriptionLength: result.youtubeDescription.length,
           coverTextLength: result.coverText.length
         });
-        
+
         return result;
+      });
+
+      // --- 3.6. YOUTUBE THUMBNAIL (KAPAK GÖRSELİ) OLUŞTURMA (34%) ---
+      await step.run('generate-thumbnail', async () => {
+        await dbConnect();
+        await updateProgress(34, 'Kapak görseli oluşturuluyor...');
+
+        const story = await getStory();
+        
+        // Settings'den LLM ve ImageFX ayarlarını al
+        const settings = await Settings.findOne({ userId: story.userId });
+        if (!settings) {
+          throw new Error('Kullanıcı ayarları bulunamadı');
+        }
+
+        const { provider, model } = getLLMConfig(settings);
+
+        try {
+          // 1. Thumbnail için prompt oluştur
+          const thumbnailPrompt = await generateThumbnailPrompt({
+            adaptedTitle: adaptationData.adaptedTitle,
+            adaptedContent: adaptationData.adaptedContent,
+            coverText: metadataData?.coverText || adaptationData.adaptedTitle,
+            targetLanguage: story.targetLanguage,
+            model,
+            provider
+          });
+
+          logger.info('Thumbnail prompt oluşturuldu', {
+            storyId,
+            promptLength: thumbnailPrompt.length
+          });
+
+          // 2. ImageFX ile görsel üret (16:9 landscape)
+          const imagefxModel = (story.imagefxModel === 'IMAGEN_4' || story.imagefxModel === 'IMAGEN_3_5') 
+            ? story.imagefxModel 
+            : 'IMAGEN_4';
+            
+          const imageResult = await generateImage({
+            prompt: thumbnailPrompt,
+            model: imagefxModel,
+            aspectRatio: 'LANDSCAPE', // 16:9 YouTube thumbnail
+            seed: story.imagefxSeed || Math.floor(Math.random() * 1000000)
+          });
+
+          logger.info('Thumbnail görseli üretildi', {
+            storyId,
+            imageSize: imageResult.imageBuffer.length
+          });
+
+          // 3. Blob'a yükle
+          const uploaded = await uploadThumbnail(storyId, imageResult.imageBuffer);
+
+          // 4. Story'ye kaydet
+          await Story.findByIdAndUpdate(storyId, {
+            'blobUrls.thumbnail': uploaded.url
+          });
+
+          logger.info('Thumbnail kaydedildi', {
+            storyId,
+            thumbnailUrl: uploaded.url
+          });
+
+          return { thumbnailUrl: uploaded.url };
+        } catch (error) {
+          // Thumbnail hatası kritik değil, devam et
+          logger.warn('Thumbnail oluşturulamadı, devam ediliyor', {
+            storyId,
+            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+          });
+          return null;
+        }
       });
 
       // --- 4. SAHNE OLUŞTURMA (50%) ---

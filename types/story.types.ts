@@ -88,6 +88,7 @@ export interface IStory {
   // Dosyalar
   blobUrls: {
     zipFile?: string;
+    thumbnail?: string;  // YouTube kapak görseli
   };
   
   createdAt: Date;

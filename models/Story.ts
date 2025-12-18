@@ -220,7 +220,8 @@ const StorySchema = new Schema<IStory>(
     
     // Dosyalar
     blobUrls: {
-      zipFile: String
+      zipFile: String,
+      thumbnail: String  // YouTube kapak görseli
     }
   },
   {

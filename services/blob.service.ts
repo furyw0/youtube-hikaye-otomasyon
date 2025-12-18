@@ -89,6 +89,23 @@ export async function uploadImage(
 }
 
 /**
+ * YouTube thumbnail (kapak görseli) yükler
+ */
+export async function uploadThumbnail(
+  storyId: string,
+  imageBuffer: Buffer
+): Promise<UploadResult> {
+  const path = `stories/${storyId}/thumbnail.png`;
+  
+  return await uploadFile({
+    path,
+    data: imageBuffer,
+    contentType: 'image/png',
+    addRandomSuffix: false
+  });
+}
+
+/**
  * Ses yükler
  */
 export async function uploadAudio(

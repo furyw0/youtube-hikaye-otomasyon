@@ -34,6 +34,15 @@ interface MetadataResult {
   coverText: string;
 }
 
+interface ThumbnailPromptOptions {
+  adaptedTitle: string;
+  adaptedContent: string;
+  coverText: string;
+  targetLanguage: string;
+  model: string;
+  provider: LLMProvider;
+}
+
 /**
  * Prompt şablonunu değişkenlerle doldurur
  */
@@ -267,6 +276,89 @@ async function generateCoverText(
   }
 
   return coverText;
+}
+
+/**
+ * YouTube thumbnail (kapak görseli) için İngilizce prompt oluştur
+ */
+export async function generateThumbnailPrompt(
+  options: ThumbnailPromptOptions
+): Promise<string> {
+  const { 
+    adaptedTitle, 
+    adaptedContent, 
+    coverText,
+    targetLanguage,
+    model,
+    provider
+  } = options;
+
+  // Hikayeden önemli sahneleri çıkar
+  const storySummary = adaptedContent.substring(0, 2000);
+
+  const systemPrompt = `You are a YouTube thumbnail image prompt expert. Create compelling, eye-catching thumbnail image prompts for AI image generation.
+
+🎯 GOAL: Create a cinematic, dramatic thumbnail image that will make viewers want to click.
+
+📸 THUMBNAIL REQUIREMENTS:
+1. DRAMATIC focal point - one clear subject/scene
+2. EMOTIONAL impact - convey the story's core emotion
+3. MYSTERY/INTRIGUE - leave viewers curious
+4. PROFESSIONAL quality - like a movie poster
+5. VIBRANT colors and high contrast
+6. NO TEXT in the image (text will be added separately)
+
+🎨 STYLE GUIDELINES:
+- Cinematic composition with depth
+- Dramatic lighting (golden hour, spotlights, silhouettes)
+- Rich, saturated colors
+- Professional photography or digital art style
+- Clean, uncluttered composition
+- 16:9 aspect ratio optimized
+
+⛔ AVOID:
+- Multiple confusing elements
+- Dark or muddy images
+- Explicit violence or gore
+- Text or logos in the image
+- Generic stock photo look
+
+📝 OUTPUT FORMAT:
+Write a detailed English prompt for AI image generation (150-250 words). Include:
+1. Main subject/character
+2. Scene/setting description
+3. Lighting and atmosphere
+4. Camera angle and composition
+5. Artistic style reference
+6. Color palette
+
+Only return the prompt, no explanations.`;
+
+  const userPrompt = `Story Title: "${adaptedTitle}"
+Cover Text: "${coverText}"
+Story Language: ${targetLanguage}
+
+Story Summary:
+${storySummary}
+
+Create a dramatic, click-worthy YouTube thumbnail image prompt for this story.`;
+
+  const response = await retryOpenAI(
+    () => createCompletion({
+      provider,
+      model,
+      systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      temperature: 0.7
+    }),
+    'Thumbnail prompt oluşturma'
+  );
+
+  logger.info('Thumbnail prompt oluşturuldu', {
+    promptLength: response.length
+  });
+
+  return response.trim();
 }
 
 /**
