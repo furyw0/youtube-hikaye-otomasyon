@@ -186,10 +186,12 @@ export const processStory = inngest.createFunction(
           });
         }
 
-        // findByIdAndUpdate kullan
+        // findByIdAndUpdate kullan - karakter sayılarını da kaydet
         await Story.findByIdAndUpdate(storyId, {
           adaptedTitle: result.title,
-          adaptedContent: result.content
+          adaptedContent: result.content,
+          originalContentLength: result.originalLength,
+          translatedContentLength: result.translatedLength
         });
 
         await updateProgress(20, 'Çeviri tamamlandı');
@@ -205,7 +207,8 @@ export const processStory = inngest.createFunction(
         return {
           adaptedTitle: result.title,
           adaptedContent: result.content,
-          originalLength: result.originalLength
+          originalLength: result.originalLength,
+          translatedLength: result.translatedLength
         };
       });
 
@@ -216,16 +219,22 @@ export const processStory = inngest.createFunction(
         // translationOnly modunda adaptasyon ATLANIYOR
         if (storyData.translationOnly) {
           await updateProgress(30, 'Sadece çeviri modu - adaptasyon atlanıyor...');
-          
+
           logger.info('Sadece çeviri modu - kültürel adaptasyon atlanıyor', {
             storyId,
             translationOnly: true
           });
-          
+
+          // translationOnly modunda adaptedContentLength = translatedContentLength
+          await Story.findByIdAndUpdate(storyId, {
+            adaptedContentLength: translationData.translatedLength
+          });
+
           return {
             adaptedTitle: translationData.adaptedTitle,
             adaptedContent: translationData.adaptedContent,
-            adaptationNotes: []
+            adaptationNotes: [] as string[],
+            adaptedLength: translationData.translatedLength
           };
         }
         
@@ -279,10 +288,11 @@ export const processStory = inngest.createFunction(
           });
         }
 
-        // findByIdAndUpdate kullan
+        // findByIdAndUpdate kullan - karakter sayısını da kaydet
         await Story.findByIdAndUpdate(storyId, {
           adaptedTitle: result.title,
-          adaptedContent: result.content
+          adaptedContent: result.content,
+          adaptedContentLength: result.adaptedLength
         });
 
         await updateProgress(30, 'Kültürel adaptasyon tamamlandı');
@@ -297,7 +307,8 @@ export const processStory = inngest.createFunction(
         return {
           adaptedTitle: result.title,
           adaptedContent: result.content,
-          adaptationNotes: result.adaptations
+          adaptationNotes: result.adaptations,
+          adaptedLength: result.adaptedLength
         };
       });
 

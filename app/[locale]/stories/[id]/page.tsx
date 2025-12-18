@@ -55,6 +55,10 @@ interface Story {
   // Stiller ve Senaryolar
   visualStyleId?: string;
   promptScenarioId?: string;
+  // Karakter Sayıları
+  originalContentLength?: number;
+  translatedContentLength?: number;
+  adaptedContentLength?: number;
   scenes: Scene[];
   createdAt: string;
   updatedAt: string;
@@ -325,6 +329,75 @@ function StoryDetailContent() {
                 </div>
               </div>
             </div>
+
+            {/* Karakter Sayıları Kartı */}
+            {story.originalContentLength && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 Karakter Sayıları</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Orijinal */}
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl font-bold text-gray-900">
+                      {story.originalContentLength.toLocaleString('tr-TR')}
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">Orijinal Hikaye</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      ~{Math.round(story.originalContentLength / 5).toLocaleString('tr-TR')} kelime
+                    </div>
+                  </div>
+                  
+                  {/* Çeviri */}
+                  {story.translatedContentLength && (
+                    <div className="bg-blue-50 rounded-lg p-4 text-center">
+                      <div className="text-3xl font-bold text-blue-900">
+                        {story.translatedContentLength.toLocaleString('tr-TR')}
+                      </div>
+                      <div className="text-sm text-blue-600 mt-1">Çeviri Sonrası</div>
+                      <div className="text-xs mt-1">
+                        {(() => {
+                          const diff = ((story.translatedContentLength - story.originalContentLength) / story.originalContentLength * 100);
+                          const isPositive = diff >= 0;
+                          return (
+                            <span className={isPositive ? 'text-green-600' : 'text-red-600'}>
+                              {isPositive ? '+' : ''}{diff.toFixed(1)}% fark
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Adaptasyon */}
+                  {story.adaptedContentLength && (
+                    <div className="bg-purple-50 rounded-lg p-4 text-center">
+                      <div className="text-3xl font-bold text-purple-900">
+                        {story.adaptedContentLength.toLocaleString('tr-TR')}
+                      </div>
+                      <div className="text-sm text-purple-600 mt-1">
+                        {story.translationOnly ? 'Final (Çeviri)' : 'Adaptasyon Sonrası'}
+                      </div>
+                      <div className="text-xs mt-1">
+                        {(() => {
+                          const diff = ((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100);
+                          const isWithinTolerance = Math.abs(diff) <= 5;
+                          return (
+                            <span className={isWithinTolerance ? 'text-green-600' : 'text-orange-600'}>
+                              {diff >= 0 ? '+' : ''}{diff.toFixed(1)}% fark
+                              {isWithinTolerance && ' ✓'}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Tolerans Bilgisi */}
+                <div className="mt-4 text-xs text-gray-500 text-center">
+                  💡 Hedef: Orijinal hikaye ile final hikaye arasında maksimum %5 fark
+                </div>
+              </div>
+            )}
 
             {/* Kapak Yazısı Kartı */}
             {story.adaptedCoverText && (

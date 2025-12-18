@@ -71,6 +71,11 @@ export interface IStory {
   estimatedTokens: number;
   actualDuration?: number;
   
+  // Karakter Sayıları
+  originalContentLength?: number;    // Orijinal hikaye karakter sayısı
+  translatedContentLength?: number;  // Çeviri sonrası karakter sayısı
+  adaptedContentLength?: number;     // Adaptasyon sonrası karakter sayısı
+  
   // İşleme Süreleri
   processingStartedAt?: Date;
   processingCompletedAt?: Date;

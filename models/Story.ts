@@ -186,6 +186,17 @@ const StorySchema = new Schema<IStory>(
       type: Number
     },
     
+    // Karakter Sayıları
+    originalContentLength: {
+      type: Number
+    },
+    translatedContentLength: {
+      type: Number
+    },
+    adaptedContentLength: {
+      type: Number
+    },
+    
     // İşleme Süreleri
     processingStartedAt: {
       type: Date
