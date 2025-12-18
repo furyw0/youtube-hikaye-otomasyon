@@ -107,6 +107,199 @@ function splitAdaptedContentByOriginalRatios(
 }
 
 /**
+ * METIN TABANLI SAHNE BÖLME - KAYIP YOK!
+ * Adapte metni hedef sahne sayısına göre cümle sınırlarında böler.
+ * Bu fonksiyon TÜM METNİ KORUR, hiçbir karakter kaybolmaz.
+ * 
+ * @param content - Bölünecek metin
+ * @param targetSceneCount - Hedef sahne sayısı
+ * @param isFirstThreeMinutes - İlk 3 dakika sahneleri mi
+ * @param startSceneNumber - Başlangıç sahne numarası
+ * @returns SceneData[] - Oluşturulan sahneler (görsel açıklaması olmadan)
+ */
+function splitContentIntoScenes(
+  content: string,
+  targetSceneCount: number,
+  isFirstThreeMinutes: boolean,
+  startSceneNumber: number = 1
+): SceneData[] {
+  // Metni cümlelere böl (daha doğal kesim için)
+  const sentences = content.split(/(?<=[.!?।。？！])\s+/).filter(s => s.trim());
+  
+  if (sentences.length === 0) {
+    logger.warn('splitContentIntoScenes: Cümle bulunamadı, tüm metin tek sahne olarak döndürülüyor');
+    return [{
+      sceneNumber: startSceneNumber,
+      text: content,
+      textAdapted: content,
+      estimatedDuration: Math.ceil(content.split(/\s+/).length * 0.4),
+      hasImage: true,
+      imageIndex: startSceneNumber,
+      isFirstThreeMinutes
+    }];
+  }
+  
+  const scenes: SceneData[] = [];
+  const avgSentencesPerScene = Math.ceil(sentences.length / targetSceneCount);
+  const avgCharsPerScene = Math.ceil(content.length / targetSceneCount);
+  
+  let currentText = '';
+  let sentenceIndex = 0;
+  let sceneNumber = startSceneNumber;
+  
+  for (let i = 0; i < targetSceneCount; i++) {
+    const isLastScene = i === targetSceneCount - 1;
+    
+    // Son sahne için kalan tüm cümleleri ekle
+    if (isLastScene) {
+      while (sentenceIndex < sentences.length) {
+        currentText += (currentText ? ' ' : '') + sentences[sentenceIndex];
+        sentenceIndex++;
+      }
+    } else {
+      // Hedef uzunluğa ulaşana kadar cümle ekle
+      while (sentenceIndex < sentences.length) {
+        const sentence = sentences[sentenceIndex];
+        const newLength = currentText.length + sentence.length + 1;
+        
+        // Minimum bir cümle ekle, sonra hedef uzunluğu kontrol et
+        if (currentText.length > 0 && newLength > avgCharsPerScene * 1.2) {
+          break;
+        }
+        
+        currentText += (currentText ? ' ' : '') + sentence;
+        sentenceIndex++;
+        
+        // Hedef uzunluğa ulaştıysak dur
+        if (currentText.length >= avgCharsPerScene) {
+          break;
+        }
+      }
+    }
+    
+    // Sahneyi oluştur
+    if (currentText.trim()) {
+      const wordCount = currentText.split(/\s+/).length;
+      scenes.push({
+        sceneNumber: sceneNumber,
+        text: currentText.trim(),
+        textAdapted: currentText.trim(),
+        estimatedDuration: Math.ceil(wordCount * 0.4), // ~0.4 saniye/kelime
+        hasImage: false, // Görsel dağıtımı sonra yapılacak
+        isFirstThreeMinutes
+      });
+      sceneNumber++;
+      currentText = '';
+    }
+  }
+  
+  // Eğer kalan cümle varsa son sahneye ekle
+  if (sentenceIndex < sentences.length) {
+    const remaining = sentences.slice(sentenceIndex).join(' ');
+    if (scenes.length > 0) {
+      scenes[scenes.length - 1].text += ' ' + remaining;
+      scenes[scenes.length - 1].textAdapted += ' ' + remaining;
+    }
+  }
+  
+  logger.info('splitContentIntoScenes: Metin tabanlı bölme tamamlandı', {
+    inputLength: content.length,
+    outputLength: scenes.reduce((sum, s) => sum + s.text.length, 0),
+    targetScenes: targetSceneCount,
+    actualScenes: scenes.length,
+    coverage: Math.round(scenes.reduce((sum, s) => sum + s.text.length, 0) / content.length * 100) + '%'
+  });
+  
+  return scenes;
+}
+
+/**
+ * LLM'den sadece görsel açıklamalarını al
+ * Metin bölme işlemini kendimiz yapacağız, sadece görsel açıklamaları LLM'den alıyoruz
+ */
+async function generateVisualDescriptionsOnly(
+  scenes: SceneData[],
+  model: string,
+  provider: LLMProvider = 'openai'
+): Promise<Map<number, string>> {
+  const descriptions = new Map<number, string>();
+  
+  // Her sahne için özet metin hazırla
+  const sceneSummaries = scenes.map(s => ({
+    sceneNumber: s.sceneNumber,
+    textPreview: s.text.substring(0, 300) + (s.text.length > 300 ? '...' : '')
+  }));
+  
+  const systemPrompt = `Sen görsel sahne uzmanısın. Verilen sahne özetleri için SADECE görsel açıklamaları oluştur.
+
+Her sahne için sinematik, fotorealistik bir görsel açıklaması yaz.
+
+YASAKLAR:
+- ❌ Metin, yazı, altyazı içeren görseller
+- ❌ Logo, watermark
+- ❌ Karikatür, anime, çizim
+
+ZORUNLU:
+- ✅ Fotorealistik, sinematik fotoğraf stili
+- ✅ Dramatik aydınlatma
+- ✅ Detaylı sahne betimleme (ortam, karakterler, atmosfer)
+
+JSON FORMAT:
+{
+  "descriptions": [
+    { "sceneNumber": 1, "visualDescription": "..." },
+    ...
+  ]
+}`;
+
+  const userPrompt = `Bu ${scenes.length} sahne için görsel açıklamaları oluştur:
+
+${JSON.stringify(sceneSummaries, null, 2)}`;
+
+  try {
+    const response = await retryOpenAI(
+      () => createCompletion({
+        provider,
+        model,
+        systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        temperature: 0.4,
+        responseFormat: 'json_object'
+      }),
+      'Görsel açıklamaları oluşturma'
+    );
+
+    const parsed = parseJSONResponse<{ descriptions: Array<{ sceneNumber: number; visualDescription: string }> }>(
+      response, provider, ['descriptions']
+    );
+
+    for (const desc of parsed.descriptions) {
+      descriptions.set(desc.sceneNumber, desc.visualDescription);
+    }
+
+    logger.info('Görsel açıklamaları oluşturuldu', {
+      requested: scenes.length,
+      received: descriptions.size
+    });
+
+  } catch (error) {
+    logger.warn('Görsel açıklamaları oluşturulamadı, varsayılan kullanılacak', {
+      error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+    });
+    
+    // Fallback: basit açıklamalar
+    for (const scene of scenes) {
+      descriptions.set(
+        scene.sceneNumber,
+        `Cinematic dramatic photograph: ${scene.text.substring(0, 100)}...`
+      );
+    }
+  }
+  
+  return descriptions;
+}
+
+/**
  * Adapte sahneleri hedef sahne sayısına göre akıllıca yeniden dağıtır.
  * İçerik bütünlüğünü koruyarak sahneleri birleştirir veya böler.
  * @deprecated splitAdaptedContentByOriginalRatios kullanın
@@ -589,205 +782,233 @@ async function generateRemainingScenes(
 
 /**
  * ANA FONKSİYON: Tüm sahneleri oluştur (çift dil)
- * YENİ YAKLAŞIM: Adapte metin üzerinden sahne oluştur, orijinali senkronize et
+ * HİBRİT YAKLAŞIM: LLM ile anlamlı sahne yapısı + Metin tabanlı bölme garantisi
+ * 
+ * Strateji:
+ * 1. LLM ile sahne oluşturmayı dene
+ * 2. textCoverageRatio kontrol et
+ * 3. Eğer %85 altındaysa → Metin tabanlı bölme yap (KAYIP YOK!)
+ * 4. Görsel açıklamalarını koru
  */
 export async function generateScenes(options: GenerateScenesOptions): Promise<GenerateScenesResult> {
   const { originalContent, adaptedContent, model, provider = 'openai', promptScenario } = options;
 
-  logger.info('Sahne oluşturma başlatılıyor (ADAPTE metin bazlı)', {
+  const MIN_COVERAGE_RATIO = 0.85; // Minimum %85 metin kapsama zorunlu
+  const MAX_LLM_RETRIES = 2; // LLM ile maksimum deneme
+
+  logger.info('Sahne oluşturma başlatılıyor (HİBRİT yaklaşım)', {
     model,
     originalLength: originalContent.length,
-    adaptedLength: adaptedContent.length
+    adaptedLength: adaptedContent.length,
+    minCoverageRatio: MIN_COVERAGE_RATIO
   });
 
+  let llmScenes: SceneData[] = [];
+  let textCoverageRatio = 0;
+  let usedFallback = false;
+
   try {
-    // ===== ADAPTE METİN ÜZERİNDEN SAHNE OLUŞTUR =====
-    
-    // 1. İlk 3 dakika - ADAPTE metin için sahne oluştur (RETRY ile)
-    logger.info('İlk 3 dakika sahneleri oluşturuluyor (adapte metin)...');
-    
-    let firstThreeAdapted: SceneData[] = [];
-    const MAX_FIRST_THREE_RETRIES = 3;
-    
-    for (let attempt = 1; attempt <= MAX_FIRST_THREE_RETRIES; attempt++) {
+    // ===== AŞAMA 1: LLM İLE SAHNE OLUŞTURMA DENEMESİ =====
+    for (let llmAttempt = 1; llmAttempt <= MAX_LLM_RETRIES; llmAttempt++) {
       try {
-        firstThreeAdapted = await generateFirstThreeMinutes(
+        logger.info(`LLM ile sahne oluşturma deneniyor (deneme ${llmAttempt}/${MAX_LLM_RETRIES})...`);
+        
+        // 1. İlk 3 dakika sahneleri
+        let firstThreeAdapted: SceneData[] = [];
+        const MAX_FIRST_THREE_RETRIES = 3;
+        
+        for (let attempt = 1; attempt <= MAX_FIRST_THREE_RETRIES; attempt++) {
+          try {
+            firstThreeAdapted = await generateFirstThreeMinutes(
+              adaptedContent,
+              'adapted',
+              model,
+              provider,
+              promptScenario
+            );
+            break;
+          } catch (error) {
+            if (attempt === MAX_FIRST_THREE_RETRIES) throw error;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+
+        // 2. İlk 3 dakikanın bittiği pozisyonu hesapla
+        const firstThreeTextLength = firstThreeAdapted
+          .map(s => s.text.length)
+          .reduce((a, b) => a + b, 0);
+
+        // 3. Kalan sahneler
+        const remainingAdapted = await generateRemainingScenes(
           adaptedContent,
+          firstThreeTextLength,
           'adapted',
           model,
+          firstThreeAdapted.length,
           provider,
           promptScenario
         );
+
+        // 4. Tüm sahneleri birleştir
+        llmScenes = [...firstThreeAdapted, ...remainingAdapted];
         
-        // Başarılı - döngüden çık
-        logger.info(`İlk 3 dakika sahneleri oluşturuldu (deneme ${attempt})`, {
-          scenes: firstThreeAdapted.length
+        // 5. textCoverageRatio hesapla
+        const totalLLMTextLength = llmScenes.reduce((sum, s) => sum + s.text.length, 0);
+        textCoverageRatio = totalLLMTextLength / adaptedContent.length;
+        
+        logger.info(`LLM sahne sonucu (deneme ${llmAttempt})`, {
+          scenes: llmScenes.length,
+          totalTextLength: totalLLMTextLength,
+          adaptedContentLength: adaptedContent.length,
+          textCoverageRatio: Math.round(textCoverageRatio * 100) + '%',
+          lostCharacters: adaptedContent.length - totalLLMTextLength
         });
-        break;
-        
-      } catch (error) {
-        logger.warn(`İlk 3 dakika sahne oluşturma başarısız (deneme ${attempt}/${MAX_FIRST_THREE_RETRIES})`, {
-          error: error instanceof Error ? error.message : 'Bilinmeyen hata',
-          attempt
-        });
-        
-        if (attempt === MAX_FIRST_THREE_RETRIES) {
-          throw error; // Son deneme de başarısızsa hata fırlat
+
+        // 6. Kapsama oranı yeterli mi?
+        if (textCoverageRatio >= MIN_COVERAGE_RATIO) {
+          logger.info(`✅ LLM sahneleri yeterli kapsama sağlıyor (${Math.round(textCoverageRatio * 100)}% >= ${MIN_COVERAGE_RATIO * 100}%)`);
+          break;
+        } else {
+          logger.warn(`⚠️ LLM sahneleri yetersiz kapsama (${Math.round(textCoverageRatio * 100)}% < ${MIN_COVERAGE_RATIO * 100}%), ${llmAttempt < MAX_LLM_RETRIES ? 'yeniden deneniyor...' : 'fallback kullanılacak'}`);
         }
-        
-        // Bir sonraki deneme için bekle
-        await new Promise(resolve => setTimeout(resolve, 2000));
+
+      } catch (error) {
+        logger.warn(`LLM sahne oluşturma hatası (deneme ${llmAttempt}/${MAX_LLM_RETRIES})`, {
+          error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+        });
+        if (llmAttempt === MAX_LLM_RETRIES) {
+          logger.warn('LLM denemeleri tükendi, fallback kullanılacak');
+        }
       }
     }
 
-    // 2. İlk 3 dakikanın bittiği pozisyonu hesapla
-    const firstThreeTextLength = firstThreeAdapted
-      .map(s => s.text.length)
-      .reduce((a, b) => a + b, 0);
+    // ===== AŞAMA 2: FALLBACK - METİN TABANLI BÖLME =====
+    let finalScenes: SceneData[] = [];
 
-    logger.debug('İlk 3 dakika metin uzunluğu (adapte)', {
-      adapted: firstThreeTextLength,
-      percentage: Math.round((firstThreeTextLength / adaptedContent.length) * 100)
-    });
-
-    // 3. Kalan sahneler - ADAPTE metin için sahne oluştur
-    logger.info('Kalan sahneler oluşturuluyor (adapte metin)...');
-    const remainingAdapted = await generateRemainingScenes(
-      adaptedContent,
-      firstThreeTextLength,
-      'adapted',
-      model,
-      firstThreeAdapted.length,  // İlk 3 dakikadaki sahne sayısı
-      provider,
-      promptScenario
-    );
-
-    // 4. Tüm adapte sahneleri birleştir
-    const allAdapted = [...firstThreeAdapted, ...remainingAdapted];
-    
-    logger.info('Adapte sahneler oluşturuldu', { 
-      total: allAdapted.length,
-      firstThree: firstThreeAdapted.length,
-      remaining: remainingAdapted.length
-    });
-
-    // ===== ORİJİNAL METNİ ADAPTE ORANLARINDA BÖL =====
-    
-    // 5. Orijinal metni adapte sahne oranlarına göre böl
-    logger.info('Orijinal metin adapte sahne oranlarına göre bölünüyor...');
-    const originalSceneTexts = splitAdaptedContentByOriginalRatios(
-      originalContent,
-      allAdapted
-    );
-
-    // 6. Çift dil şemasında birleştir
-    // NOT: Ana metin artık ADAPTE metin (ses ve görsel için kullanılacak)
-    const finalScenes: SceneData[] = allAdapted.map((adaptedScene, idx) => ({
-      sceneNumber: adaptedScene.sceneNumber,
-      text: originalSceneTexts[idx] || adaptedScene.text, // Orijinal metin (panel için)
-      textAdapted: adaptedScene.text, // ANA METİN - Adapte (ses/görsel için)
-      visualDescription: adaptedScene.visualDescription,
-      estimatedDuration: adaptedScene.estimatedDuration,
-      hasImage: adaptedScene.hasImage,
-      imageIndex: adaptedScene.imageIndex,
-      isFirstThreeMinutes: adaptedScene.isFirstThreeMinutes,
-    }));
-    
-    logger.info('Sahneler birleştirildi', {
-      totalScenes: finalScenes.length,
-      withOriginalText: finalScenes.filter(s => s.text).length,
-      withAdaptedText: finalScenes.filter(s => s.textAdapted).length
-    });
-
-    // 9. Final validasyonlar (esnek - hikaye kısaysa daha az görsel olabilir)
-    const totalImages = finalScenes.filter(s => s.hasImage).length;
-    
-    // Minimum görsel kontrolü (çok az görsel varsa uyar ama devam et)
-    if (totalImages < IMAGE_SETTINGS.MIN_TOTAL_IMAGES) {
-      logger.warn(`Görsel sayısı minimum altında: ${totalImages} < ${IMAGE_SETTINGS.MIN_TOTAL_IMAGES}`, {
-        totalImages,
-        minRequired: IMAGE_SETTINGS.MIN_TOTAL_IMAGES,
-        target: IMAGE_SETTINGS.TOTAL_IMAGES
+    if (textCoverageRatio < MIN_COVERAGE_RATIO) {
+      usedFallback = true;
+      logger.info('🔄 METİN TABANLI BÖLME FALLBACK aktif (tüm metin korunacak)');
+      
+      // Hedef sahne sayısını belirle
+      const targetFirstThreeScenes = IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES; // 6
+      const targetRemainingScenes = IMAGE_SETTINGS.REMAINING_IMAGES; // 14
+      const totalTargetScenes = targetFirstThreeScenes + targetRemainingScenes; // 20
+      
+      // İlk 3 dakika için karakter hedefi (toplam metnin ~%25'i)
+      const firstThreeCharTarget = Math.round(adaptedContent.length * 0.25);
+      const firstThreeContent = adaptedContent.substring(0, firstThreeCharTarget);
+      const remainingContent = adaptedContent.substring(firstThreeCharTarget);
+      
+      // Metin tabanlı bölme - İLK 3 DAKİKA
+      const firstThreeScenes = splitContentIntoScenes(
+        firstThreeContent,
+        targetFirstThreeScenes,
+        true, // isFirstThreeMinutes
+        1 // startSceneNumber
+      );
+      
+      // Metin tabanlı bölme - KALAN
+      const remainingScenes = splitContentIntoScenes(
+        remainingContent,
+        targetRemainingScenes,
+        false, // isFirstThreeMinutes
+        targetFirstThreeScenes + 1 // startSceneNumber
+      );
+      
+      // Birleştir
+      const allTextBasedScenes = [...firstThreeScenes, ...remainingScenes];
+      
+      // LLM'den görsel açıklamalarını al (veya fallback kullan)
+      const visualDescriptions = await generateVisualDescriptionsOnly(allTextBasedScenes, model, provider);
+      
+      // Görsel açıklamalarını ve görsel indexlerini ekle
+      let imageIndex = 1;
+      for (const scene of allTextBasedScenes) {
+        // Görsel açıklamasını ekle
+        scene.visualDescription = visualDescriptions.get(scene.sceneNumber) || 
+          `Cinematic dramatic photograph: ${scene.text.substring(0, 100)}...`;
+        
+        // Görsel indexi ekle
+        if (imageIndex <= IMAGE_SETTINGS.TOTAL_IMAGES) {
+          scene.hasImage = true;
+          scene.imageIndex = imageIndex++;
+        }
+      }
+      
+      // Orijinal metni oranlarına göre böl
+      const originalSceneTexts = splitAdaptedContentByOriginalRatios(originalContent, allTextBasedScenes);
+      
+      // Final sahneleri oluştur
+      finalScenes = allTextBasedScenes.map((scene, idx) => ({
+        ...scene,
+        text: originalSceneTexts[idx] || scene.text,
+        textAdapted: scene.text
+      }));
+      
+      // Yeni textCoverageRatio hesapla
+      const totalFallbackTextLength = finalScenes.reduce((sum, s) => sum + (s.textAdapted || '').length, 0);
+      textCoverageRatio = totalFallbackTextLength / adaptedContent.length;
+      
+      logger.info('✅ Metin tabanlı bölme tamamlandı', {
+        totalScenes: finalScenes.length,
+        totalTextLength: totalFallbackTextLength,
+        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%',
+        lostCharacters: adaptedContent.length - totalFallbackTextLength
       });
-      // Hata fırlatma, devam et
-    } else if (totalImages < IMAGE_SETTINGS.TOTAL_IMAGES) {
-      logger.info(`Hedef görsel sayısına ulaşılamadı: ${totalImages}/${IMAGE_SETTINGS.TOTAL_IMAGES} (hikaye kısa olabilir)`, {
-        totalImages,
-        target: IMAGE_SETTINGS.TOTAL_IMAGES
-      });
-    }
-
-    const firstThreeImages = finalScenes
-      .filter(s => s.isFirstThreeMinutes && s.hasImage)
-      .length;
-    
-    // İlk 3 dakika görsel kontrolü (esnek)
-    if (firstThreeImages < 3) {
-      logger.warn(`İlk 3 dakikada çok az görsel: ${firstThreeImages}`, {
-        firstThreeImages,
-        target: IMAGE_SETTINGS.FIRST_THREE_MINUTES_IMAGES
-      });
-    }
-
-    const estimatedTotalDuration = finalScenes
-      .map(s => s.estimatedDuration)
-      .reduce((a, b) => a + b, 0);
-
-    // ===== METİN UZUNLUĞU KONTROLÜ (KRİTİK!) =====
-    const totalAdaptedSceneTextLength = finalScenes
-      .map(s => (s.textAdapted || '').length)
-      .reduce((a, b) => a + b, 0);
-    
-    const adaptedContentLength = adaptedContent.length;
-    const textCoverageRatio = totalAdaptedSceneTextLength / adaptedContentLength;
-    
-    logger.info('📏 Metin kapsama oranı kontrolü', {
-      adaptedContentLength,
-      totalAdaptedSceneTextLength,
-      textCoverageRatio: Math.round(textCoverageRatio * 100) + '%',
-      lostCharacters: adaptedContentLength - totalAdaptedSceneTextLength
-    });
-
-    // ALARM: Metin çok kısalmış!
-    if (textCoverageRatio < 0.50) {
-      logger.error('🚨 KRİTİK ALARM: Sahne metinleri orijinal içeriğin <%50! Hikaye ciddi şekilde kısaltılmış!', {
-        adaptedContentLength,
-        totalAdaptedSceneTextLength,
-        lostCharacters: adaptedContentLength - totalAdaptedSceneTextLength,
-        lostPercentage: Math.round((1 - textCoverageRatio) * 100) + '%',
-        expectedMinLength: Math.round(adaptedContentLength * 0.85)
-      });
-    } else if (textCoverageRatio < 0.70) {
-      logger.error('⚠️ UYARI: Sahne metinleri orijinal içeriğin <%70! Hikaye kısaltılmış olabilir.', {
-        adaptedContentLength,
-        totalAdaptedSceneTextLength,
-        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
-      });
-    } else if (textCoverageRatio < 0.85) {
-      logger.warn('📉 Metin kapsama oranı düşük (<%85)', {
-        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
-      });
+      
     } else {
-      logger.info('✅ Metin kapsama oranı iyi', {
-        textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
-      });
+      // LLM sahneleri yeterli, onları kullan
+      logger.info('LLM sahneleri kullanılıyor (kapsama yeterli)');
+      
+      // Orijinal metni adapte sahne oranlarına göre böl
+      const originalSceneTexts = splitAdaptedContentByOriginalRatios(originalContent, llmScenes);
+
+      // Çift dil şemasında birleştir
+      finalScenes = llmScenes.map((adaptedScene, idx) => ({
+        sceneNumber: adaptedScene.sceneNumber,
+        text: originalSceneTexts[idx] || adaptedScene.text,
+        textAdapted: adaptedScene.text,
+        visualDescription: adaptedScene.visualDescription,
+        estimatedDuration: adaptedScene.estimatedDuration,
+        hasImage: adaptedScene.hasImage,
+        imageIndex: adaptedScene.imageIndex,
+        isFirstThreeMinutes: adaptedScene.isFirstThreeMinutes,
+      }));
     }
 
-    logger.info('Sahne oluşturma tamamlandı', {
+    // ===== AŞAMA 3: FİNAL VALİDASYONLAR =====
+    const totalImages = finalScenes.filter(s => s.hasImage).length;
+    const firstThreeImages = finalScenes.filter(s => s.isFirstThreeMinutes && s.hasImage).length;
+    const estimatedTotalDuration = finalScenes.reduce((sum, s) => sum + s.estimatedDuration, 0);
+    
+    // Final textCoverageRatio
+    const finalTotalTextLength = finalScenes.reduce((sum, s) => sum + (s.textAdapted || '').length, 0);
+    const finalTextCoverageRatio = finalTotalTextLength / adaptedContent.length;
+    
+    // Görsel sayısı kontrolü
+    if (totalImages < IMAGE_SETTINGS.MIN_TOTAL_IMAGES) {
+      logger.warn(`Görsel sayısı minimum altında: ${totalImages} < ${IMAGE_SETTINGS.MIN_TOTAL_IMAGES}`);
+    }
+
+    logger.info('🎬 Sahne oluşturma tamamlandı', {
+      usedFallback,
       totalScenes: finalScenes.length,
       totalImages,
-      firstThreeMinutesScenes: firstThreeAdapted.length,
+      firstThreeImages,
       estimatedTotalDuration: `${Math.floor(estimatedTotalDuration / 60)}m ${estimatedTotalDuration % 60}s`,
-      textCoverageRatio: Math.round(textCoverageRatio * 100) + '%'
+      textCoverageRatio: Math.round(finalTextCoverageRatio * 100) + '%',
+      adaptedContentLength: adaptedContent.length,
+      finalTextLength: finalTotalTextLength,
+      lostCharacters: adaptedContent.length - finalTotalTextLength
     });
 
     return {
       scenes: finalScenes,
       totalScenes: finalScenes.length,
       totalImages,
-      firstThreeMinutesScenes: firstThreeAdapted.length,
+      firstThreeMinutesScenes: finalScenes.filter(s => s.isFirstThreeMinutes).length,
       estimatedTotalDuration,
-      textCoverageRatio // Yeni: kapsama oranını da döndür
+      textCoverageRatio: finalTextCoverageRatio
     };
 
   } catch (error) {
