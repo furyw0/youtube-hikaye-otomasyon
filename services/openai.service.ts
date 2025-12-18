@@ -156,6 +156,7 @@ export function parseJSONResponse<T>(content: string, expectedFields?: string[])
 
 /**
  * Chat completion isteği gönderir
+ * @param params.timeout - İstek timeout süresi (ms), varsayılan 120000 (2 dakika)
  */
 export async function createChatCompletion(params: {
   model: string;
@@ -163,15 +164,24 @@ export async function createChatCompletion(params: {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: 'text' | 'json_object';
+  timeout?: number;
 }): Promise<string> {
   const client = await getOpenAIClient();
+  const timeoutMs = params.timeout ?? 120000; // 2 dakika varsayılan
+  
+  // AbortController ile timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
   
   try {
     logger.debug('Chat completion başlatılıyor', {
       model: params.model,
       messageCount: params.messages.length,
       temperature: params.temperature,
-      responseFormat: params.responseFormat
+      responseFormat: params.responseFormat,
+      timeout: timeoutMs
     });
     
     const response = await client.chat.completions.create({
@@ -182,7 +192,11 @@ export async function createChatCompletion(params: {
       response_format: params.responseFormat === 'json_object' 
         ? { type: 'json_object' } 
         : undefined,
+    }, {
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
     
     const content = response.choices[0]?.message?.content;
     
@@ -200,6 +214,17 @@ export async function createChatCompletion(params: {
     return content;
     
   } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Abort hatası
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.error('OpenAI timeout', {
+        model: params.model,
+        timeout: timeoutMs
+      });
+      throw new OpenAIError(`OpenAI isteği zaman aşımına uğradı (${timeoutMs / 1000}s)`);
+    }
+    
     if (error instanceof OpenAI.APIError) {
       logger.error('OpenAI API hatası', {
         status: error.status,

@@ -35,6 +35,7 @@ interface LLMCompletionParams {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: 'text' | 'json_object';
+  timeout?: number;  // İstek timeout süresi (ms), varsayılan 120000 (2 dakika)
 }
 
 /**
@@ -62,7 +63,8 @@ export async function createCompletion(params: LLMCompletionParams): Promise<str
         messages: params.messages,
         temperature: params.temperature,
         maxTokens: params.maxTokens,
-        responseFormat: params.responseFormat === 'json_object' ? 'json' : 'text'
+        responseFormat: params.responseFormat === 'json_object' ? 'json' : 'text',
+        timeout: params.timeout
       });
     } else {
       // OpenAI API
@@ -82,7 +84,8 @@ export async function createCompletion(params: LLMCompletionParams): Promise<str
         messages: openaiMessages,
         temperature: params.temperature,
         maxTokens: params.maxTokens,
-        responseFormat: params.responseFormat === 'json_object' ? 'json_object' : 'text'
+        responseFormat: params.responseFormat === 'json_object' ? 'json_object' : 'text',
+        timeout: params.timeout
       });
     }
   } catch (error) {
