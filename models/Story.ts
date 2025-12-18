@@ -49,6 +49,12 @@ const StorySchema = new Schema<IStory>(
       default: false
     },
     
+    // YouTube Engagement Hook'ları
+    enableHooks: {
+      type: Boolean,
+      default: false
+    },
+    
     // Uyarlanmış hikaye
     adaptedTitle: {
       type: String

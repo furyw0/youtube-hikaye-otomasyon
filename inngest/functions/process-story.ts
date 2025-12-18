@@ -20,6 +20,7 @@ import { generateSpeech } from '@/services/tts-router.service';
 import { uploadImage, uploadAudio, uploadZip, uploadThumbnail } from '@/services/blob.service';
 import { createZipArchive } from '@/services/zip.service';
 import { getLLMConfig } from '@/services/llm-router.service';
+import { addEngagementHooks, mergeHookWithSceneText } from '@/services/hook.service';
 import Settings from '@/models/Settings';
 import VisualStyle from '@/models/VisualStyle';
 import PromptScenario from '@/models/PromptScenario';
@@ -117,6 +118,7 @@ export const processStory = inngest.createFunction(
           targetLanguage: story.targetLanguage,
           targetCountry: story.targetCountry,
           translationOnly: story.translationOnly || false,
+          enableHooks: story.enableHooks || false,
           openaiModel: story.openaiModel,
           llmProvider: llmConfig.provider,
           llmModel: llmConfig.model,
@@ -550,6 +552,66 @@ export const processStory = inngest.createFunction(
         }));
       });
 
+      // --- 4.5. ENGAGEMENT HOOKS (52%) ---
+      const scenesWithHooksData = await step.run('add-engagement-hooks', async () => {
+        await dbConnect();
+        
+        // enableHooks kapalıysa hook ekleme adımını atla
+        if (!storyData.enableHooks) {
+          logger.info('Hook sistemi devre dışı, atlaniyor', { storyId });
+          return scenesData;
+        }
+        
+        await updateProgress(52, 'Engagement hook\'ları ekleniyor...');
+        
+        try {
+          const scenesWithHooks = await addEngagementHooks(scenesData, {
+            storyContext: adaptationData.adaptedContent,
+            targetLanguage: storyData.targetLanguage,
+            model: storyData.llmModel,
+            provider: storyData.llmProvider,
+            sceneCount: scenesData.length
+          });
+          
+          // Hook'ları Scene modellerine kaydet
+          for (const scene of scenesWithHooks) {
+            if (scene.hook) {
+              await Scene.findOneAndUpdate(
+                { storyId: storyId, sceneNumber: scene.sceneNumber },
+                { $set: { hook: scene.hook } }
+              );
+            }
+          }
+          
+          const hooksAdded = scenesWithHooks.filter(s => s.hook).length;
+          logger.info('Engagement hook\'ları eklendi', {
+            storyId,
+            totalHooks: hooksAdded,
+            hookTypes: scenesWithHooks
+              .filter(s => s.hook)
+              .map(s => ({ scene: s.sceneNumber, type: s.hook?.type }))
+          });
+          
+          return scenesWithHooks.map(s => ({
+            sceneNumber: s.sceneNumber,
+            text: s.text,
+            hasImage: s.hasImage,
+            imageIndex: s.imageIndex,
+            visualDescription: s.visualDescription,
+            isFirstThreeMinutes: s.isFirstThreeMinutes,
+            estimatedDuration: s.estimatedDuration,
+            hook: s.hook
+          }));
+        } catch (error) {
+          // Hook ekleme hatası kritik değil, devam et
+          logger.warn('Hook ekleme başarısız, sahneler hook\'suz devam ediyor', {
+            storyId,
+            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+          });
+          return scenesData;
+        }
+      });
+
       // --- 5. GÖRSEL PROMPTLARI (60%) ---
       const visualPromptsData = await step.run('generate-visual-prompts', async () => {
         await dbConnect();
@@ -582,8 +644,24 @@ export const processStory = inngest.createFunction(
           }
         }
 
+        // Type assertion - Inngest serialize ettiği için tip bilgisi kayboluyor
+        const scenesTyped = scenesWithHooksData as Array<{
+          sceneNumber: number;
+          text: string;
+          hasImage: boolean;
+          imageIndex?: number;
+          visualDescription?: string;
+          isFirstThreeMinutes: boolean;
+          estimatedDuration: number;
+          hook?: {
+            type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+            text: string;
+            position: 'before' | 'after';
+          };
+        }>;
+
         const prompts = await generateVisualPrompts(
-          scenesData,
+          scenesTyped,
           storyContext,
           storyData.llmModel,
           storyData.llmProvider,
@@ -902,14 +980,26 @@ export const processStory = inngest.createFunction(
               return;
             }
 
+            // Hook varsa sahne metnine dahil et
+            let textForTTS = scene.sceneTextAdapted;
+            if (scene.hook?.text) {
+              textForTTS = mergeHookWithSceneText(scene.sceneTextAdapted, scene.hook);
+              logger.debug(`Sahne ${sceneNumber} için hook eklendi`, {
+                hookType: scene.hook.type,
+                hookPosition: scene.hook.position
+              });
+            }
+
             logger.info(`Sahne ${sceneNumber}/${totalScenes} seslendiriliyor...`, {
-              textLength: scene.sceneTextAdapted.length,
+              textLength: textForTTS.length,
+              originalLength: scene.sceneTextAdapted.length,
+              hasHook: !!scene.hook,
               provider: ttsSettings.ttsProvider
             });
 
             // TTS Router ile ses üret
             const audio = await generateSpeech({
-              text: scene.sceneTextAdapted,
+              text: textForTTS,
               settings: ttsSettings as any,
               language: storyData.targetLanguage
             });

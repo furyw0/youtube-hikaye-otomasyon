@@ -22,6 +22,7 @@ const createStorySchema = z.object({
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
   translationOnly: z.boolean().optional().default(false),
+  enableHooks: z.boolean().optional().default(false),
   openaiModel: z.string(),
   // TTS Provider
   ttsProvider: z.enum(['elevenlabs', 'coqui']).optional().default('elevenlabs'),
@@ -123,6 +124,7 @@ export async function POST(request: NextRequest) {
       targetLanguage: validated.targetLanguage,
       targetCountry: validated.targetCountry,
       translationOnly: validated.translationOnly,
+      enableHooks: validated.enableHooks,
       openaiModel: validated.openaiModel,
       // TTS Ayarları
       ttsProvider: validated.ttsProvider || 'elevenlabs',

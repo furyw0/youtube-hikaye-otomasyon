@@ -20,6 +20,9 @@ export interface IStory {
   // Çeviri Modu
   translationOnly?: boolean;
   
+  // YouTube Engagement Hook'ları
+  enableHooks?: boolean;
+  
   // Uyarlanmış hikaye
   adaptedTitle?: string;
   adaptedContent?: string;
@@ -103,6 +106,7 @@ export interface CreateStoryInput {
   targetLanguage: string;
   targetCountry: string;
   translationOnly?: boolean;
+  enableHooks?: boolean;
   openaiModel: string;
   // TTS
   ttsProvider?: 'elevenlabs' | 'coqui';

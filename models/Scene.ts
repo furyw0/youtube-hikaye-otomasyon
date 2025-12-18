@@ -46,6 +46,19 @@ const SceneSchema = new Schema<IScene>(
       default: false
     },
     
+    // YouTube Engagement Hook
+    hook: {
+      type: {
+        type: String,
+        enum: ['intro', 'subscribe', 'like', 'comment', 'outro']
+      },
+      text: String,
+      position: {
+        type: String,
+        enum: ['before', 'after']
+      }
+    },
+    
     // Süre
     estimatedDuration: {
       type: Number,

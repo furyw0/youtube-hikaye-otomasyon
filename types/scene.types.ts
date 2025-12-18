@@ -1,5 +1,15 @@
 import { Types } from 'mongoose';
 
+// Hook tipi
+export type HookType = 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+
+// Hook bilgisi
+export interface SceneHook {
+  type: HookType;
+  text: string;
+  position: 'before' | 'after';
+}
+
 export interface IScene {
   _id: Types.ObjectId;
   storyId: Types.ObjectId;
@@ -16,6 +26,9 @@ export interface IScene {
   visualDescription?: string;
   visualPrompt?: string;
   isFirstThreeMinutes: boolean;
+  
+  // YouTube Engagement Hook
+  hook?: SceneHook;
   
   // Süre
   estimatedDuration: number;

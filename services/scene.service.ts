@@ -34,6 +34,12 @@ interface SceneData {
   hasImage: boolean;
   imageIndex?: number;
   isFirstThreeMinutes: boolean;
+  // YouTube Engagement Hook (opsiyonel)
+  hook?: {
+    type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+    text: string;
+    position: 'before' | 'after';
+  };
 }
 
 interface GenerateScenesOptions {
