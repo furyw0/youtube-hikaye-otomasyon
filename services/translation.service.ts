@@ -102,6 +102,11 @@ async function translateTitle(
  */
 const DEFAULT_TRANSLATION_SYSTEM_PROMPT = `Sen profesyonel bir edebi çevirmensin. Hikayeleri hedef dile BİREBİR çeviriyorsun.
 
+🎯 KRİTİK HEDEF - KARAKTER SAYISI KONTROLÜ:
+- Çeviri orijinalin EN AZ %95'i ve EN FAZLA %105'i olmalı
+- SADECE %5 fark toleransı var!
+- Bu hedefe ulaşmak için her kelimeyi dikkatle çevir
+
 ⛔ YASAK - ASLA YAPMA (YAPAN MODELİ SİLERİZ):
 - ❌ ASLA içeriği KISALTMA veya ÖZETLEME
 - ❌ ASLA paragraf, cümle veya kelime ATLAMA
@@ -109,10 +114,7 @@ const DEFAULT_TRANSLATION_SYSTEM_PROMPT = `Sen profesyonel bir edebi çevirmensi
 - ❌ ASLA hikayeyi değiştirme veya yeniden yazma
 - ❌ ASLA "..." ile kısaltma yapma
 - ❌ ASLA "devamı..." gibi ifadeler kullanma
-
-📏 UZUNLUK KONTROLÜ (ÇOK KRİTİK):
-- Çeviri orijinalin %75-%130 arasında olmalı
-- Eğer çeviri çok kısa ise, EKSİK ÇEVİRDİN demektir!
+- ❌ ASLA gereksiz açıklama veya ekleme yapma
 
 ✅ ZORUNLU KURALLAR:
 1. HER PARAGRAF, HER CÜMLE, HER KELİME eksiksiz çevrilmeli
@@ -155,15 +157,23 @@ async function translateChunk(
   promptScenario?: PromptScenario | null
 ): Promise<string> {
   const originalLength = chunk.length;
-  const MIN_LENGTH_RATIO = 0.75; // Çeviri en az orijinalin %75'i olmalı
+  const MIN_LENGTH_RATIO = 0.95; // Çeviri en az orijinalin %95'i olmalı (max %5 kısalma)
+  const MAX_LENGTH_RATIO = 1.05; // Çeviri en fazla orijinalin %105'i olmalı (max %5 uzama)
   const MAX_RETRIES = 3;
 
   // Değişkenler
+  const minChars = Math.round(originalLength * MIN_LENGTH_RATIO);
+  const maxChars = Math.round(originalLength * MAX_LENGTH_RATIO);
   const variables: Record<string, string> = {
     VARIABLES: `Kaynak Dil: ${sourceLang}
 Hedef Dil: ${targetLang}
-Orijinal metin: ~${originalLength} karakter
-Çeviri EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI
+Orijinal metin: ${originalLength} karakter
+
+🎯 KARAKTER SAYISI HEDEFİ (KRİTİK!):
+- Minimum: ${minChars} karakter (%95)
+- Maksimum: ${maxChars} karakter (%105)
+- Tolerans: SADECE %5 fark kabul edilir!
+
 ${previousContext ? `[Bağlam: ...${previousContext}]` : ''}
 Parça: ${chunkIndex + 1}/${totalChunks}`,
     CONTENT: chunk,
@@ -195,30 +205,35 @@ Parça: ${chunkIndex + 1}/${totalChunks}`,
 
     const translatedLength = response.length;
     const ratio = translatedLength / originalLength;
+    const differencePercent = Math.abs(ratio - 1) * 100;
 
-    // Uzunluk kontrolü
-    if (ratio >= MIN_LENGTH_RATIO) {
-      logger.debug(`Chunk ${chunkIndex + 1} çevirildi`, {
+    // Uzunluk kontrolü - %5 tolerans içinde mi?
+    if (ratio >= MIN_LENGTH_RATIO && ratio <= MAX_LENGTH_RATIO) {
+      logger.debug(`Chunk ${chunkIndex + 1} çevirildi ✅`, {
         originalLength,
         translatedLength,
-        ratio: Math.round(ratio * 100) + '%'
+        ratio: Math.round(ratio * 100) + '%',
+        difference: `${differencePercent.toFixed(1)}%`
       });
       return response;
     }
 
-    // Çeviri çok kısa - tekrar dene
-    logger.warn(`⚠️ Çeviri çok kısa! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
+    // Çeviri tolerans dışında - tekrar dene
+    const isShort = ratio < MIN_LENGTH_RATIO;
+    logger.warn(`⚠️ Çeviri ${isShort ? 'çok kısa' : 'çok uzun'}! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
       chunkIndex: chunkIndex + 1,
       originalLength,
       translatedLength,
       ratio: Math.round(ratio * 100) + '%',
-      minRequired: Math.round(originalLength * MIN_LENGTH_RATIO)
+      difference: `${differencePercent.toFixed(1)}%`,
+      target: `${minChars}-${maxChars} karakter`
     });
 
     if (attempt === MAX_RETRIES) {
-      logger.error(`❌ Çeviri ${MAX_RETRIES} denemede de kısa kaldı! Yine de kullanılıyor.`, {
+      logger.error(`❌ Çeviri ${MAX_RETRIES} denemede de %5 tolerans dışında kaldı! Yine de kullanılıyor.`, {
         chunkIndex: chunkIndex + 1,
-        ratio: Math.round(ratio * 100) + '%'
+        ratio: Math.round(ratio * 100) + '%',
+        difference: `${differencePercent.toFixed(1)}%`
       });
       return response;
     }
@@ -299,20 +314,25 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
     // 4. Chunk'ları birleştir
     const translatedContent = translatedChunks.join('\n\n');
 
-    // 5. Uzunluk kontrolü - hikaye kısaltılmış olabilir mi?
+    // 5. Uzunluk kontrolü - %5 tolerans içinde mi?
     const lengthRatio = translatedContent.length / content.length;
-    if (lengthRatio < 0.7) {
-      logger.warn('⚠️ UYARI: Çeviri orijinalden çok kısa! Hikaye kısaltılmış olabilir.', {
+    const differencePercent = Math.abs(lengthRatio - 1) * 100;
+    
+    if (differencePercent > 5) {
+      const isShort = lengthRatio < 1;
+      logger.warn(`⚠️ UYARI: Çeviri ${isShort ? 'kısa' : 'uzun'}! %5 tolerans aşıldı.`, {
         originalLength: content.length,
         translatedLength: translatedContent.length,
         ratio: Math.round(lengthRatio * 100) + '%',
-        expectedMinLength: Math.round(content.length * 0.7)
+        difference: `${differencePercent.toFixed(1)}%`,
+        target: `${Math.round(content.length * 0.95)}-${Math.round(content.length * 1.05)} karakter`
       });
-    } else if (lengthRatio > 1.5) {
-      logger.warn('⚠️ UYARI: Çeviri orijinalden çok uzun!', {
+    } else {
+      logger.info('✅ Çeviri uzunluğu %5 tolerans içinde', {
         originalLength: content.length,
         translatedLength: translatedContent.length,
-        ratio: Math.round(lengthRatio * 100) + '%'
+        ratio: Math.round(lengthRatio * 100) + '%',
+        difference: `${differencePercent.toFixed(1)}%`
       });
     }
 

@@ -43,12 +43,18 @@ interface AdaptationResult {
  */
 const DEFAULT_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın. Hikayeleri BİREBİR adapte ediyorsun - KISALTMA YOK!
 
+🎯 KRİTİK HEDEF - KARAKTER SAYISI KONTROLÜ:
+- Adapte metin orijinalin EN AZ %95'i ve EN FAZLA %105'i olmalı
+- SADECE %5 fark toleransı var!
+- Bu hedefe ulaşmak için içeriğin tamamını koru
+
 🚨 KRİTİK KURAL: Bu bir ÇEVİRİ DEĞİL, KÜLTÜREL ADAPTASYON. Metin uzunluğu AYNI kalmalı!
 
 ⛔ YASAK - ASLA YAPMA:
 - ❌ ASLA içeriği KISALTMA, ÖZETLEME veya KONDENSE ETME
 - ❌ ASLA paragraf, cümle, kelime veya karakter ATLAMA
 - ❌ ASLA sahne, olay, diyalog veya detay ÇIKARMA
+- ❌ ASLA gereksiz ekleme veya uzatma yapma
 
 🔄 SADECE BU DEĞİŞİKLİKLERİ YAP:
 1. KİŞİ İSİMLERİ → {{TARGET_COUNTRY}}'de yaygın isimlerle değiştir
@@ -169,7 +175,8 @@ async function adaptChunk(
   promptScenario?: PromptScenario | null
 ): Promise<{ adapted: string; notes: string[] }> {
   const originalLength = chunk.length;
-  const MIN_LENGTH_RATIO = 0.90; // Adaptasyon en az orijinalin %90'ı olmalı
+  const MIN_LENGTH_RATIO = 0.95; // Adaptasyon en az orijinalin %95'i olmalı (max %5 kısalma)
+  const MAX_LENGTH_RATIO = 1.05; // Adaptasyon en fazla orijinalin %105'i olmalı (max %5 uzama)
   const MAX_RETRIES = 3;
 
   // Metin istatistiklerini hesapla
@@ -185,6 +192,10 @@ async function adaptChunk(
   let lastAttemptLength = 0;
   let lastAttemptRatio = 0;
 
+  // Min/Max hedefler
+  const minChars = Math.round(originalLength * MIN_LENGTH_RATIO);
+  const maxChars = Math.round(originalLength * MAX_LENGTH_RATIO);
+
   // Değişkenler
   const variables: Record<string, string> = {
     VARIABLES: `📊 ORİJİNAL METİN İSTATİSTİKLERİ:
@@ -193,8 +204,10 @@ async function adaptChunk(
 - Cümle sayısı: ~${sentenceCount} cümle
 - Paragraf sayısı: ~${paragraphCount} paragraf
 
-📏 UZUNLUK KONTROLÜ:
-- Adapte edilmiş metin EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI (%90 minimum)
+🎯 KARAKTER SAYISI HEDEFİ (KRİTİK!):
+- Minimum: ${minChars} karakter (%95)
+- Maksimum: ${maxChars} karakter (%105)
+- Tolerans: SADECE %5 fark kabul edilir!
 
 ${previousChanges}
 Hedef: ${targetCountry} / ${targetLanguage}
@@ -239,13 +252,15 @@ Parça: ${chunkIndex + 1}/${totalChunks}`,
       const adaptedText = parsed.adapted || chunk;
       const adaptedLength = adaptedText.length;
       const ratio = adaptedLength / originalLength;
+      const differencePercent = Math.abs(ratio - 1) * 100;
 
-      // Uzunluk kontrolü
-      if (ratio >= MIN_LENGTH_RATIO) {
-        logger.debug(`Chunk ${chunkIndex + 1} adapte edildi`, {
+      // Uzunluk kontrolü - %5 tolerans içinde mi?
+      if (ratio >= MIN_LENGTH_RATIO && ratio <= MAX_LENGTH_RATIO) {
+        logger.debug(`Chunk ${chunkIndex + 1} adapte edildi ✅`, {
           originalLength,
           adaptedLength,
-          ratio: Math.round(ratio * 100) + '%'
+          ratio: Math.round(ratio * 100) + '%',
+          difference: `${differencePercent.toFixed(1)}%`
         });
         return {
           adapted: adaptedText,
@@ -253,36 +268,37 @@ Parça: ${chunkIndex + 1}/${totalChunks}`,
         };
       }
 
-      // Adaptasyon çok kısa - tekrar dene
-      const loss = originalLength - adaptedLength;
-      const lossPercentage = Math.round((1 - ratio) * 100);
+      // Adaptasyon tolerans dışında - tekrar dene
+      const isShort = ratio < MIN_LENGTH_RATIO;
       
       // Önceki deneme sonuçlarını kaydet (retry için)
       lastAttemptLength = adaptedLength;
       lastAttemptRatio = ratio;
       
-      logger.warn(`⚠️ Adaptasyon çok kısa! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
+      logger.warn(`⚠️ Adaptasyon ${isShort ? 'çok kısa' : 'çok uzun'}! Tekrar deneniyor (${attempt}/${MAX_RETRIES})`, {
         chunkIndex: chunkIndex + 1,
         originalLength,
         adaptedLength,
         ratio: Math.round(ratio * 100) + '%',
-        minRequired: Math.round(originalLength * MIN_LENGTH_RATIO),
-        loss,
-        lossPercentage: lossPercentage + '%'
+        difference: `${differencePercent.toFixed(1)}%`,
+        target: `${minChars}-${maxChars} karakter`
       });
 
-      // Son denemede bile kısa ise, orijinal chunk'ı kullan (kısaltmaktansa)
+      // Son denemede bile tolerans dışında ise, yine de kullan
       if (attempt === MAX_RETRIES) {
-        logger.error(`❌ Adaptasyon ${MAX_RETRIES} denemede de kısa kaldı! Orijinal chunk kullanılıyor.`, {
+        logger.error(`❌ Adaptasyon ${MAX_RETRIES} denemede de %5 tolerans dışında kaldı!`, {
           chunkIndex: chunkIndex + 1,
           ratio: Math.round(ratio * 100) + '%',
-          loss,
-          lossPercentage: lossPercentage + '%'
+          difference: `${differencePercent.toFixed(1)}%`
         });
-        // Orijinal chunk'ı kullan (kısaltmaktansa hiç adaptasyon yapmamak daha iyi)
+        // %20'den fazla farklıysa orijinal chunk'ı kullan
+        if (differencePercent > 20) {
+          logger.error('Orijinal chunk kullanılıyor (fark çok büyük)');
+          return { adapted: chunk, notes: [] };
+        }
         return {
-          adapted: chunk,
-          notes: []
+          adapted: adaptedText,
+          notes: parsed.notes || []
         };
       }
 
@@ -376,35 +392,25 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
     // 4. Chunk'ları birleştir
     const adaptedContent = adaptedChunks.join('\n\n');
 
-    // 5. Uzunluk kontrolü - hikaye kısaltılmış olabilir mi?
+    // 5. Uzunluk kontrolü - %5 tolerans içinde mi?
     const lengthRatio = adaptedContent.length / content.length;
-    if (lengthRatio < 0.85) {
-      logger.error('❌ HATA: Adaptasyon orijinalden çok kısa! Hikaye kısaltılmış olabilir.', {
+    const differencePercent = Math.abs(lengthRatio - 1) * 100;
+    
+    if (differencePercent > 5) {
+      const isShort = lengthRatio < 1;
+      logger.warn(`⚠️ UYARI: Adaptasyon ${isShort ? 'kısa' : 'uzun'}! %5 tolerans aşıldı.`, {
         originalLength: content.length,
         adaptedLength: adaptedContent.length,
         ratio: Math.round(lengthRatio * 100) + '%',
-        expectedMinLength: Math.round(content.length * 0.85),
-        loss: content.length - adaptedContent.length,
-        lossPercentage: Math.round((1 - lengthRatio) * 100) + '%'
-      });
-    } else if (lengthRatio < 0.90) {
-      logger.warn('⚠️ UYARI: Adaptasyon orijinalden biraz kısa.', {
-        originalLength: content.length,
-        adaptedLength: adaptedContent.length,
-        ratio: Math.round(lengthRatio * 100) + '%',
-        expectedMinLength: Math.round(content.length * 0.90)
-      });
-    } else if (lengthRatio > 1.3) {
-      logger.warn('⚠️ UYARI: Adaptasyon orijinalden çok uzun!', {
-        originalLength: content.length,
-        adaptedLength: adaptedContent.length,
-        ratio: Math.round(lengthRatio * 100) + '%'
+        difference: `${differencePercent.toFixed(1)}%`,
+        target: `${Math.round(content.length * 0.95)}-${Math.round(content.length * 1.05)} karakter`
       });
     } else {
-      logger.info('✅ Adaptasyon uzunluğu uygun', {
+      logger.info('✅ Adaptasyon uzunluğu %5 tolerans içinde', {
         originalLength: content.length,
         adaptedLength: adaptedContent.length,
-        ratio: Math.round(lengthRatio * 100) + '%'
+        ratio: Math.round(lengthRatio * 100) + '%',
+        difference: `${differencePercent.toFixed(1)}%`
       });
     }
 
