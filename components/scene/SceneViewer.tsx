@@ -8,6 +8,12 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 
+interface SceneHook {
+  type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+  text: string;
+  position: 'before' | 'after';
+}
+
 interface Scene {
   sceneNumber: number;
   sceneTextOriginal: string;
@@ -19,6 +25,7 @@ interface Scene {
   actualDuration?: number;
   visualDescription?: string;
   visualPrompt?: string;
+  hook?: SceneHook;
   blobUrls?: {
     image?: string;
     audio?: string;
@@ -105,6 +112,12 @@ function SceneCard({
           {scene.hasImage && (
             <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
               🖼️ {t('image')} {scene.imageIndex}
+            </span>
+          )}
+
+          {scene.hook && (
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getHookBadgeStyle(scene.hook.type)}`}>
+              {getHookEmoji(scene.hook.type)} {getHookLabel(scene.hook.type)}
             </span>
           )}
 
@@ -198,9 +211,70 @@ function SceneCard({
               </p>
             </details>
           )}
+
+          {/* Hook Info (if available) */}
+          {scene.hook && (
+            <div className={`p-3 rounded-lg border ${getHookContainerStyle(scene.hook.type)}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">{getHookEmoji(scene.hook.type)}</span>
+                <span className="font-semibold text-sm">{getHookLabel(scene.hook.type)}</span>
+                <span className="text-xs text-gray-500">
+                  ({scene.hook.position === 'before' ? 'Sahne öncesi' : 'Sahne sonrası'})
+                </span>
+              </div>
+              <p className="text-sm italic text-gray-700">
+                &ldquo;{scene.hook.text}&rdquo;
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// Hook helper fonksiyonları
+function getHookEmoji(hookType: string): string {
+  const emojis: Record<string, string> = {
+    intro: '🎬',
+    subscribe: '🔔',
+    like: '👍',
+    comment: '💬',
+    outro: '🎯'
+  };
+  return emojis[hookType] || '📢';
+}
+
+function getHookLabel(hookType: string): string {
+  const labels: Record<string, string> = {
+    intro: 'Giriş Hook',
+    subscribe: 'Abone Hook',
+    like: 'Beğeni Hook',
+    comment: 'Yorum Hook',
+    outro: 'Çıkış Hook'
+  };
+  return labels[hookType] || 'Hook';
+}
+
+function getHookBadgeStyle(hookType: string): string {
+  const styles: Record<string, string> = {
+    intro: 'bg-purple-100 text-purple-800',
+    subscribe: 'bg-red-100 text-red-800',
+    like: 'bg-green-100 text-green-800',
+    comment: 'bg-blue-100 text-blue-800',
+    outro: 'bg-orange-100 text-orange-800'
+  };
+  return styles[hookType] || 'bg-gray-100 text-gray-800';
+}
+
+function getHookContainerStyle(hookType: string): string {
+  const styles: Record<string, string> = {
+    intro: 'bg-purple-50 border-purple-200',
+    subscribe: 'bg-red-50 border-red-200',
+    like: 'bg-green-50 border-green-200',
+    comment: 'bg-blue-50 border-blue-200',
+    outro: 'bg-orange-50 border-orange-200'
+  };
+  return styles[hookType] || 'bg-gray-50 border-gray-200';
 }
 

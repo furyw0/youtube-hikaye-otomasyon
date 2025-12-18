@@ -11,6 +11,12 @@ import { useParams } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 
+interface SceneHook {
+  type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+  text: string;
+  position: 'before' | 'after';
+}
+
 interface Scene {
   _id: string;
   sceneNumber: number;
@@ -22,6 +28,7 @@ interface Scene {
   visualPrompt?: string;
   estimatedDuration: number;
   actualDuration?: number;
+  hook?: SceneHook;
   blobUrls: {
     image?: string;
     audio?: string;
@@ -38,6 +45,7 @@ interface Story {
   targetLanguage: string;
   targetCountry: string;
   translationOnly?: boolean;
+  enableHooks?: boolean;
   status: string;
   progress: number;
   totalScenes: number;
@@ -241,6 +249,11 @@ function StoryDetailContent() {
                   🌐 Sadece Çeviri
                 </span>
               )}
+              {story.enableHooks && (
+                <span className="px-3 py-1 text-sm rounded-full bg-green-100 text-green-800">
+                  📢 Hook&apos;lar Aktif
+                </span>
+              )}
               <span className={`px-3 py-1 text-sm rounded-full ${getStatusColor(story.status)}`}>
                 {story.status === 'completed' ? '✓ Tamamlandı' : 
                  story.status === 'processing' ? `İşleniyor ${story.progress}%` : 
@@ -336,8 +349,47 @@ function StoryDetailContent() {
                     {story.translationOnly ? '🌐 Sadece Çeviri' : '🎭 Adaptasyonlu'}
                   </p>
                 </div>
+                <div>
+                  <span className="text-sm text-gray-500">YouTube Hook&apos;ları</span>
+                  <p className="font-medium">
+                    {story.enableHooks ? '📢 Aktif' : '❌ Kapalı'}
+                  </p>
+                </div>
               </div>
             </div>
+
+            {/* Hook Özeti (eğer aktifse) */}
+            {story.enableHooks && story.scenes && story.scenes.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">📢 Hook Özeti</h3>
+                <div className="space-y-2">
+                  {story.scenes.filter(s => s.hook).map(scene => (
+                    <div 
+                      key={scene._id} 
+                      className={`flex items-center justify-between p-3 rounded-lg ${getHookBgColor(scene.hook?.type || '')}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">{getHookEmoji(scene.hook?.type || '')}</span>
+                        <div>
+                          <span className="font-medium text-sm">
+                            Sahne {scene.sceneNumber} - {getHookLabel(scene.hook?.type || '')}
+                          </span>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {scene.hook?.position === 'before' ? 'Sahne öncesi' : 'Sahne sonrası'}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700 italic max-w-md truncate">
+                        &ldquo;{scene.hook?.text}&rdquo;
+                      </p>
+                    </div>
+                  ))}
+                  {story.scenes.filter(s => s.hook).length === 0 && (
+                    <p className="text-gray-500 text-sm">Henüz hook eklenmemiş</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Karakter Sayıları Kartı */}
             {(() => {
@@ -810,4 +862,38 @@ function StoryDetailContent() {
       </main>
     </div>
   );
+}
+
+// Hook helper fonksiyonları
+function getHookEmoji(hookType: string): string {
+  const emojis: Record<string, string> = {
+    intro: '🎬',
+    subscribe: '🔔',
+    like: '👍',
+    comment: '💬',
+    outro: '🎯'
+  };
+  return emojis[hookType] || '📢';
+}
+
+function getHookLabel(hookType: string): string {
+  const labels: Record<string, string> = {
+    intro: 'Giriş Hook',
+    subscribe: 'Abone Hook',
+    like: 'Beğeni Hook',
+    comment: 'Yorum Hook',
+    outro: 'Çıkış Hook'
+  };
+  return labels[hookType] || 'Hook';
+}
+
+function getHookBgColor(hookType: string): string {
+  const colors: Record<string, string> = {
+    intro: 'bg-purple-50',
+    subscribe: 'bg-red-50',
+    like: 'bg-green-50',
+    comment: 'bg-blue-50',
+    outro: 'bg-orange-50'
+  };
+  return colors[hookType] || 'bg-gray-50';
 }
