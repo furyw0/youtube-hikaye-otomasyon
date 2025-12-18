@@ -24,6 +24,9 @@ interface Story {
   totalImages: number;
   actualDuration?: number;
   processingDuration?: number; // Saniye cinsinden üretim süresi
+  // İçerikler
+  originalContent?: string;
+  adaptedContent?: string;
   // Karakter Sayıları
   originalContentLength?: number;
   translatedContentLength?: number;
@@ -267,32 +270,39 @@ function StoriesContent() {
                   </div>
                   
                   {/* Karakter Sayıları */}
-                  {story.originalContentLength && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">📝 Karakter:</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-700">{story.originalContentLength.toLocaleString('tr-TR')}</span>
-                          {story.adaptedContentLength && (
-                            <>
-                              <span className="text-gray-400">→</span>
-                              <span className={`font-medium ${
-                                Math.abs((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100) <= 5 
-                                  ? 'text-green-600' 
-                                  : 'text-orange-600'
-                              }`}>
-                                {story.adaptedContentLength.toLocaleString('tr-TR')}
-                                <span className="ml-1">
-                                  ({((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100) >= 0 ? '+' : ''}
-                                  {((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100).toFixed(1)}%)
+                  {(() => {
+                    const originalLen = story.originalContentLength || (story.originalContent?.length ?? 0);
+                    const adaptedLen = story.adaptedContentLength || (story.adaptedContent?.length ?? 0);
+                    
+                    if (originalLen === 0) return null;
+                    
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500">📝 Karakter:</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-700">{originalLen.toLocaleString('tr-TR')}</span>
+                            {adaptedLen > 0 && (
+                              <>
+                                <span className="text-gray-400">→</span>
+                                <span className={`font-medium ${
+                                  Math.abs((adaptedLen - originalLen) / originalLen * 100) <= 5 
+                                    ? 'text-green-600' 
+                                    : 'text-orange-600'
+                                }`}>
+                                  {adaptedLen.toLocaleString('tr-TR')}
+                                  <span className="ml-1">
+                                    ({((adaptedLen - originalLen) / originalLen * 100) >= 0 ? '+' : ''}
+                                    {((adaptedLen - originalLen) / originalLen * 100).toFixed(1)}%)
+                                  </span>
                                 </span>
-                              </span>
-                            </>
-                          )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <p className="text-xs text-gray-400 mt-3">
                     {new Date(story.createdAt).toLocaleDateString('tr-TR', {
