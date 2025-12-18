@@ -37,6 +37,7 @@ interface Story {
   originalLanguage: string;
   targetLanguage: string;
   targetCountry: string;
+  translationOnly?: boolean;
   status: string;
   progress: number;
   totalScenes: number;
@@ -44,12 +45,22 @@ interface Story {
   actualDuration?: number;
   openaiModel: string;
   voiceName?: string;
+  ttsProvider?: string;
+  coquiVoiceName?: string;
+  // YouTube Metadata
+  originalYoutubeDescription?: string;
+  originalCoverText?: string;
+  adaptedYoutubeDescription?: string;
+  adaptedCoverText?: string;
+  // Stiller ve Senaryolar
+  visualStyleId?: string;
+  promptScenarioId?: string;
   scenes: Scene[];
   createdAt: string;
   updatedAt: string;
 }
 
-type TabType = 'overview' | 'scenes' | 'files';
+type TabType = 'overview' | 'scenes' | 'metadata' | 'files';
 
 export default function StoryDetailPage() {
   return (
@@ -91,7 +102,9 @@ function StoryDetailContent() {
           totalScenes: data.story.scenes?.length,
           scenesWithImages: data.story.scenes?.filter((s: any) => s.blobUrls?.image).length,
           scenesWithAudio: data.story.scenes?.filter((s: any) => s.blobUrls?.audio).length,
-          firstSceneBlobUrls: data.story.scenes?.[0]?.blobUrls
+          firstSceneBlobUrls: data.story.scenes?.[0]?.blobUrls,
+          adaptedYoutubeDescription: data.story.adaptedYoutubeDescription,
+          adaptedCoverText: data.story.adaptedCoverText
         });
       }
     } catch (error) {
@@ -131,6 +144,16 @@ function StoryDetailContent() {
       console.error('İndirme hatası:', error);
       // Fallback: yeni sekmede aç
       window.open(url, '_blank');
+    }
+  };
+
+  // Metin kopyalama fonksiyonu
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(`${label} kopyalandı!`);
+    } catch (err) {
+      console.error('Kopyalama hatası:', err);
     }
   };
 
@@ -200,6 +223,11 @@ function StoryDetailContent() {
               )}
             </div>
             <div className="flex items-center gap-3">
+              {story.translationOnly && (
+                <span className="px-3 py-1 text-sm rounded-full bg-purple-100 text-purple-800">
+                  🌐 Sadece Çeviri
+                </span>
+              )}
               <span className={`px-3 py-1 text-sm rounded-full ${getStatusColor(story.status)}`}>
                 {story.status === 'completed' ? '✓ Tamamlandı' : 
                  story.status === 'processing' ? `İşleniyor ${story.progress}%` : 
@@ -222,7 +250,7 @@ function StoryDetailContent() {
       <div className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-4">
           <nav className="flex gap-6">
-            {(['overview', 'scenes', 'files'] as TabType[]).map(tab => (
+            {(['overview', 'scenes', 'metadata', 'files'] as TabType[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -232,7 +260,10 @@ function StoryDetailContent() {
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {t(`tabs.${tab}`)}
+                {tab === 'overview' && '📋 Genel Bakış'}
+                {tab === 'scenes' && '🎬 Sahneler'}
+                {tab === 'metadata' && '📝 YouTube Metadata'}
+                {tab === 'files' && '📁 Dosyalar'}
               </button>
             ))}
           </nav>
@@ -243,42 +274,168 @@ function StoryDetailContent() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* Overview Tab */}
         {activeTab === 'overview' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <span className="text-sm text-gray-500">{t('overview.originalLanguage')}</span>
-                <p className="font-medium">{getLanguageName(story.originalLanguage)}</p>
+          <div className="space-y-6">
+            {/* Genel Bilgiler */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Hikaye Bilgileri</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div>
+                  <span className="text-sm text-gray-500">{t('overview.originalLanguage')}</span>
+                  <p className="font-medium">{getLanguageName(story.originalLanguage)}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">{t('overview.targetLanguage')}</span>
+                  <p className="font-medium">{getLanguageName(story.targetLanguage)}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">{t('overview.targetCountry')}</span>
+                  <p className="font-medium">{story.targetCountry}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Model</span>
+                  <p className="font-medium">{story.openaiModel}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">{t('overview.totalScenes')}</span>
+                  <p className="font-medium">{story.totalScenes || story.scenes?.length || 0}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">{t('overview.totalImages')}</span>
+                  <p className="font-medium">{story.totalImages || 0}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">{t('overview.totalDuration')}</span>
+                  <p className="font-medium">
+                    {story.actualDuration ? `${Math.round(story.actualDuration / 60)} dk` : '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Ses</span>
+                  <p className="font-medium">
+                    {story.ttsProvider === 'coqui' 
+                      ? `Coqui: ${story.coquiVoiceName || '-'}` 
+                      : story.voiceName || '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Çeviri Modu</span>
+                  <p className="font-medium">
+                    {story.translationOnly ? '🌐 Sadece Çeviri' : '🎭 Adaptasyonlu'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="text-sm text-gray-500">{t('overview.targetLanguage')}</span>
-                <p className="font-medium">{getLanguageName(story.targetLanguage)}</p>
+            </div>
+
+            {/* Kapak Yazısı Kartı */}
+            {story.adaptedCoverText && (
+              <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg shadow-sm p-6 text-white">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">🖼️ Kapak Yazısı (Thumbnail)</h3>
+                  <button
+                    onClick={() => copyToClipboard(story.adaptedCoverText!, 'Kapak yazısı')}
+                    className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm"
+                  >
+                    📋 Kopyala
+                  </button>
+                </div>
+                <p className="text-2xl font-bold">{story.adaptedCoverText}</p>
+                {story.originalCoverText && (
+                  <p className="text-sm opacity-75 mt-2">
+                    Orijinal: {story.originalCoverText}
+                  </p>
+                )}
               </div>
-              <div>
-                <span className="text-sm text-gray-500">{t('overview.targetCountry')}</span>
-                <p className="font-medium">{story.targetCountry}</p>
+            )}
+          </div>
+        )}
+
+        {/* Metadata Tab */}
+        {activeTab === 'metadata' && (
+          <div className="space-y-6">
+            {/* Kapak Yazısı */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">🖼️ Kapak Yazısı (Thumbnail)</h3>
+                {story.adaptedCoverText && (
+                  <button
+                    onClick={() => copyToClipboard(story.adaptedCoverText!, 'Kapak yazısı')}
+                    className="px-3 py-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    📋 Kopyala
+                  </button>
+                )}
               </div>
-              <div>
-                <span className="text-sm text-gray-500">Model</span>
-                <p className="font-medium">{story.openaiModel}</p>
+              
+              {story.adaptedCoverText ? (
+                <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-6 text-white">
+                  <p className="text-xl font-bold">{story.adaptedCoverText}</p>
+                </div>
+              ) : (
+                <div className="bg-gray-100 rounded-lg p-6 text-center text-gray-500">
+                  Kapak yazısı henüz oluşturulmamış
+                </div>
+              )}
+              
+              {story.originalCoverText && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-500 mb-1">Orijinal Kapak Yazısı:</p>
+                  <p className="text-gray-700">{story.originalCoverText}</p>
+                </div>
+              )}
+            </div>
+
+            {/* YouTube Açıklaması */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">📺 YouTube Açıklaması</h3>
+                {story.adaptedYoutubeDescription && (
+                  <button
+                    onClick={() => copyToClipboard(story.adaptedYoutubeDescription!, 'YouTube açıklaması')}
+                    className="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    📋 Kopyala
+                  </button>
+                )}
               </div>
-              <div>
-                <span className="text-sm text-gray-500">{t('overview.totalScenes')}</span>
-                <p className="font-medium">{story.totalScenes || story.scenes?.length || 0}</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500">{t('overview.totalImages')}</span>
-                <p className="font-medium">{story.totalImages || 0}</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500">{t('overview.totalDuration')}</span>
-                <p className="font-medium">
-                  {story.actualDuration ? `${Math.round(story.actualDuration / 60)} dk` : '-'}
-                </p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500">Ses</span>
-                <p className="font-medium">{story.voiceName || '-'}</p>
-              </div>
+              
+              {story.adaptedYoutubeDescription ? (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                    {story.adaptedYoutubeDescription}
+                  </pre>
+                </div>
+              ) : (
+                <div className="bg-gray-100 rounded-lg p-6 text-center text-gray-500">
+                  YouTube açıklaması henüz oluşturulmamış
+                </div>
+              )}
+              
+              {story.originalYoutubeDescription && (
+                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-yellow-800">Orijinal YouTube Açıklaması:</p>
+                    <button
+                      onClick={() => copyToClipboard(story.originalYoutubeDescription!, 'Orijinal açıklama')}
+                      className="text-xs text-yellow-700 hover:underline"
+                    >
+                      Kopyala
+                    </button>
+                  </div>
+                  <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                    {story.originalYoutubeDescription}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Kullanım İpuçları */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-900 mb-2">💡 Kullanım İpuçları</h4>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• <strong>Kapak yazısını</strong> YouTube thumbnail'ınıza ekleyin</li>
+                <li>• <strong>YouTube açıklamasını</strong> video açıklamanıza yapıştırın</li>
+                <li>• Hashtag'leri düzenlemeniz gerekebilir</li>
+              </ul>
             </div>
           </div>
         )}
@@ -520,4 +677,3 @@ function StoryDetailContent() {
     </div>
   );
 }
-
