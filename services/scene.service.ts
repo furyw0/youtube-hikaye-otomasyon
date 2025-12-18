@@ -1061,8 +1061,9 @@ export async function generateVisualPrompts(
     'Fotorealistik sinematik fotoğraf stili, dramatik aydınlatma, film kalitesi';
   const styleTechnicalPrefix = visualStyle?.technicalPrefix || 
     'Shot on Sony A7R IV, 85mm f/1.4 lens, natural lighting, film grain, shallow depth of field';
-  const styleStyleSuffix = visualStyle?.styleSuffix || 
-    '--style raw --no text, watermark, logo, cartoon, anime, illustration, 3D render, CGI, drawing';
+  // Negatif promptlar ImageFX formatında (Midjourney --no formatı değil!)
+  const styleStyleSuffix = visualStyle?.styleSuffix ||
+    'Avoid: text, watermark, logo, cartoon, anime, illustration, 3D render, CGI, drawing, digital art';
 
   // Prompt şablonlarını al
   const systemPromptTemplate = promptScenario?.visualPromptSystemPrompt || DEFAULT_VISUAL_PROMPT_SYSTEM_PROMPT;

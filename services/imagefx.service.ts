@@ -102,15 +102,18 @@ function sanitizePrompt(prompt: string, aggressiveMode: boolean = false): string
     sanitized = `Cinematic landscape photograph, dramatic lighting, atmospheric mood. ${sanitized}. No people, no faces, no figures. Pure environmental storytelling.`;
   } else {
     // ===== AŞAMA 6: FOTOREALİSTİK STİL =====
-    const antiCartoonSuffix = '. Shot with Sony A7R IV, 85mm f/1.4 lens. Ultra realistic, NOT cartoon, NOT anime, NOT illustration, NOT 3D render. Real textures, natural lighting.';
+    // NOT: Artık suffix eklenmyor çünkü kullanıcının visual style suffix'i kullanılıyor
+    // Sadece "Avoid:" veya negatif ifadeler yoksa ekliyoruz
     
-    if (sanitized.toLowerCase().includes('photorealistic')) {
-      sanitized = sanitized.replace(/photorealistic/gi, 'hyper-realistic photograph');
-    } else {
-      sanitized = 'Hyper-realistic photograph, ' + sanitized;
+    if (!sanitized.toLowerCase().includes('avoid:') && !sanitized.toLowerCase().includes('not cartoon')) {
+      const antiCartoonSuffix = '. NOT cartoon, NOT anime, NOT illustration, NOT 3D render.';
+      sanitized += antiCartoonSuffix;
     }
     
-    sanitized += antiCartoonSuffix;
+    // Zaten fotorealistik terimler varsa ekleme yapma
+    if (!sanitized.toLowerCase().includes('photograph') && !sanitized.toLowerCase().includes('photo')) {
+      sanitized = 'Photograph, ' + sanitized;
+    }
   }
 
   // Fazla boşlukları temizle
