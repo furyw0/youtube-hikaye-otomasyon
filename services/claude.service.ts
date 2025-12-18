@@ -181,6 +181,7 @@ export function parseClaudeJSONResponse<T>(content: string, expectedFields?: str
 
 /**
  * Claude API ile completion isteği (Prompt Caching destekli)
+ * @param timeout - Milisaniye cinsinden timeout (varsayılan: 120000 = 2 dakika)
  */
 export async function createClaudeCompletion(params: {
   model: string;
@@ -191,8 +192,20 @@ export async function createClaudeCompletion(params: {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: 'text' | 'json';
+  timeout?: number;           // Timeout (ms)
 }): Promise<string> {
   const apiKey = await getClaudeApiKey();
+  const timeoutMs = params.timeout || 120000; // 2 dakika varsayılan
+  
+  // AbortController ile timeout yönetimi
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    logger.warn('Claude API isteği timeout nedeniyle iptal edildi', {
+      model: params.model,
+      timeoutMs
+    });
+  }, timeoutMs);
   
   try {
     logger.debug('Claude completion başlatılıyor', {
@@ -201,7 +214,8 @@ export async function createClaudeCompletion(params: {
       temperature: params.temperature,
       responseFormat: params.responseFormat,
       hasCacheableContent: !!params.cacheableContent,
-      cacheTTL: params.cacheTTL
+      cacheTTL: params.cacheTTL,
+      timeoutMs
     });
     
     // System prompt'u hazırla (cache destekli)
@@ -251,7 +265,11 @@ export async function createClaudeCompletion(params: {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(requestBody),
+      signal: controller.signal,
     });
+    
+    // Timeout'u temizle
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -297,6 +315,16 @@ export async function createClaudeCompletion(params: {
     return content;
     
   } catch (error) {
+    // Timeout'u temizle (hata durumunda da)
+    clearTimeout(timeoutId);
+    
+    // AbortError'u daha anlamlı hata mesajına çevir
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new OpenAIError(
+        `Claude API isteği zaman aşımına uğradı (${timeoutMs / 1000} saniye). Daha kısa bir metin deneyin veya modeli değiştirin.`
+      );
+    }
+    
     logger.error('Claude API hatası', {
       error: error instanceof Error ? error.message : 'Bilinmeyen hata',
       model: params.model
