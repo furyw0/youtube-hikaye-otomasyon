@@ -311,7 +311,7 @@ export function VisualStyleManager() {
                   {t('visualStyles.form.systemPrompt')} *
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  LLM'e verilen stil açıklaması. Görsel prompt oluştururken kullanılır.
+                  LLM&apos;e verilen stil açıklaması. Görsel prompt oluştururken kullanılır.
                 </p>
                 <textarea
                   value={formData.systemPrompt}
@@ -328,7 +328,7 @@ export function VisualStyleManager() {
                   {t('visualStyles.form.technicalPrefix')} *
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Her prompt'un başına eklenen teknik ayarlar.
+                  Her prompt&apos;un başına eklenen teknik ayarlar.
                 </p>
                 <textarea
                   value={formData.technicalPrefix}
@@ -345,7 +345,7 @@ export function VisualStyleManager() {
                   {t('visualStyles.form.styleSuffix')} *
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Her prompt'un sonuna eklenen negatif prompt'lar.
+                  Her prompt&apos;un sonuna eklenen negatif prompt&apos;lar.
                 </p>
                 <textarea
                   value={formData.styleSuffix}
