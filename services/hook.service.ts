@@ -63,27 +63,32 @@ const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   zh: '用中文写，使用友好且吸引人的语气'
 };
 
-// Hook açıklamaları
-const HOOK_DESCRIPTIONS: Record<HookType, { purpose: string; maxWords: number }> = {
+// Hook açıklamaları - Daha doğal ve hikaye odaklı
+const HOOK_DESCRIPTIONS: Record<HookType, { purpose: string; maxWords: number; transition: string }> = {
   intro: {
-    purpose: 'Merak uyandır, izleyiciyi hikayeye çek. "Bu hikayede inanılmaz bir şey olacak" gibi',
-    maxWords: 20
+    purpose: 'Merak uyandır ve izleyiciyi hikayeye çek. Doğrudan "abone ol" DEME. Hikayenin gizemini vurgula.',
+    maxWords: 35,
+    transition: 'Hikayeye yumuşak giriş yap, sanki sır paylaşıyormuşsun gibi'
   },
   subscribe: {
-    purpose: 'Kanala abone olmayı öner. Doğal bir geçiş cümlesi kullan',
-    maxWords: 25
+    purpose: 'Hikaye akışında doğal bir mola ver ve dolaylı yoldan kanala değin. "Bu noktada bir an duralım" gibi geçiş cümleleri kullan.',
+    maxWords: 40,
+    transition: 'Önce hikayeyle ilgili bir yorum yap, sonra dolaylı olarak kanaldan bahset'
   },
   like: {
-    purpose: 'Videoyu beğenmeyi öner. Duygusal bir anla bağlantılı olsun',
-    maxWords: 20
+    purpose: 'Sahnenin duygusal etkisini pekiştir. Doğrudan "beğen" DEME. İzleyicinin hissettiklerini yansıt ve paylaşmaya davet et.',
+    maxWords: 35,
+    transition: 'Duygusal bir bağ kur, "bu an..." veya "şimdi hissettikleriniz..." gibi başla'
   },
   comment: {
-    purpose: 'Yorum yapmayı teşvik et. Soru sor veya görüş iste',
-    maxWords: 25
+    purpose: 'İzleyiciyi düşünmeye davet et. Hikayedeki karakterin kararıyla ilgili düşündürücü bir soru sor.',
+    maxWords: 40,
+    transition: 'Hikayedeki durumu izleyiciye bağla, "siz olsaydınız..." veya "düşünsenize..." gibi'
   },
   outro: {
-    purpose: 'Final hook. Abone ol + bildirim çanı + başka videolar için teşekkür',
-    maxWords: 30
+    purpose: 'Hikayeyi duygusal bir kapanışla bitir. Teşekkür et ve gelecek hikayelere köprü kur. Doğrudan komut verme.',
+    maxWords: 45,
+    transition: 'Önce hikayeyi özetle veya son bir düşünce paylaş, sonra vedalaş'
   }
 };
 
@@ -136,22 +141,33 @@ async function generateSingleHookText(options: GenerateHookTextOptions): Promise
   const langInstruction = LANGUAGE_INSTRUCTIONS[targetLanguage] || LANGUAGE_INSTRUCTIONS['en'];
   const hookInfo = HOOK_DESCRIPTIONS[hookType];
   
-  const systemPrompt = `Sen bir YouTube video seslendirmesi için doğal hook metinleri yazan uzman bir içerik üreticisisin.
-Hook'lar video akışını bozmadan, doğal bir şekilde entegre edilmeli.
-${langInstruction}.
-Kısa ve etkili cümleler kur. Maksimum ${hookInfo.maxWords} kelime.`;
+  const systemPrompt = `Sen profesyonel bir hikaye anlatıcısısın. YouTube videoları için DOĞAL ve AKICİ hook metinleri yazıyorsun.
 
-  const userPrompt = `Hikaye özeti:
-${storyContext.substring(0, 500)}...
+ÖNEMLİ KURALLAR:
+1. Hiçbir zaman doğrudan "abone ol", "beğen", "yorum yap" gibi komutlar KULLANMA
+2. Hook, hikayenin bir parçası gibi akmalı - izleyici bunun bir çağrı olduğunu hissetmemeli
+3. ${langInstruction}
+4. Geçiş cümlesi kullan: ${hookInfo.transition}
+5. Maksimum ${hookInfo.maxWords} kelime
 
-Sahne bağlamı:
+ÖRNEK YAKLAŞIMLAR:
+- Intro: "Şimdi anlatacaklarım... hayatınıza farklı bakmanızı sağlayabilir."
+- Subscribe: "Bu noktada bir an duralım... Bu tür hikayeler ruhunuza iyi geliyorsa, burada daha nicesi var."
+- Like: "Az önce yaşananlar... içinizi bir şekilde etkilediyse, o duyguyu benimle paylaşabilirsiniz."
+- Comment: "Şimdi düşünün... siz onun yerinde olsaydınız, hangi kapıyı seçerdiniz?"
+- Outro: "Hikayemiz burada son buluyor ama... bu kanalda keşfedilmeyi bekleyen daha nice hayatlar var."`;
+
+  const userPrompt = `HİKAYE BAĞLAMI:
+${storyContext.substring(0, 1000)}
+
+SAHNE İÇERİĞİ:
 ${sceneContext}
 
-Hook türü: ${hookType}
-Hook amacı: ${hookInfo.purpose}
+GÖREV: ${hookType.toUpperCase()} hook'u yaz
+AMAÇ: ${hookInfo.purpose}
 
-Bu sahne için doğal ve hikayeyle uyumlu bir ${hookType} hook'u yaz.
-SADECE hook metnini yaz, başka bir şey ekleme.`;
+Bu sahnenin duygusal tonuna ve hikayenin akışına uygun, DOĞAL bir hook metni yaz.
+Metni direkt yaz, tırnak işareti veya açıklama ekleme.`;
 
   try {
     const response = await createCompletion({
@@ -159,13 +175,16 @@ SADECE hook metnini yaz, başka bir şey ekleme.`;
       model,
       systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
-      temperature: 0.8,
-      maxTokens: 150,
+      temperature: 0.7,
+      maxTokens: 200,
       responseFormat: 'text'
     });
     
     // Temizle: tırnak ve gereksiz karakterleri kaldır
-    return response.trim().replace(/^["']|["']$/g, '');
+    let cleanedResponse = response.trim().replace(/^["']|["']$/g, '');
+    // Başındaki ve sonundaki fazla boşlukları temizle
+    cleanedResponse = cleanedResponse.replace(/^\s+|\s+$/g, '');
+    return cleanedResponse;
   } catch (error) {
     logger.error('Hook metni üretilemedi', {
       hookType,
@@ -177,30 +196,44 @@ SADECE hook metnini yaz, başka bir şey ekleme.`;
 }
 
 /**
- * Yedek hook metinleri
+ * Yedek hook metinleri - Daha doğal ve hikaye odaklı
  */
 function getFallbackHookText(hookType: HookType, language: string): string {
   const fallbacks: Record<string, Record<HookType, string>> = {
     tr: {
-      intro: 'Bu hikayede inanılmaz şeyler olacak...',
-      subscribe: 'Bu tür hikayeler ilginizi çekiyorsa, abone olup bildirimleri açabilirsiniz.',
-      like: 'Bu an sizi de etkilediyse, beğeni bırakabilirsiniz.',
-      comment: 'Siz olsaydınız ne yapardınız? Yorumlarda paylaşın.',
-      outro: 'Yeni hikayeler için abone olun ve bildirimleri açın. İzlediğiniz için teşekkürler.'
+      intro: 'Şimdi anlatacaklarım belki de hayata bakışınızı değiştirecek... Her şey o gün başladı.',
+      subscribe: 'Bu noktada bir an duralım... Bu tür gerçek hikayeler ruhunuza dokunuyorsa, burada keşfedilmeyi bekleyen daha nicesi var.',
+      like: 'Az önce yaşananlar... eğer içinizde bir şeyler kıpırdattıysa, o duyguyu benimle paylaşabilirsiniz.',
+      comment: 'Şimdi bir düşünün... siz onun yerinde olsaydınız, aynı kararı verir miydiniz? Merak ediyorum.',
+      outro: 'Hikayemiz burada son buluyor... Ama bu kanalda anlatılmayı bekleyen daha nice hayatlar, daha nice kaderler var. Bir sonraki hikayede buluşmak dileğiyle.'
     },
     en: {
-      intro: 'Something incredible is about to happen in this story...',
-      subscribe: 'If you enjoy these stories, consider subscribing and turning on notifications.',
-      like: 'If this moment touched you, feel free to leave a like.',
-      comment: 'What would you have done? Share your thoughts in the comments.',
-      outro: 'Subscribe for more stories and turn on notifications. Thanks for watching.'
+      intro: 'What I am about to tell you might change how you see life... It all started on that day.',
+      subscribe: 'Let me pause here for a moment... If stories like this speak to your soul, there are many more waiting to be discovered here.',
+      like: 'What just happened... if it stirred something inside you, feel free to share that feeling with me.',
+      comment: 'Now think about it... if you were in their place, would you have made the same choice? I am curious to know.',
+      outro: 'Our story ends here... But on this channel, there are many more lives, many more destinies waiting to be told. Until we meet in the next story.'
     },
     fr: {
-      intro: 'Quelque chose d\'incroyable va se passer dans cette histoire...',
-      subscribe: 'Si ce type d\'histoires vous plaît, abonnez-vous à la chaîne.',
-      like: 'Si ce moment vous a touché, laissez un like.',
-      comment: 'Qu\'auriez-vous fait à sa place? Dites-le dans les commentaires.',
-      outro: 'Pour plus d\'histoires, abonnez-vous et activez les notifications.'
+      intro: 'Ce que je vais vous raconter pourrait changer votre façon de voir la vie... Tout a commencé ce jour-là.',
+      subscribe: 'Arrêtons-nous un instant ici... Si ce genre d\'histoires touche votre âme, il y en a bien d\'autres qui attendent d\'être découvertes.',
+      like: 'Ce qui vient de se passer... si cela a éveillé quelque chose en vous, n\'hésitez pas à partager cette émotion avec moi.',
+      comment: 'Maintenant réfléchissez... si vous étiez à sa place, auriez-vous fait le même choix? Je suis curieux de savoir.',
+      outro: 'Notre histoire se termine ici... Mais sur cette chaîne, il y a encore tant de vies, tant de destins qui attendent d\'être racontés. À la prochaine histoire.'
+    },
+    de: {
+      intro: 'Was ich Ihnen gleich erzählen werde, könnte Ihre Sicht auf das Leben verändern... Alles begann an jenem Tag.',
+      subscribe: 'Lassen Sie mich hier kurz innehalten... Wenn solche Geschichten Ihre Seele berühren, warten hier noch viele weitere darauf, entdeckt zu werden.',
+      like: 'Was gerade passiert ist... wenn es etwas in Ihnen bewegt hat, teilen Sie dieses Gefühl gerne mit mir.',
+      comment: 'Denken Sie jetzt darüber nach... Hätten Sie an ihrer Stelle die gleiche Entscheidung getroffen? Ich bin gespannt.',
+      outro: 'Unsere Geschichte endet hier... Aber auf diesem Kanal warten noch viele weitere Leben, viele weitere Schicksale darauf, erzählt zu werden. Bis zur nächsten Geschichte.'
+    },
+    es: {
+      intro: 'Lo que estoy a punto de contarles podría cambiar su forma de ver la vida... Todo comenzó ese día.',
+      subscribe: 'Hagamos una pausa aquí... Si este tipo de historias tocan su alma, hay muchas más esperando ser descubiertas.',
+      like: 'Lo que acaba de pasar... si despertó algo en ustedes, no duden en compartir esa emoción conmigo.',
+      comment: 'Ahora piénsenlo... si estuvieran en su lugar, ¿habrían tomado la misma decisión? Tengo curiosidad por saber.',
+      outro: 'Nuestra historia termina aquí... Pero en este canal hay muchas más vidas, muchos más destinos esperando ser contados. Hasta la próxima historia.'
     }
   };
   

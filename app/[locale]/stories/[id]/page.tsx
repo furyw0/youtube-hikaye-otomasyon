@@ -678,8 +678,8 @@ function StoryDetailContent() {
                   className="p-4 border-b cursor-pointer hover:bg-gray-50"
                   onClick={() => toggleScene(scene.sceneNumber)}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-lg font-semibold text-gray-900">
                         Sahne {scene.sceneNumber}
                       </span>
@@ -688,9 +688,14 @@ function StoryDetailContent() {
                           🖼️ Görsel {scene.imageIndex}
                         </span>
                       )}
+                      {scene.hook && (
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${getHookBadgeColor(scene.hook.hookType)}`}>
+                          {getHookEmoji(scene.hook.hookType)} {getHookLabel(scene.hook.hookType)}
+                        </span>
+                      )}
                       {scene.actualDuration && (
                         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
-                          ⏱️ {scene.actualDuration}s
+                          ⏱️ {Math.round(scene.actualDuration)}s
                         </span>
                       )}
                     </div>
@@ -719,15 +724,44 @@ function StoryDetailContent() {
                           </div>
                         )}
 
-                        {/* Adapted Text */}
+                        {/* Adapted Text with Hook */}
                         <div className="bg-blue-50 rounded-lg p-4">
                           <h4 className="text-sm font-medium text-blue-700 mb-2 flex items-center gap-2">
                             <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                             {t('scene.adapted')} ({getLanguageName(story.targetLanguage)})
+                            {scene.hook && (
+                              <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${getHookBadgeColor(scene.hook.hookType)}`}>
+                                {getHookEmoji(scene.hook.hookType)} {getHookLabel(scene.hook.hookType)}
+                              </span>
+                            )}
                           </h4>
+                          
+                          {/* Hook Before (if position is 'before') */}
+                          {scene.hook && scene.hook.position === 'before' && (
+                            <div className={`mb-3 p-3 rounded-lg border-l-4 ${getHookStyleClasses(scene.hook.hookType)}`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span>{getHookEmoji(scene.hook.hookType)}</span>
+                                <span className="text-xs font-medium opacity-75">{getHookLabel(scene.hook.hookType)} (Sahne Öncesi)</span>
+                              </div>
+                              <p className="text-sm italic">&ldquo;{scene.hook.text}&rdquo;</p>
+                            </div>
+                          )}
+                          
+                          {/* Main Adapted Text */}
                           <p className="text-gray-700 text-sm leading-relaxed">
                             {scene.sceneTextAdapted}
                           </p>
+                          
+                          {/* Hook After (if position is 'after') */}
+                          {scene.hook && scene.hook.position === 'after' && (
+                            <div className={`mt-3 p-3 rounded-lg border-l-4 ${getHookStyleClasses(scene.hook.hookType)}`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span>{getHookEmoji(scene.hook.hookType)}</span>
+                                <span className="text-xs font-medium opacity-75">{getHookLabel(scene.hook.hookType)} (Sahne Sonrası)</span>
+                              </div>
+                              <p className="text-sm italic">&ldquo;{scene.hook.text}&rdquo;</p>
+                            </div>
+                          )}
                         </div>
 
                         {/* Turkish Text (if target is not Turkish) */}
@@ -896,4 +930,26 @@ function getHookBgColor(hookType: string): string {
     outro: 'bg-orange-50'
   };
   return colors[hookType] || 'bg-gray-50';
+}
+
+function getHookBadgeColor(hookType: string): string {
+  const colors: Record<string, string> = {
+    intro: 'bg-purple-100 text-purple-700',
+    subscribe: 'bg-red-100 text-red-700',
+    like: 'bg-green-100 text-green-700',
+    comment: 'bg-cyan-100 text-cyan-700',
+    outro: 'bg-orange-100 text-orange-700'
+  };
+  return colors[hookType] || 'bg-gray-100 text-gray-700';
+}
+
+function getHookStyleClasses(hookType: string): string {
+  const styles: Record<string, string> = {
+    intro: 'bg-purple-50 border-purple-400 text-purple-800',
+    subscribe: 'bg-red-50 border-red-400 text-red-800',
+    like: 'bg-green-50 border-green-400 text-green-800',
+    comment: 'bg-cyan-50 border-cyan-400 text-cyan-800',
+    outro: 'bg-orange-50 border-orange-400 text-orange-800'
+  };
+  return styles[hookType] || 'bg-gray-50 border-gray-400 text-gray-800';
 }
