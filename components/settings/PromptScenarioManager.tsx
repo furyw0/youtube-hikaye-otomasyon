@@ -68,6 +68,115 @@ interface ScenarioFormData {
 
 type TabKey = 'translation' | 'adaptation' | 'scene' | 'visual' | 'metadata';
 
+// Değişken açıklamaları
+const VARIABLE_DOCS: Record<TabKey, { name: string; description: string; variables: { key: string; desc: string; example?: string }[] }[]> = {
+  translation: [
+    {
+      name: 'İçerik Çevirisi',
+      description: 'Hikaye içeriğinin çevirisi için kullanılır',
+      variables: [
+        { key: '{{CONTENT}}', desc: 'Çevrilecek hikaye metni', example: 'Bir varmış bir yokmuş...' },
+        { key: '{{VARIABLES}}', desc: 'Dinamik değişkenler (karakter sayısı, hedef dil vb.)', example: 'Kaynak: en, Hedef: tr, Karakter: 5000' },
+        { key: '{{TARGET_LANGUAGE}}', desc: 'Hedef dil kodu', example: 'tr, en, de, fr' }
+      ]
+    },
+    {
+      name: 'Başlık Çevirisi',
+      description: 'Hikaye başlığının çevirisi için kullanılır',
+      variables: [
+        { key: '{{TITLE}}', desc: 'Hikaye başlığı', example: 'The Lost Kingdom' },
+        { key: '{{SOURCE_LANG}}', desc: 'Kaynak dil', example: 'en (İngilizce)' },
+        { key: '{{TARGET_LANGUAGE}}', desc: 'Hedef dil', example: 'tr (Türkçe)' }
+      ]
+    }
+  ],
+  adaptation: [
+    {
+      name: 'İçerik Adaptasyonu',
+      description: 'Hikaye içeriğinin kültürel adaptasyonu için kullanılır',
+      variables: [
+        { key: '{{CONTENT}}', desc: 'Adapte edilecek hikaye metni' },
+        { key: '{{TARGET_COUNTRY}}', desc: 'Hedef ülke', example: 'Türkiye, USA, Germany' },
+        { key: '{{TARGET_LANGUAGE}}', desc: 'Hedef dil', example: 'tr, en, de' },
+        { key: '{{VARIABLES}}', desc: 'Dinamik değişkenler (karakter sayısı vb.)' }
+      ]
+    },
+    {
+      name: 'Başlık Adaptasyonu',
+      description: 'Başlıktaki isim ve yerlerin yerelleştirilmesi',
+      variables: [
+        { key: '{{TITLE}}', desc: 'Adapte edilecek başlık' },
+        { key: '{{TARGET_COUNTRY}}', desc: 'Hedef ülke' },
+        { key: '{{TARGET_LANGUAGE}}', desc: 'Hedef dil' }
+      ]
+    }
+  ],
+  scene: [
+    {
+      name: 'İlk 3 Dakika Sahneleri',
+      description: 'İlk ~3000 karakterin sahnelere bölünmesi',
+      variables: [
+        { key: '{{INPUT_CHAR_COUNT}}', desc: 'Giriş metninin karakter sayısı', example: '3000' },
+        { key: '{{MIN_OUTPUT_LENGTH}}', desc: 'Minimum çıktı uzunluğu', example: '2700 (girdinin %90\'ı)' },
+        { key: '{{AVG_SCENE_LENGTH}}', desc: 'Ortalama sahne uzunluğu', example: '500 karakter' }
+      ]
+    },
+    {
+      name: 'Kalan Sahneler',
+      description: 'Kalan içeriğin sahnelere bölünmesi',
+      variables: [
+        { key: '{{INPUT_CHAR_COUNT}}', desc: 'Giriş metninin karakter sayısı' },
+        { key: '{{MIN_OUTPUT_LENGTH}}', desc: 'Minimum çıktı uzunluğu' },
+        { key: '{{ESTIMATED_SCENE_COUNT}}', desc: 'Tahmini sahne sayısı', example: '15' },
+        { key: '{{START_SCENE_NUMBER}}', desc: 'Başlangıç sahne numarası', example: '7' },
+        { key: '{{TARGET_IMAGES}}', desc: 'Hedef görsel sayısı', example: '5' },
+        { key: '{{START_IMAGE_INDEX}}', desc: 'Başlangıç görsel indeksi', example: '6' },
+        { key: '{{END_IMAGE_INDEX}}', desc: 'Bitiş görsel indeksi', example: '10' }
+      ]
+    }
+  ],
+  visual: [
+    {
+      name: 'Görsel Prompt Oluşturma',
+      description: 'Sahneler için görsel promptları oluşturur',
+      variables: [
+        { key: '{{SCENE_NUMBER}}', desc: 'Sahne numarası', example: '5' },
+        { key: '{{SCENE_TEXT}}', desc: 'Sahne metni', example: 'Ahmet sokakta yürüyordu...' },
+        { key: '{{VISUAL_HINT}}', desc: 'Görsel ipucu (sahneden)', example: 'yağmurlu hava, gece' },
+        { key: '{{STYLE_SYSTEM_PROMPT}}', desc: 'Görsel stil açıklaması (Görsel Stilleri\'nden)', example: 'Vintage sepia tones...' },
+        { key: '{{STORY_CONTEXT}}', desc: 'Hikaye bağlamı/özeti' },
+        { key: '{{CHARACTER_INSTRUCTION}}', desc: 'Karakter tutarlılığı talimatları' },
+        { key: '{{CHARACTER_DETAIL_INSTRUCTION}}', desc: 'Detaylı karakter açıklamaları' }
+      ]
+    }
+  ],
+  metadata: [
+    {
+      name: 'YouTube Açıklaması',
+      description: 'Video açıklaması oluşturur',
+      variables: [
+        { key: '{{TITLE}}', desc: 'Hikaye başlığı' },
+        { key: '{{TARGET_COUNTRY}}', desc: 'Hedef ülke', example: 'USA' },
+        { key: '{{TARGET_LANGUAGE}}', desc: 'Hedef dil', example: 'en' },
+        { key: '{{ADAPTATION_CHANGES}}', desc: 'Adaptasyon değişiklikleri listesi', example: 'Ahmet → John, İstanbul → New York' },
+        { key: '{{ORIGINAL_REF}}', desc: 'Orijinal hikaye referansı' }
+      ]
+    },
+    {
+      name: 'Kapak Yazısı (Thumbnail)',
+      description: 'Video kapağı için dikkat çekici yazı',
+      variables: [
+        { key: '{{TITLE}}', desc: 'Hikaye başlığı' },
+        { key: '{{STORY_SUMMARY}}', desc: 'Hikaye özeti (kısa)', example: 'Bir çocuğun kayıp köpeğini bulma macerası' },
+        { key: '{{TARGET_COUNTRY}}', desc: 'Hedef ülke' },
+        { key: '{{TARGET_LANGUAGE}}', desc: 'Hedef dil' },
+        { key: '{{ADAPTATION_CHANGES}}', desc: 'Adaptasyon değişiklikleri' },
+        { key: '{{ORIGINAL_REF}}', desc: 'Orijinal referans' }
+      ]
+    }
+  ]
+};
+
 const emptyFormData: ScenarioFormData = {
   name: '',
   description: '',
@@ -114,6 +223,9 @@ export function PromptScenarioManager() {
   // Expanded scenario for viewing
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedTab, setExpandedTab] = useState<TabKey>('translation');
+  
+  // Değişken yardım paneli
+  const [showVariableHelp, setShowVariableHelp] = useState(false);
 
   // Sekmeler
   const tabs: { key: TabKey; icon: string; label: string }[] = [
@@ -623,17 +735,137 @@ export function PromptScenarioManager() {
         </div>
       )}
 
-      {/* Değişken Açıklaması */}
-      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-        <h4 className="font-medium text-blue-900 mb-2">📝 Kullanılabilir Değişkenler:</h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-blue-800">
-          <span><code className="bg-blue-100 px-1 rounded">{'{{CONTENT}}'}</code> Metin</span>
-          <span><code className="bg-blue-100 px-1 rounded">{'{{TITLE}}'}</code> Başlık</span>
-          <span><code className="bg-blue-100 px-1 rounded">{'{{TARGET_COUNTRY}}'}</code> Ülke</span>
-          <span><code className="bg-blue-100 px-1 rounded">{'{{TARGET_LANGUAGE}}'}</code> Dil</span>
-          <span><code className="bg-blue-100 px-1 rounded">{'{{SOURCE_LANG}}'}</code> Kaynak Dil</span>
-          <span><code className="bg-blue-100 px-1 rounded">{'{{VARIABLES}}'}</code> Dinamik</span>
-        </div>
+      {/* Değişken Yardım Paneli */}
+      <div className="mb-4 border border-blue-200 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setShowVariableHelp(!showVariableHelp)}
+          className="w-full p-3 bg-blue-50 hover:bg-blue-100 flex items-center justify-between text-left transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📝</span>
+            <span className="font-medium text-blue-900">Kullanılabilir Değişkenler</span>
+            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+              Promptlarda kullanabileceğiniz değişkenler
+            </span>
+          </div>
+          <span className="text-blue-600">{showVariableHelp ? '▲' : '▼'}</span>
+        </button>
+        
+        {showVariableHelp && (
+          <div className="p-4 bg-white border-t border-blue-200">
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+              <strong>💡 Nasıl Kullanılır?</strong>
+              <p className="mt-1 text-gray-700">
+                Değişkenler <code className="bg-gray-100 px-1 rounded">{'{{'}</code>DEĞIŞKEN_ADI<code className="bg-gray-100 px-1 rounded">{'}}'}</code> formatında yazılır.
+                Sistem, prompt çalıştırılırken bu değişkenleri gerçek değerlerle otomatik değiştirir.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Çeviri Değişkenleri */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-indigo-50 p-3 border-b border-gray-200">
+                  <h5 className="font-medium text-indigo-900">🔤 Çeviri Değişkenleri</h5>
+                </div>
+                <div className="p-3 space-y-2 text-sm">
+                  {VARIABLE_DOCS.translation.flatMap(g => g.variables).filter((v, i, arr) => arr.findIndex(x => x.key === v.key) === i).map(v => (
+                    <div key={v.key} className="flex items-start gap-2">
+                      <code className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded text-xs font-mono shrink-0">{v.key}</code>
+                      <div>
+                        <span className="text-gray-700">{v.desc}</span>
+                        {v.example && <span className="text-gray-400 text-xs ml-1">({v.example})</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Adaptasyon Değişkenleri */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-purple-50 p-3 border-b border-gray-200">
+                  <h5 className="font-medium text-purple-900">🎭 Adaptasyon Değişkenleri</h5>
+                </div>
+                <div className="p-3 space-y-2 text-sm">
+                  {VARIABLE_DOCS.adaptation.flatMap(g => g.variables).filter((v, i, arr) => arr.findIndex(x => x.key === v.key) === i).map(v => (
+                    <div key={v.key} className="flex items-start gap-2">
+                      <code className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-mono shrink-0">{v.key}</code>
+                      <div>
+                        <span className="text-gray-700">{v.desc}</span>
+                        {v.example && <span className="text-gray-400 text-xs ml-1">({v.example})</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sahne Değişkenleri */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-green-50 p-3 border-b border-gray-200">
+                  <h5 className="font-medium text-green-900">🎬 Sahne Değişkenleri</h5>
+                </div>
+                <div className="p-3 space-y-2 text-sm">
+                  {VARIABLE_DOCS.scene.flatMap(g => g.variables).filter((v, i, arr) => arr.findIndex(x => x.key === v.key) === i).map(v => (
+                    <div key={v.key} className="flex items-start gap-2">
+                      <code className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs font-mono shrink-0">{v.key}</code>
+                      <div>
+                        <span className="text-gray-700">{v.desc}</span>
+                        {v.example && <span className="text-gray-400 text-xs ml-1">({v.example})</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Görsel Değişkenleri */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-orange-50 p-3 border-b border-gray-200">
+                  <h5 className="font-medium text-orange-900">🖼️ Görsel Değişkenleri</h5>
+                </div>
+                <div className="p-3 space-y-2 text-sm">
+                  {VARIABLE_DOCS.visual.flatMap(g => g.variables).map(v => (
+                    <div key={v.key} className="flex items-start gap-2">
+                      <code className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs font-mono shrink-0">{v.key}</code>
+                      <div>
+                        <span className="text-gray-700">{v.desc}</span>
+                        {v.example && <span className="text-gray-400 text-xs ml-1">({v.example})</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Metadata Değişkenleri */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden lg:col-span-2">
+                <div className="bg-red-50 p-3 border-b border-gray-200">
+                  <h5 className="font-medium text-red-900">📝 YouTube & Kapak Değişkenleri</h5>
+                </div>
+                <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  {VARIABLE_DOCS.metadata.flatMap(g => g.variables).filter((v, i, arr) => arr.findIndex(x => x.key === v.key) === i).map(v => (
+                    <div key={v.key} className="flex items-start gap-2">
+                      <code className="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs font-mono shrink-0">{v.key}</code>
+                      <div>
+                        <span className="text-gray-700">{v.desc}</span>
+                        {v.example && <span className="text-gray-400 text-xs ml-1">({v.example})</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            {/* Önemli Notlar */}
+            <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+              <h5 className="font-medium text-gray-900 mb-2">⚠️ Önemli Notlar:</h5>
+              <ul className="space-y-1 text-gray-700">
+                <li>• <code className="bg-gray-100 px-1 rounded">{'{{ADAPTATION_CHANGES}}'}</code> - Hikaye adaptasyonu sırasında yapılan değişikliklerin listesi (isim, yer değişiklikleri)</li>
+                <li>• <code className="bg-gray-100 px-1 rounded">{'{{ORIGINAL_REF}}'}</code> - Orijinal hikayeye referans bilgisi</li>
+                <li>• <code className="bg-gray-100 px-1 rounded">{'{{STORY_SUMMARY}}'}</code> - Hikayenin kısa özeti (kapak yazısı için)</li>
+                <li>• <code className="bg-gray-100 px-1 rounded">{'{{STYLE_SYSTEM_PROMPT}}'}</code> - Görsel Stili yöneticisinden gelen stil açıklaması</li>
+                <li>• Değişkenler büyük/küçük harf duyarlıdır, daima BÜYÜK HARF kullanın</li>
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Senaryo Listesi */}
