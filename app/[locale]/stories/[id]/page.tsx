@@ -12,7 +12,7 @@ import { Link } from '@/i18n/navigation';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 
 interface SceneHook {
-  type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+  hookType: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
   text: string;
   position: 'before' | 'after';
 }
@@ -364,15 +364,15 @@ function StoryDetailContent() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">📢 Hook Özeti</h3>
                 <div className="space-y-2">
                   {story.scenes.filter(s => s.hook).map(scene => (
-                    <div 
-                      key={scene._id} 
-                      className={`flex items-center justify-between p-3 rounded-lg ${getHookBgColor(scene.hook?.type || '')}`}
+                    <div
+                      key={scene._id}
+                      className={`flex items-center justify-between p-3 rounded-lg ${getHookBgColor(scene.hook?.hookType || '')}`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="text-lg">{getHookEmoji(scene.hook?.type || '')}</span>
+                        <span className="text-lg">{getHookEmoji(scene.hook?.hookType || '')}</span>
                         <div>
                           <span className="font-medium text-sm">
-                            Sahne {scene.sceneNumber} - {getHookLabel(scene.hook?.type || '')}
+                            Sahne {scene.sceneNumber} - {getHookLabel(scene.hook?.hookType || '')}
                           </span>
                           <p className="text-xs text-gray-600 mt-0.5">
                             {scene.hook?.position === 'before' ? 'Sahne öncesi' : 'Sahne sonrası'}

@@ -589,7 +589,7 @@ export const processStory = inngest.createFunction(
             totalHooks: hooksAdded,
             hookTypes: scenesWithHooks
               .filter(s => s.hook)
-              .map(s => ({ scene: s.sceneNumber, type: s.hook?.type }))
+              .map(s => ({ scene: s.sceneNumber, hookType: s.hook?.hookType }))
           });
           
           return scenesWithHooks.map(s => ({
@@ -654,7 +654,7 @@ export const processStory = inngest.createFunction(
           isFirstThreeMinutes: boolean;
           estimatedDuration: number;
           hook?: {
-            type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+            hookType: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
             text: string;
             position: 'before' | 'after';
           };
@@ -985,7 +985,7 @@ export const processStory = inngest.createFunction(
             if (scene.hook?.text) {
               textForTTS = mergeHookWithSceneText(scene.sceneTextAdapted, scene.hook);
               logger.debug(`Sahne ${sceneNumber} için hook eklendi`, {
-                hookType: scene.hook.type,
+                hookType: scene.hook.hookType,
                 hookPosition: scene.hook.position
               });
             }
@@ -1052,21 +1052,32 @@ export const processStory = inngest.createFunction(
 
       // Toplam süreyi hesapla
       await step.run('finalize-audio', async () => {
-        await dbConnect();
-        
-        const scenes = await Scene.find({ storyId }).select('actualDuration blobUrls');
-        const totalDuration = scenes.reduce((sum, s) => sum + (s.actualDuration || 0), 0);
-        const completedAudios = scenes.filter(s => s.blobUrls?.audio).length;
+        try {
+          await dbConnect();
 
-        await Story.findByIdAndUpdate(storyId, { actualDuration: totalDuration });
-        await updateProgress(95, 'Seslendirme tamamlandı');
+          const scenes = await Scene.find({ storyId }).select('actualDuration blobUrls');
+          const totalDuration = scenes.reduce((sum, s) => sum + (s.actualDuration || 0), 0);
+          const completedAudios = scenes.filter(s => s.blobUrls?.audio).length;
 
-        logger.info('Seslendirmeler tamamlandı', {
-          storyId,
-          completed: completedAudios,
-          total: scenes.length,
-          totalDuration
-        });
+          await Story.findByIdAndUpdate(storyId, { actualDuration: totalDuration });
+          await updateProgress(95, 'Seslendirme tamamlandı');
+
+          logger.info('Seslendirmeler tamamlandı', {
+            storyId,
+            completed: completedAudios,
+            total: scenes.length,
+            totalDuration
+          });
+
+          return { totalDuration, completedAudios, total: scenes.length };
+        } catch (error) {
+          logger.error('finalize-audio hatası', {
+            storyId,
+            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+          });
+          // Hata olsa bile devam et
+          return { totalDuration: 0, completedAudios: 0, total: 0 };
+        }
       });
 
       // --- 8. TÜRKÇE ÇEVİRİ (96%) ---

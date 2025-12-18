@@ -5,7 +5,7 @@ export type HookType = 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
 
 // Hook bilgisi
 export interface SceneHook {
-  type: HookType;
+  hookType: HookType;
   text: string;
   position: 'before' | 'after';
 }

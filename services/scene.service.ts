@@ -36,7 +36,7 @@ interface SceneData {
   isFirstThreeMinutes: boolean;
   // YouTube Engagement Hook (opsiyonel)
   hook?: {
-    type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+    hookType: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
     text: string;
     position: 'before' | 'after';
   };

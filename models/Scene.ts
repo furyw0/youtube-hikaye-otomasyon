@@ -48,11 +48,13 @@ const SceneSchema = new Schema<IScene>(
     
     // YouTube Engagement Hook
     hook: {
-      type: {
+      hookType: {
         type: String,
         enum: ['intro', 'subscribe', 'like', 'comment', 'outro']
       },
-      text: String,
+      text: {
+        type: String
+      },
       position: {
         type: String,
         enum: ['before', 'after']

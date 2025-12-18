@@ -10,7 +10,7 @@ import { createCompletion, LLMProvider } from './llm-router.service';
 export type HookType = 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
 
 export interface Hook {
-  type: HookType;
+  hookType: HookType;
   text: string;
   position: 'before' | 'after';
 }
@@ -237,7 +237,7 @@ export async function generateAllHookTexts(
     return {
       sceneIndex: placement.sceneIndex,
       hook: {
-        type: placement.type,
+        hookType: placement.type,
         text: hookText,
         position: placement.position
       }

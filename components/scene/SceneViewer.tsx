@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 interface SceneHook {
-  type: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
+  hookType: 'intro' | 'subscribe' | 'like' | 'comment' | 'outro';
   text: string;
   position: 'before' | 'after';
 }
@@ -116,8 +116,8 @@ function SceneCard({
           )}
 
           {scene.hook && (
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getHookBadgeStyle(scene.hook.type)}`}>
-              {getHookEmoji(scene.hook.type)} {getHookLabel(scene.hook.type)}
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getHookBadgeStyle(scene.hook.hookType)}`}>
+              {getHookEmoji(scene.hook.hookType)} {getHookLabel(scene.hook.hookType)}
             </span>
           )}
 
@@ -214,10 +214,10 @@ function SceneCard({
 
           {/* Hook Info (if available) */}
           {scene.hook && (
-            <div className={`p-3 rounded-lg border ${getHookContainerStyle(scene.hook.type)}`}>
+            <div className={`p-3 rounded-lg border ${getHookContainerStyle(scene.hook.hookType)}`}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">{getHookEmoji(scene.hook.type)}</span>
-                <span className="font-semibold text-sm">{getHookLabel(scene.hook.type)}</span>
+                <span className="text-lg">{getHookEmoji(scene.hook.hookType)}</span>
+                <span className="font-semibold text-sm">{getHookLabel(scene.hook.hookType)}</span>
                 <span className="text-xs text-gray-500">
                   ({scene.hook.position === 'before' ? 'Sahne öncesi' : 'Sahne sonrası'})
                 </span>
