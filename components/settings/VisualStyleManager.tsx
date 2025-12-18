@@ -31,7 +31,7 @@ const emptyFormData: StyleFormData = {
   description: '',
   systemPrompt: '',
   technicalPrefix: '',
-  styleSuffix: '--style raw --no text, watermark, logo'
+  styleSuffix: 'Avoid: text, watermark, logo, cartoon, anime, illustration, 3D render'
 };
 
 export function VisualStyleManager() {
@@ -345,13 +345,13 @@ export function VisualStyleManager() {
                   {t('visualStyles.form.styleSuffix')} *
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Her prompt&apos;un sonuna eklenen negatif prompt&apos;lar.
+                  Her prompt&apos;un sonuna eklenen negatif prompt&apos;lar. &quot;Avoid:&quot; veya &quot;NOT&quot; formatı kullanın.
                 </p>
                 <textarea
                   value={formData.styleSuffix}
                   onChange={(e) => setFormData({ ...formData, styleSuffix: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-20 bg-white text-gray-900"
-                  placeholder="Örn: --style raw --no text, watermark, logo, modern"
+                  placeholder="Örn: Avoid: text, watermark, logo, cartoon, anime. NOT illustration, NOT 3D render."
                   maxLength={500}
                 />
               </div>
