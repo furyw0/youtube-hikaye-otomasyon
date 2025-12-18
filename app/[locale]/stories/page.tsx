@@ -24,6 +24,10 @@ interface Story {
   totalImages: number;
   actualDuration?: number;
   processingDuration?: number; // Saniye cinsinden üretim süresi
+  // Karakter Sayıları
+  originalContentLength?: number;
+  translatedContentLength?: number;
+  adaptedContentLength?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -261,6 +265,35 @@ function StoriesContent() {
                       </div>
                     )}
                   </div>
+                  
+                  {/* Karakter Sayıları */}
+                  {story.originalContentLength && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">📝 Karakter:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-700">{story.originalContentLength.toLocaleString('tr-TR')}</span>
+                          {story.adaptedContentLength && (
+                            <>
+                              <span className="text-gray-400">→</span>
+                              <span className={`font-medium ${
+                                Math.abs((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100) <= 5 
+                                  ? 'text-green-600' 
+                                  : 'text-orange-600'
+                              }`}>
+                                {story.adaptedContentLength.toLocaleString('tr-TR')}
+                                <span className="ml-1">
+                                  ({((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100) >= 0 ? '+' : ''}
+                                  {((story.adaptedContentLength - story.originalContentLength) / story.originalContentLength * 100).toFixed(1)}%)
+                                </span>
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <p className="text-xs text-gray-400 mt-3">
                     {new Date(story.createdAt).toLocaleDateString('tr-TR', {
                       day: 'numeric',
