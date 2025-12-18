@@ -1051,47 +1051,87 @@ export const processStory = inngest.createFunction(
       }
 
       // Toplam süreyi hesapla
-      await step.run('finalize-audio', async () => {
+      const audioFinalResult = await step.run('finalize-audio', async () => {
+        await dbConnect();
+
         try {
-          await dbConnect();
+          const scenes = await Scene.find({ storyId }).select('actualDuration blobUrls').lean();
+          
+          if (!scenes || scenes.length === 0) {
+            logger.warn('finalize-audio: Sahne bulunamadı', { storyId });
+            return { totalDuration: 0, completedAudios: 0, total: 0 };
+          }
 
-          const scenes = await Scene.find({ storyId }).select('actualDuration blobUrls');
-          const totalDuration = scenes.reduce((sum, s) => sum + (s.actualDuration || 0), 0);
-          const completedAudios = scenes.filter(s => s.blobUrls?.audio).length;
+          let totalDuration = 0;
+          let completedAudios = 0;
 
-          await Story.findByIdAndUpdate(storyId, { actualDuration: totalDuration });
-          await updateProgress(95, 'Seslendirme tamamlandı');
+          for (const scene of scenes) {
+            if (scene.actualDuration && typeof scene.actualDuration === 'number') {
+              totalDuration += scene.actualDuration;
+            }
+            if (scene.blobUrls && scene.blobUrls.audio) {
+              completedAudios++;
+            }
+          }
+
+          // Story güncelle
+          await Story.findByIdAndUpdate(storyId, { 
+            actualDuration: totalDuration 
+          });
 
           logger.info('Seslendirmeler tamamlandı', {
             storyId,
             completed: completedAudios,
             total: scenes.length,
-            totalDuration
+            totalDuration: Math.round(totalDuration * 100) / 100
           });
 
-          return { totalDuration, completedAudios, total: scenes.length };
-        } catch (error) {
-          logger.error('finalize-audio hatası', {
+          return { 
+            totalDuration: Math.round(totalDuration * 100) / 100, 
+            completedAudios, 
+            total: scenes.length 
+          };
+        } catch (innerError) {
+          logger.error('finalize-audio iç hata', {
             storyId,
-            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+            error: innerError instanceof Error ? innerError.message : 'Bilinmeyen hata'
           });
-          // Hata olsa bile devam et
+          // Hata olsa bile işleme devam etsin
           return { totalDuration: 0, completedAudios: 0, total: 0 };
         }
       });
 
+      // Progress güncelle (step dışında)
+      await updateProgress(95, 'Seslendirme tamamlandı');
+      
+      logger.info('finalize-audio sonuç', { storyId, result: audioFinalResult });
+
       // --- 8. TÜRKÇE ÇEVİRİ (96%) ---
       // Eğer hedef dil Türkçe değilse, sahneleri Türkçe'ye çevir
       if (storyData.targetLanguage !== 'tr') {
-        await step.run('translate-to-turkish', async () => {
+        // Önce sahne numaralarını al
+        const turkishSceneNumbers = await step.run('prepare-turkish-translations', async () => {
           await dbConnect();
-          await updateProgress(95, 'Türkçe çeviri yapılıyor...');
-
-          const { translateText } = await import('@/services/translation.service');
+          await updateProgress(95, 'Türkçe çeviri hazırlanıyor...');
+          
           const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 });
-          let completedTranslations = 0;
+          return scenes.map(s => s.sceneNumber);
+        });
 
-          for (const scene of scenes) {
+        // Her sahne için ayrı step (Vercel timeout'unu önle)
+        let completedTurkish = 0;
+        for (const sceneNumber of turkishSceneNumbers) {
+          await step.run(`translate-turkish-scene-${sceneNumber}`, async () => {
+            await dbConnect();
+            
+            const { translateText } = await import('@/services/translation.service');
+            const scene = await Scene.findOne({ storyId: storyId, sceneNumber });
+            
+            if (!scene) {
+              logger.warn('Türkçe çeviri: Sahne bulunamadı', { storyId, sceneNumber });
+              return;
+            }
+
             try {
               const turkishText = await translateText(
                 scene.sceneTextAdapted,
@@ -1101,32 +1141,32 @@ export const processStory = inngest.createFunction(
               );
 
               await Scene.findOneAndUpdate(
-                { storyId: storyId, sceneNumber: scene.sceneNumber },
+                { storyId: storyId, sceneNumber: sceneNumber },
                 { $set: { sceneTextTurkish: turkishText } }
               );
 
-              completedTranslations++;
-              const translationProgress = 95 + (completedTranslations / scenes.length) * 2;
-              await updateProgress(
-                Math.round(translationProgress),
-                `Türkçe çeviri (${completedTranslations}/${scenes.length})...`
-              );
-
+              logger.info('Türkçe çeviri tamamlandı', { storyId, sceneNumber });
             } catch (error) {
               logger.warn('Türkçe çeviri başarısız', {
                 storyId,
-                sceneNumber: scene.sceneNumber,
+                sceneNumber,
                 error: error instanceof Error ? error.message : 'Bilinmeyen hata'
               });
               // Devam et, kritik değil
             }
-          }
-
-          logger.info('Türkçe çeviriler tamamlandı', {
-            storyId,
-            completed: completedTranslations,
-            total: scenes.length
           });
+
+          completedTurkish++;
+          const translationProgress = 95 + (completedTurkish / turkishSceneNumbers.length) * 2;
+          await updateProgress(
+            Math.round(translationProgress),
+            `Türkçe çeviri (${completedTurkish}/${turkishSceneNumbers.length})...`
+          );
+        }
+
+        logger.info('Tüm Türkçe çeviriler tamamlandı', {
+          storyId,
+          total: turkishSceneNumbers.length
         });
       }
 
