@@ -181,7 +181,8 @@ export function parseClaudeJSONResponse<T>(content: string, expectedFields?: str
 
 /**
  * Claude API ile completion isteği (Prompt Caching destekli)
- * @param timeout - Milisaniye cinsinden timeout (varsayılan: 120000 = 2 dakika)
+ * @param timeout - Milisaniye cinsinden timeout (varsayılan: 600000 = 10 dakika)
+ * NOT: Inngest step limiti 10 dakika, bu yüzden max 10 dakika kullanıyoruz
  */
 export async function createClaudeCompletion(params: {
   model: string;
@@ -195,7 +196,7 @@ export async function createClaudeCompletion(params: {
   timeout?: number;           // Timeout (ms)
 }): Promise<string> {
   const apiKey = await getClaudeApiKey();
-  const timeoutMs = params.timeout || 120000; // 2 dakika varsayılan
+  const timeoutMs = params.timeout || 600000; // 10 dakika varsayılan (Inngest max step süresi)
   
   // AbortController ile timeout yönetimi
   const controller = new AbortController();

@@ -1111,16 +1111,43 @@ export const processStory = inngest.createFunction(
       if (storyData.targetLanguage !== 'tr') {
         // Önce sahne numaralarını al
         const turkishSceneNumbers = await step.run('prepare-turkish-translations', async () => {
-          await dbConnect();
-          await updateProgress(95, 'Türkçe çeviri hazırlanıyor...');
-          
-          const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 });
-          return scenes.map(s => s.sceneNumber);
+          try {
+            await dbConnect();
+            await updateProgress(95, 'Türkçe çeviri hazırlanıyor...');
+            
+            const scenes = await Scene.find({ storyId: storyId }).sort({ sceneNumber: 1 }).lean();
+            
+            if (!scenes || scenes.length === 0) {
+              logger.warn('prepare-turkish-translations: Sahne bulunamadı', { storyId });
+              return [];
+            }
+            
+            const sceneNumbers = scenes.map(s => s.sceneNumber).filter(n => n !== undefined && n !== null);
+            logger.info('prepare-turkish-translations: Sahne numaraları alındı', { 
+              storyId, 
+              count: sceneNumbers.length 
+            });
+            
+            return sceneNumbers;
+          } catch (error) {
+            logger.error('prepare-turkish-translations hatası', {
+              storyId,
+              error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+            });
+            return [];
+          }
         });
+
+        // Null/undefined kontrolü
+        const sceneNumbersToTranslate = turkishSceneNumbers || [];
+        
+        if (sceneNumbersToTranslate.length === 0) {
+          logger.warn('Türkçe çeviri atlandı: Sahne numarası bulunamadı', { storyId });
+        }
 
         // Her sahne için ayrı step (Vercel timeout'unu önle)
         let completedTurkish = 0;
-        for (const sceneNumber of turkishSceneNumbers) {
+        for (const sceneNumber of sceneNumbersToTranslate) {
           await step.run(`translate-turkish-scene-${sceneNumber}`, async () => {
             await dbConnect();
             
@@ -1157,16 +1184,18 @@ export const processStory = inngest.createFunction(
           });
 
           completedTurkish++;
-          const translationProgress = 95 + (completedTurkish / turkishSceneNumbers.length) * 2;
-          await updateProgress(
-            Math.round(translationProgress),
-            `Türkçe çeviri (${completedTurkish}/${turkishSceneNumbers.length})...`
-          );
+          if (sceneNumbersToTranslate.length > 0) {
+            const translationProgress = 95 + (completedTurkish / sceneNumbersToTranslate.length) * 2;
+            await updateProgress(
+              Math.round(translationProgress),
+              `Türkçe çeviri (${completedTurkish}/${sceneNumbersToTranslate.length})...`
+            );
+          }
         }
 
         logger.info('Tüm Türkçe çeviriler tamamlandı', {
           storyId,
-          total: turkishSceneNumbers.length
+          total: sceneNumbersToTranslate.length
         });
       }
 

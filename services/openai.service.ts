@@ -156,7 +156,8 @@ export function parseJSONResponse<T>(content: string, expectedFields?: string[])
 
 /**
  * Chat completion isteği gönderir
- * @param params.timeout - İstek timeout süresi (ms), varsayılan 120000 (2 dakika)
+ * @param params.timeout - İstek timeout süresi (ms), varsayılan 600000 (10 dakika)
+ * NOT: Inngest step limiti 10 dakika, bu yüzden max 10 dakika kullanıyoruz
  */
 export async function createChatCompletion(params: {
   model: string;
@@ -167,7 +168,7 @@ export async function createChatCompletion(params: {
   timeout?: number;
 }): Promise<string> {
   const client = await getOpenAIClient();
-  const timeoutMs = params.timeout ?? 120000; // 2 dakika varsayılan
+  const timeoutMs = params.timeout ?? 600000; // 10 dakika varsayılan (Inngest max step süresi)
   
   // AbortController ile timeout
   const controller = new AbortController();
