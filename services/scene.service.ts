@@ -14,6 +14,16 @@ import {
   type LLMProvider 
 } from './llm-router.service';
 import { IMAGE_SETTINGS } from '@/lib/constants';
+import { IVisualStyle } from '@/models/VisualStyle';
+
+interface PromptScenario {
+  sceneFirstThreeSystemPrompt?: string;
+  sceneFirstThreeUserPrompt?: string;
+  sceneRemainingSystemPrompt?: string;
+  sceneRemainingUserPrompt?: string;
+  visualPromptSystemPrompt?: string;
+  visualPromptUserPrompt?: string;
+}
 
 interface SceneData {
   sceneNumber: number;
@@ -31,6 +41,7 @@ interface GenerateScenesOptions {
   adaptedContent: string;
   model: string;
   provider?: LLMProvider;
+  promptScenario?: PromptScenario | null;
 }
 
 interface GenerateScenesResult {
@@ -162,29 +173,32 @@ function redistributeScenes(scenes: SceneData[], targetCount: number): SceneData
 }
 
 /**
- * AŞAMA 1: İlk 3 dakika için sahneler oluştur (6 görsel)
- * NOT: Bu fonksiyona ADAPTE EDİLMİŞ metin gönderilir (isimler ve kültürel unsurlar değiştirilmiş)
+ * Prompt şablonunu değişkenlerle doldurur
  */
-async function generateFirstThreeMinutes(
-  content: string,
-  language: 'original' | 'adapted',
-  model: string,
-  provider: LLMProvider = 'openai'
-): Promise<SceneData[]> {
-  // İlk 3 dakika için kullanılacak metin (ilk ~15.000 karakter)
-  const firstPartContent = content.substring(0, 15000);
-  const inputCharCount = firstPartContent.length;
-  
-  const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin İLK BÖLÜMÜNÜ sahnelere ayırıyorsun.
+function fillPromptTemplate(
+  template: string,
+  variables: Record<string, string>
+): string {
+  let result = template;
+  for (const [key, value] of Object.entries(variables)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+  return result;
+}
+
+/**
+ * Varsayılan ilk 3 dakika sahne promptları
+ */
+const DEFAULT_SCENE_FIRST_THREE_SYSTEM_PROMPT = `Sen hikaye sahne uzmanısın. Hikayenin İLK BÖLÜMÜNÜ sahnelere ayırıyorsun.
 
 ⛔ EN ÖNEMLİ KURAL - KISALTMA YASAK:
-Sana verilen metin ${inputCharCount} karakter. 
-Çıktıdaki TÜM SAHNE METİNLERİNİN TOPLAMI da yaklaşık ${inputCharCount} karakter OLMALI!
+Sana verilen metin {{INPUT_CHAR_COUNT}} karakter. 
+Çıktıdaki TÜM SAHNE METİNLERİNİN TOPLAMI da yaklaşık {{INPUT_CHAR_COUNT}} karakter OLMALI!
 Eğer toplam çıktı çok kısaysa, EKSİK BÖLMÜŞSÜN demektir!
 
 📏 UZUNLUK HEDEFİ:
-- Giriş: ~${inputCharCount} karakter
-- Çıkış: Tüm scene.text toplamı >= ${Math.round(inputCharCount * 0.90)} karakter olmalı
+- Giriş: ~{{INPUT_CHAR_COUNT}} karakter
+- Çıkış: Tüm scene.text toplamı >= {{MIN_OUTPUT_LENGTH}} karakter olmalı
 
 ⛔ KESINLIKLE YASAK:
 - ❌ METNİ KISALTMA veya ÖZETLEME
@@ -197,7 +211,7 @@ Eğer toplam çıktı çok kısaysa, EKSİK BÖLMÜŞSÜN demektir!
 1. Verilen metni 6 PARÇAYA BÖL - her parça "text" alanına KELİMESİ KELİMESİNE kopyalanmalı
 2. Hiçbir şey ekleme, hiçbir şey çıkarma - SADECE BÖL
 3. Paragraf veya cümle sınırlarında böl (kelime ortasından kesme)
-4. Her sahne ~${Math.round(inputCharCount / 6)} karakter olmalı
+4. Her sahne ~{{AVG_SCENE_LENGTH}} karakter olmalı
 
 📝 HER SAHNE İÇİN:
 - sceneNumber: 1-6 arası
@@ -214,6 +228,125 @@ JSON FORMAT:
   "totalTextLength": <tüm scene.text uzunluklarının toplamı>
 }`;
 
+const DEFAULT_SCENE_FIRST_THREE_USER_PROMPT = `KISALTMADAN 6 SAHNEYE BÖL (toplam ~{{INPUT_CHAR_COUNT}} karakter korunmalı)`;
+
+/**
+ * Varsayılan kalan sahneler promptları
+ */
+const DEFAULT_SCENE_REMAINING_SYSTEM_PROMPT = `Sen hikaye sahne uzmanısın. Hikayenin KALAN KISMINI sahnelere ayırıyorsun.
+
+⛔ EN ÖNEMLİ KURAL - KISALTMA YASAK:
+Sana verilen metin {{INPUT_CHAR_COUNT}} karakter.
+Çıktıdaki TÜM SAHNE METİNLERİNİN TOPLAMI da yaklaşık {{INPUT_CHAR_COUNT}} karakter OLMALI!
+Eğer toplam çıktı çok kısaysa, EKSİK BÖLMÜŞSÜN demektir!
+
+📏 UZUNLUK HEDEFİ:
+- Giriş: {{INPUT_CHAR_COUNT}} karakter
+- Çıkış: Tüm scene.text toplamı >= {{MIN_OUTPUT_LENGTH}} karakter olmalı
+- Tahmini sahne sayısı: {{ESTIMATED_SCENE_COUNT}} (her biri ~800 karakter)
+
+⛔ KESINLIKLE YASAK:
+- ❌ METNİ KISALTMA veya ÖZETLEME
+- ❌ Cümle, paragraf veya kelime ATLAMA
+- ❌ Kendi cümlelerinle YENİDEN YAZMA
+- ❌ "..." ile kısaltma yapma
+- ❌ Herhangi bir bölümü ÇIKARMA
+- ❌ SON KELIMEYE KADAR her şey dahil edilmeli!
+
+✅ ZORUNLU: METNİ AYNEN BÖL
+1. Verilen metni {{ESTIMATED_SCENE_COUNT}} PARÇAYA BÖL
+2. Her parça "text" alanına KELİMESİ KELİMESİNE kopyalanmalı
+3. Hiçbir şey ekleme, hiçbir şey çıkarma - SADECE BÖL
+4. Paragraf veya cümle sınırlarında böl
+5. TÜM METİN dahil edilmeli - SON KELİMEYE KADAR!
+
+📝 HER SAHNE İÇİN:
+- sceneNumber: {{START_SCENE_NUMBER}}'dan başla
+- text: VERİLEN METİNDEN KESİT (birebir kopyala!)
+- visualDescription: Görsel betimleme (görselli sahnelerde)
+- estimatedDuration: 12-20 saniye
+- hasImage: true/false (hedef: {{TARGET_IMAGES}} görsel)
+- imageIndex: {{START_IMAGE_INDEX}}-{{END_IMAGE_INDEX}} arası
+- isFirstThreeMinutes: false
+
+JSON FORMAT:
+{
+  "scenes": [...],
+  "totalTextLength": <tüm scene.text uzunluklarının toplamı>
+}`;
+
+const DEFAULT_SCENE_REMAINING_USER_PROMPT = `KISALTMADAN {{ESTIMATED_SCENE_COUNT}} SAHNEYE BÖL (toplam {{INPUT_CHAR_COUNT}} karakter korunmalı)`;
+
+/**
+ * Varsayılan görsel prompt promptları
+ */
+const DEFAULT_VISUAL_PROMPT_SYSTEM_PROMPT = `Sen sinematik görsel prompt yazarısın. Verilen sahne için ImageFX'te kullanılacak İNGİLİZCE prompt yaz.
+
+🎯 ANA GÖREV: Sahnenin ANLAMINI ve DUYGUSUNU yansıtan görsel prompt oluştur.
+
+🎨 STİL TANIMI:
+{{STYLE_SYSTEM_PROMPT}}
+
+📸 TEKNİK KURALLAR:
+- Kamera açısı, ışık yönü, renk paleti belirt
+- Karakterleri fiziksel özelliklerle tanımla (isim KULLANMA)
+- Sahnenin duygusal atmosferini yansıt
+
+⛔ YASAKLAR:
+- İsim kullanma → "the man", "the woman" kullan
+- Yaş belirtme → "middle-aged", "young" kullan  
+- Metin/yazı/logo ekleme
+- Çizgi film/anime stili
+
+{{CHARACTER_INSTRUCTION}}
+
+Hikaye: {{STORY_CONTEXT}}`;
+
+const DEFAULT_VISUAL_PROMPT_USER_PROMPT = `SAHNE {{SCENE_NUMBER}}:
+
+"{{SCENE_TEXT}}"
+
+{{VISUAL_HINT}}
+
+Bu sahne için sinematik fotoğraf prompt'u yaz. Sahnenin:
+- Ana aksiyonu/olayı
+- Karakterlerin duygu durumu
+- Ortam/mekan detayları
+- Işık ve atmosfer
+
+{{CHARACTER_DETAIL_INSTRUCTION}}
+
+SADECE İngilizce prompt yaz, başka açıklama ekleme.`;
+
+/**
+ * AŞAMA 1: İlk 3 dakika için sahneler oluştur (6 görsel)
+ * NOT: Bu fonksiyona ADAPTE EDİLMİŞ metin gönderilir (isimler ve kültürel unsurlar değiştirilmiş)
+ */
+async function generateFirstThreeMinutes(
+  content: string,
+  language: 'original' | 'adapted',
+  model: string,
+  provider: LLMProvider = 'openai',
+  promptScenario?: PromptScenario | null
+): Promise<SceneData[]> {
+  // İlk 3 dakika için kullanılacak metin (ilk ~15.000 karakter)
+  const firstPartContent = content.substring(0, 15000);
+  const inputCharCount = firstPartContent.length;
+  
+  // Değişkenler
+  const variables: Record<string, string> = {
+    INPUT_CHAR_COUNT: inputCharCount.toString(),
+    MIN_OUTPUT_LENGTH: Math.round(inputCharCount * 0.90).toString(),
+    AVG_SCENE_LENGTH: Math.round(inputCharCount / 6).toString()
+  };
+
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.sceneFirstThreeSystemPrompt || DEFAULT_SCENE_FIRST_THREE_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.sceneFirstThreeUserPrompt || DEFAULT_SCENE_FIRST_THREE_USER_PROMPT;
+
+  const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+  const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
+
   const response = await retryOpenAI(
     () => createCompletion({
       provider,
@@ -224,7 +357,7 @@ JSON FORMAT:
       messages: [
         { 
           role: 'user', 
-          content: `KISALTMADAN 6 SAHNEYE BÖL (toplam ~${inputCharCount} karakter korunmalı)`
+          content: userPrompt
         }
       ],
       temperature: 0.3, // Daha düşük = daha az yaratıcılık = daha az kısaltma
@@ -332,7 +465,8 @@ async function generateRemainingScenes(
   language: 'original' | 'adapted',
   model: string,
   firstThreeScenesCount: number = 6,  // İlk 3 dakikada kaç sahne oluşturuldu
-  provider: LLMProvider = 'openai'
+  provider: LLMProvider = 'openai',
+  promptScenario?: PromptScenario | null
 ): Promise<SceneData[]> {
   const remainingContent = content.substring(firstThreeMinutesEndPosition);
   
@@ -355,47 +489,23 @@ async function generateRemainingScenes(
   // Tahmini sahne sayısı (~800 karakter/sahne)
   const estimatedSceneCount = Math.max(minScenes, Math.ceil(inputCharCount / 800));
   
-  const systemPrompt = `Sen hikaye sahne uzmanısın. Hikayenin KALAN KISMINI sahnelere ayırıyorsun.
+  // Değişkenler
+  const variables: Record<string, string> = {
+    INPUT_CHAR_COUNT: inputCharCount.toString(),
+    MIN_OUTPUT_LENGTH: Math.round(inputCharCount * 0.90).toString(),
+    ESTIMATED_SCENE_COUNT: estimatedSceneCount.toString(),
+    START_SCENE_NUMBER: startSceneNumber.toString(),
+    TARGET_IMAGES: targetImages.toString(),
+    START_IMAGE_INDEX: startImageIndex.toString(),
+    END_IMAGE_INDEX: endImageIndex.toString()
+  };
 
-⛔ EN ÖNEMLİ KURAL - KISALTMA YASAK:
-Sana verilen metin ${inputCharCount} karakter.
-Çıktıdaki TÜM SAHNE METİNLERİNİN TOPLAMI da yaklaşık ${inputCharCount} karakter OLMALI!
-Eğer toplam çıktı çok kısaysa, EKSİK BÖLMÜŞSÜN demektir!
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.sceneRemainingSystemPrompt || DEFAULT_SCENE_REMAINING_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.sceneRemainingUserPrompt || DEFAULT_SCENE_REMAINING_USER_PROMPT;
 
-📏 UZUNLUK HEDEFİ:
-- Giriş: ${inputCharCount} karakter
-- Çıkış: Tüm scene.text toplamı >= ${Math.round(inputCharCount * 0.90)} karakter olmalı
-- Tahmini sahne sayısı: ${estimatedSceneCount} (her biri ~800 karakter)
-
-⛔ KESINLIKLE YASAK:
-- ❌ METNİ KISALTMA veya ÖZETLEME
-- ❌ Cümle, paragraf veya kelime ATLAMA
-- ❌ Kendi cümlelerinle YENİDEN YAZMA
-- ❌ "..." ile kısaltma yapma
-- ❌ Herhangi bir bölümü ÇIKARMA
-- ❌ SON KELIMEYE KADAR her şey dahil edilmeli!
-
-✅ ZORUNLU: METNİ AYNEN BÖL
-1. Verilen metni ${estimatedSceneCount} PARÇAYA BÖL
-2. Her parça "text" alanına KELİMESİ KELİMESİNE kopyalanmalı
-3. Hiçbir şey ekleme, hiçbir şey çıkarma - SADECE BÖL
-4. Paragraf veya cümle sınırlarında böl
-5. TÜM METİN dahil edilmeli - SON KELİMEYE KADAR!
-
-📝 HER SAHNE İÇİN:
-- sceneNumber: ${startSceneNumber}'dan başla
-- text: VERİLEN METİNDEN KESİT (birebir kopyala!)
-- visualDescription: Görsel betimleme (görselli sahnelerde)
-- estimatedDuration: 12-20 saniye
-- hasImage: true/false (hedef: ${targetImages} görsel)
-- imageIndex: ${startImageIndex}-${endImageIndex} arası
-- isFirstThreeMinutes: false
-
-JSON FORMAT:
-{
-  "scenes": [...],
-  "totalTextLength": <tüm scene.text uzunluklarının toplamı>
-}`;
+  const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+  const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -405,7 +515,7 @@ JSON FORMAT:
       cacheableContent: remainingContent, // Cache için içerik
       cacheTTL: '1h',
       messages: [
-        { role: 'user', content: `KISALTMADAN ${estimatedSceneCount} SAHNEYE BÖL (toplam ${inputCharCount} karakter korunmalı)` }
+        { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
       responseFormat: 'json_object'
@@ -482,7 +592,7 @@ JSON FORMAT:
  * YENİ YAKLAŞIM: Adapte metin üzerinden sahne oluştur, orijinali senkronize et
  */
 export async function generateScenes(options: GenerateScenesOptions): Promise<GenerateScenesResult> {
-  const { originalContent, adaptedContent, model, provider = 'openai' } = options;
+  const { originalContent, adaptedContent, model, provider = 'openai', promptScenario } = options;
 
   logger.info('Sahne oluşturma başlatılıyor (ADAPTE metin bazlı)', {
     model,
@@ -505,7 +615,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
           adaptedContent,
           'adapted',
           model,
-          provider
+          provider,
+          promptScenario
         );
         
         // Başarılı - döngüden çık
@@ -547,7 +658,8 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
       'adapted',
       model,
       firstThreeAdapted.length,  // İlk 3 dakikadaki sahne sayısı
-      provider
+      provider,
+      promptScenario
     );
 
     // 4. Tüm adapte sahneleri birleştir
@@ -694,16 +806,21 @@ export async function generateScenes(options: GenerateScenesOptions): Promise<Ge
 /**
  * Görsel promptları oluştur (ImageFX için)
  * Stil tutarlılığı ve metin/altyazı engelleme içerir
+ * @param visualStyle - Opsiyonel: Kullanıcının seçtiği görsel stil
+ * @param promptScenario - Opsiyonel: Kullanıcının seçtiği prompt senaryosu
  */
 export async function generateVisualPrompts(
   scenes: SceneData[],
   storyContext: string,
   model: string,
-  provider: LLMProvider = 'openai'
+  provider: LLMProvider = 'openai',
+  visualStyle?: IVisualStyle | null,
+  promptScenario?: PromptScenario | null
 ): Promise<Map<number, string>> {
   logger.info('Görsel promptları oluşturuluyor', {
     totalScenes: scenes.length,
-    imageScenes: scenes.filter(s => s.hasImage).length
+    imageScenes: scenes.filter(s => s.hasImage).length,
+    visualStyle: visualStyle?.name || 'varsayılan'
   });
 
   const prompts = new Map<number, string>();
@@ -711,56 +828,53 @@ export async function generateVisualPrompts(
   
   // İlk görsel için karakter tanımları (tutarlılık için)
   let mainCharacterDescription = '';
+  
+  // Stil tanımları - visualStyle varsa kullan, yoksa varsayılanları kullan
+  const styleSystemPrompt = visualStyle?.systemPrompt || 
+    'Fotorealistik sinematik fotoğraf stili, dramatik aydınlatma, film kalitesi';
+  const styleTechnicalPrefix = visualStyle?.technicalPrefix || 
+    'Shot on Sony A7R IV, 85mm f/1.4 lens, natural lighting, film grain, shallow depth of field';
+  const styleStyleSuffix = visualStyle?.styleSuffix || 
+    '--style raw --no text, watermark, logo, cartoon, anime, illustration, 3D render, CGI, drawing';
+
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.visualPromptSystemPrompt || DEFAULT_VISUAL_PROMPT_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.visualPromptUserPrompt || DEFAULT_VISUAL_PROMPT_USER_PROMPT;
 
   for (let i = 0; i < imageScenes.length; i++) {
     const scene = imageScenes[i];
     const isFirstImage = i === 0;
     const isFirstThreeMinutes = scene.isFirstThreeMinutes;
     
-    // ===== SADELEŞTIRILMIŞ VE SAHNE ODAKLI SYSTEM PROMPT =====
-    const systemPrompt = `Sen sinematik görsel prompt yazarısın. Verilen sahne için ImageFX'te kullanılacak İNGİLİZCE prompt yaz.
-
-🎯 ANA GÖREV: Sahnenin ANLAMINI ve DUYGUSUNU yansıtan görsel prompt oluştur.
-
-📸 TEKNİK KURALLAR:
-- Fotorealistik sinematik fotoğraf stili
-- Kamera açısı, ışık yönü, renk paleti belirt
-- Karakterleri fiziksel özelliklerle tanımla (isim KULLANMA)
-- Sahnenin duygusal atmosferini yansıt
-
-⛔ YASAKLAR:
-- İsim kullanma → "the man", "the woman" kullan
-- Yaş belirtme → "middle-aged", "young" kullan  
-- Metin/yazı/logo ekleme
-- Çizgi film/anime stili
-
-${isFirstImage ? `
-🎭 İLK GÖRSEL - Karakter tanımı oluştur:
+    // Dinamik değişkenler
+    const characterInstruction = isFirstImage 
+      ? `🎭 İLK GÖRSEL - Karakter tanımı oluştur:
 Ana karakteri detaylı tanımla: saç rengi/stili, ten rengi, yüz özellikleri, kıyafet.
-Bu tanım sonraki görsellerde kullanılacak.
-` : `
-🎭 KARAKTER TUTARLILIĞI:
-${mainCharacterDescription}
-`}
+Bu tanım sonraki görsellerde kullanılacak.`
+      : `🎭 KARAKTER TUTARLILIĞI:
+${mainCharacterDescription}`;
 
-Hikaye: ${storyContext.substring(0, 300)}`;
+    const characterDetailInstruction = isFirstImage 
+      ? 'Ana karakteri detaylı tanımla.' 
+      : 'Karakteri önceki tanımla tutarlı tut.';
 
-    // ===== SAHNE ODAKLI USER PROMPT =====
-    const userPrompt = `SAHNE ${scene.sceneNumber}:
+    const visualHint = scene.visualDescription 
+      ? `Görsel ipucu: ${scene.visualDescription.substring(0, 200)}` 
+      : '';
 
-"${scene.text.substring(0, 800)}"
+    // Değişkenler
+    const variables: Record<string, string> = {
+      STYLE_SYSTEM_PROMPT: styleSystemPrompt,
+      CHARACTER_INSTRUCTION: characterInstruction,
+      STORY_CONTEXT: storyContext.substring(0, 300),
+      SCENE_NUMBER: scene.sceneNumber.toString(),
+      SCENE_TEXT: scene.text.substring(0, 800),
+      VISUAL_HINT: visualHint,
+      CHARACTER_DETAIL_INSTRUCTION: characterDetailInstruction
+    };
 
-${scene.visualDescription ? `Görsel ipucu: ${scene.visualDescription.substring(0, 200)}` : ''}
-
-Bu sahne için sinematik fotoğraf prompt'u yaz. Sahnenin:
-- Ana aksiyonu/olayı
-- Karakterlerin duygu durumu
-- Ortam/mekan detayları
-- Işık ve atmosfer
-
-${isFirstImage ? 'Ana karakteri detaylı tanımla.' : 'Karakteri önceki tanımla tutarlı tut.'}
-
-SADECE İngilizce prompt yaz, başka açıklama ekleme.`;
+    const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+    const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
     const response = await retryOpenAI(
       () => createCompletion({
@@ -780,19 +894,14 @@ SADECE İngilizce prompt yaz, başka açıklama ekleme.`;
     // GPT'den gelen prompt'u temizle
     let scenePrompt = response.trim();
     
-    // Eğer prompt "Photorealistic" ile başlamıyorsa başına ekle
-    if (!scenePrompt.toLowerCase().startsWith('photorealistic')) {
-      scenePrompt = `Photorealistic cinematic photograph, ${scenePrompt}`;
+    // Eğer prompt stil anahtar kelimesiyle başlamıyorsa prefix ekle
+    if (!scenePrompt.toLowerCase().includes('photograph') && !scenePrompt.toLowerCase().includes('photo')) {
+      scenePrompt = `Photograph, ${scenePrompt}`;
     }
     
-    // ===== TEK, TEMİZ PREFIX (tekrar yok) =====
-    const technicalPrefix = 'Shot on Sony A7R IV, 85mm f/1.4 lens, natural lighting, film grain, shallow depth of field';
-    
-    // ===== TEK, TEMİZ SUFFIX (tekrar yok) =====
-    const styleSuffix = '--style raw --no text, watermark, logo, cartoon, anime, illustration, 3D render, CGI, drawing';
-    
-    // Final prompt: [Technical] + [Scene Content] + [Style]
-    const finalPrompt = `${technicalPrefix}. ${scenePrompt}. ${styleSuffix}`;
+    // Final prompt: [Technical Prefix] + [Scene Content] + [Style Suffix]
+    // visualStyle varsa onun değerlerini kullan
+    const finalPrompt = `${styleTechnicalPrefix}. ${scenePrompt}. ${styleStyleSuffix}`;
 
     prompts.set(scene.sceneNumber, finalPrompt);
     

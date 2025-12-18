@@ -133,7 +133,9 @@
       "coquiNotConfigured": "Coqui TTS is not configured. Please enter Tunnel URL in Settings.",
       "coquiLanguage": "Voice Language",
       "coquiVoice": "Reference Voice",
-      "coquiNoVoices": "No voices available"
+      "coquiNoVoices": "No voices available",
+      "visualStyle": "Visual Style",
+      "promptScenario": "Prompt Scenario"
     },
 
     "hints": {
@@ -278,6 +280,53 @@
       "title": "ElevenLabs Settings",
       "cloudBased": "Cloud-based, high-quality voices. Requires API key.",
       "model": "ElevenLabs Model"
+    },
+    "visualStyles": {
+      "title": "Visual Styles",
+      "addNew": "Add New Style",
+      "edit": "Edit",
+      "delete": "Delete",
+      "default": "Default",
+      "cannotDeleteDefault": "Default styles cannot be deleted",
+      "form": {
+        "name": "Style Name",
+        "description": "Description",
+        "systemPrompt": "Style Definition",
+        "technicalPrefix": "Technical Prefix",
+        "styleSuffix": "Style Suffix"
+      }
+    },
+    "promptScenarios": {
+      "title": "Prompt Scenarios",
+      "addNew": "Add New Scenario",
+      "edit": "Edit",
+      "delete": "Delete",
+      "default": "Default",
+      "cannotDeleteDefault": "Default scenarios cannot be deleted",
+      "form": {
+        "name": "Scenario Name",
+        "description": "Description"
+      },
+      "tabs": {
+        "translation": "Translation",
+        "adaptation": "Adaptation",
+        "scene": "Scene",
+        "visual": "Visual",
+        "metadata": "Metadata"
+      },
+      "fields": {
+        "contentTranslation": "Content Translation",
+        "titleTranslation": "Title Translation",
+        "contentAdaptation": "Content Adaptation",
+        "titleAdaptation": "Title Adaptation",
+        "sceneFirstThree": "First 3 Minutes Scenes",
+        "sceneRemaining": "Remaining Scenes",
+        "visualPrompt": "Visual Prompt",
+        "youtubeDescription": "YouTube Description",
+        "coverText": "Cover Text",
+        "systemPrompt": "System Prompt",
+        "userPrompt": "User Prompt"
+      }
     }
   },
 

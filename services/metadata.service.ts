@@ -9,6 +9,13 @@ import { retryOpenAI } from './retry.service';
 import { createCompletion, parseJSONResponse } from './llm-router.service';
 import type { LLMProvider } from './llm-router.service';
 
+interface PromptScenario {
+  youtubeDescriptionSystemPrompt?: string;
+  youtubeDescriptionUserPrompt?: string;
+  coverTextSystemPrompt?: string;
+  coverTextUserPrompt?: string;
+}
+
 interface MetadataOptions {
   adaptedTitle: string;
   adaptedContent: string;
@@ -19,12 +26,107 @@ interface MetadataOptions {
   model: string;
   provider: LLMProvider;
   adaptationNotes: string[];  // İsim/yer değişiklikleri
+  promptScenario?: PromptScenario | null;
 }
 
 interface MetadataResult {
   youtubeDescription: string;
   coverText: string;
 }
+
+/**
+ * Prompt şablonunu değişkenlerle doldurur
+ */
+function fillPromptTemplate(
+  template: string,
+  variables: Record<string, string>
+): string {
+  let result = template;
+  for (const [key, value] of Object.entries(variables)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+  return result;
+}
+
+/**
+ * Varsayılan YouTube açıklaması promptları
+ */
+const DEFAULT_YOUTUBE_DESCRIPTION_SYSTEM_PROMPT = `Sen YouTube video açıklaması uzmanısın. Adapte edilmiş hikaye için SEO uyumlu, ilgi çekici YouTube açıklaması yazıyorsun.
+
+🎯 GÖREV: Adapte edilmiş hikaye için kapsamlı YouTube açıklaması yaz.
+
+📏 AÇIKLAMA YAPISI:
+1. Çekici giriş (2-3 cümle) - Hikayenin özeti ve merak uyandırıcı
+2. Hikaye hakkında (4-5 cümle) - Ana tema, karakterler, önemli olaylar
+3. Neden izlemeli? (2-3 cümle) - İzleyiciye vaat
+4. Hashtag'ler (5-10 adet) - #HikayeAnlatımı #{{TARGET_COUNTRY}} vb.
+
+⛔ YASAK:
+- ❌ Orijinal isim/yer bilgilerini kullanma
+- ❌ Clickbait veya yanıltıcı ifadeler
+- ❌ "Orijinal" veya "uyarlandı" gibi ifadeler
+- ❌ Telif hakkı veya kaynak bilgisi
+
+✅ ZORUNLU:
+- ✅ Adapte edilmiş isim ve yer bilgilerini kullan
+- ✅ {{TARGET_LANGUAGE}} dilinde doğal ifadeler
+- ✅ SEO dostu anahtar kelimeler
+- ✅ Emoji kullanımı (ölçülü)
+- ✅ 200-500 kelime arası
+
+{{ADAPTATION_CHANGES}}
+{{ORIGINAL_REF}}
+
+Hedef: {{TARGET_COUNTRY}} / {{TARGET_LANGUAGE}}`;
+
+const DEFAULT_YOUTUBE_DESCRIPTION_USER_PROMPT = `Başlık: "{{TITLE}}"
+
+Bu hikaye için YouTube açıklaması yaz.`;
+
+/**
+ * Varsayılan kapak yazısı promptları
+ */
+const DEFAULT_COVER_TEXT_SYSTEM_PROMPT = `Sen YouTube thumbnail (kapak görseli) metin uzmanısın. Dikkat çekici, tıklanabilir kapak yazıları oluşturuyorsun.
+
+🎯 GÖREV: Adapte edilmiş hikaye için YÜKSEK TIKLANABİLİRLİK sağlayan kapak yazısı yaz.
+
+📏 KURAL VE SINIRLAR:
+- Maksimum 60-80 karakter
+- Kısa, anlaşılır, şok edici
+- Emoji kullanımı (1-2 adet, isteğe bağlı)
+- {{TARGET_LANGUAGE}} dilinde doğal ifade
+
+🔥 YÜKSEK TIKLANABİLİRLİK FORMÜLLERİ:
+1. Soru formatı: "Gerçeği Öğrenince Neler Oldu?"
+2. Tamamlanmamış: "Bu Adam 10 Yıl Sonra..."
+3. Şok/Şaşkınlık: "Kimse Ona İnanmadı Ama..."
+4. Merak: "Kapı Açıldığında İçeride..."
+5. Zıtlık: "Fakir Adam, Zengin Oldu ve..."
+
+⛔ YASAK:
+- ❌ Orijinal isim/yer bilgileri
+- ❌ Yanlış bilgi veya kandırmaca
+- ❌ Çok uzun cümleler
+- ❌ "Hikaye" kelimesini kullanma
+
+✅ ZORUNLU:
+- ✅ Adapte edilmiş isim/yerler
+- ✅ Merak uyandırıcı
+- ✅ Okuma kolaylığı
+- ✅ BÜYÜK HARFLERLE başlayabilir
+
+{{ADAPTATION_CHANGES}}
+{{ORIGINAL_REF}}
+
+Hedef: {{TARGET_COUNTRY}} / {{TARGET_LANGUAGE}}
+
+Sadece kapak yazısını döndür, başka açıklama ekleme.`;
+
+const DEFAULT_COVER_TEXT_USER_PROMPT = `Başlık: "{{TITLE}}"
+
+Hikaye özeti: {{STORY_SUMMARY}}
+
+Dikkat çekici kapak yazısı oluştur.`;
 
 /**
  * YouTube açıklaması oluştur
@@ -40,43 +142,33 @@ async function generateYouTubeDescription(
     targetCountry,
     model,
     provider,
-    adaptationNotes 
+    adaptationNotes,
+    promptScenario
   } = options;
 
   const adaptationChanges = adaptationNotes.length > 0
-    ? `\n\n🔄 ADAPTİS YAPILAN DEĞİŞİKLİKLER (BUNLARI KULLAN):\n${adaptationNotes.slice(0, 10).map(n => `- ${n}`).join('\n')}`
+    ? `\n\n🔄 ADAPTASYON DEĞİŞİKLİKLERİ (BUNLARI KULLAN):\n${adaptationNotes.slice(0, 10).map(n => `- ${n}`).join('\n')}`
     : '';
 
   const originalRef = originalDescription
     ? `\n\n📝 ORİJİNAL AÇIKLAMA (REFERANS):\n${originalDescription}\n\nBu açıklamayı referans alarak yeni açıklama oluştur. Değişen isim ve yer bilgilerini kullan.`
     : '';
 
-  const systemPrompt = `Sen YouTube video açıklaması uzmanısın. Adapte edilmiş hikaye için SEO uyumlu, ilgi çekici YouTube açıklaması yazıyorsun.
+  // Değişkenler
+  const variables: Record<string, string> = {
+    TARGET_COUNTRY: targetCountry,
+    TARGET_LANGUAGE: targetLanguage,
+    TITLE: adaptedTitle,
+    ADAPTATION_CHANGES: adaptationChanges,
+    ORIGINAL_REF: originalRef
+  };
 
-🎯 GÖREV: Adapte edilmiş hikaye için kapsamlı YouTube açıklaması yaz.
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.youtubeDescriptionSystemPrompt || DEFAULT_YOUTUBE_DESCRIPTION_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.youtubeDescriptionUserPrompt || DEFAULT_YOUTUBE_DESCRIPTION_USER_PROMPT;
 
-📏 AÇIKLAMA YAPISI:
-1. Çekici giriş (2-3 cümle) - Hikayenin özeti ve merak uyandırıcı
-2. Hikaye hakkında (4-5 cümle) - Ana tema, karakterler, önemli olaylar
-3. Neden izlemeli? (2-3 cümle) - İzleyiciye vaat
-4. Hashtag'ler (5-10 adet) - #HikayeAnlatımı #${targetCountry} vb.
-
-⛔ YASAK:
-- ❌ Orijinal isim/yer bilgilerini kullanma
-- ❌ Clickbait veya yanıltıcı ifadeler
-- ❌ "Orijinal" veya "uyarlandı" gibi ifadeler
-- ❌ Telif hakkı veya kaynak bilgisi
-
-✅ ZORUNLU:
-- ✅ Adapte edilmiş isim ve yer bilgilerini kullan
-- ✅ ${targetLanguage} dilinde doğal ifadeler
-- ✅ SEO dostu anahtar kelimeler
-- ✅ Emoji kullanımı (ölçülü)
-- ✅ 200-500 kelime arası
-
-${adaptationChanges}${originalRef}
-
-Hedef: ${targetCountry} / ${targetLanguage}`;
+  const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+  const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -88,7 +180,7 @@ Hedef: ${targetCountry} / ${targetLanguage}`;
       messages: [
         { 
           role: 'user', 
-          content: `Başlık: "${adaptedTitle}"\n\nBu hikaye için YouTube açıklaması yaz.` 
+          content: userPrompt 
         }
       ],
       temperature: 0.6
@@ -113,7 +205,8 @@ async function generateCoverText(
     targetCountry,
     model,
     provider,
-    adaptationNotes 
+    adaptationNotes,
+    promptScenario
   } = options;
 
   const adaptationChanges = adaptationNotes.length > 0
@@ -124,40 +217,22 @@ async function generateCoverText(
     ? `\n\n📝 ORİJİNAL KAPAK YAZISI (REFERANS):\n"${originalCoverText}"\n\nBu stili ve yaklaşımı referans al.`
     : '';
 
-  const systemPrompt = `Sen YouTube thumbnail (kapak görseli) metin uzmanısın. Dikkat çekici, tıklanabilir kapak yazıları oluşturuyorsun.
+  // Değişkenler
+  const variables: Record<string, string> = {
+    TARGET_COUNTRY: targetCountry,
+    TARGET_LANGUAGE: targetLanguage,
+    TITLE: adaptedTitle,
+    STORY_SUMMARY: adaptedContent.substring(0, 500) + '...',
+    ADAPTATION_CHANGES: adaptationChanges,
+    ORIGINAL_REF: originalRef
+  };
 
-🎯 GÖREV: Adapte edilmiş hikaye için YÜKSEK TIKLANABİLİRLİK sağlayan kapak yazısı yaz.
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.coverTextSystemPrompt || DEFAULT_COVER_TEXT_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.coverTextUserPrompt || DEFAULT_COVER_TEXT_USER_PROMPT;
 
-📏 KURAL VE SINIRLAR:
-- Maksimum 60-80 karakter
-- Kısa, anlaşılır, şok edici
-- Emoji kullanımı (1-2 adet, isteğe bağlı)
-- ${targetLanguage} dilinde doğal ifade
-
-🔥 YÜKSEK TIKLANABİLİRLİK FORMÜLLERİ:
-1. Soru formatı: "Gerçeği Öğrenince Neler Oldu?"
-2. Tamamlanmamış: "Bu Adam 10 Yıl Sonra..."
-3. Şok/Şaşkınlık: "Kimse Ona İnanmadı Ama..."
-4. Merak: "Kapı Açıldığında İçeride..."
-5. Zıtlık: "Fakir Adam, Zengin Oldu ve..."
-
-⛔ YASAK:
-- ❌ Orijinal isim/yer bilgileri
-- ❌ Yanlış bilgi veya kandırmaca
-- ❌ Çok uzun cümleler
-- ❌ "Hikaye" kelimesini kullanma
-
-✅ ZORUNLU:
-- ✅ Adapte edilmiş isim/yerler
-- ✅ Merak uyandırıcı
-- ✅ Okuma kolaylığı
-- ✅ BÜYÜK HARFLERLE başlayabilir
-
-${adaptationChanges}${originalRef}
-
-Hedef: ${targetCountry} / ${targetLanguage}
-
-Sadece kapak yazısını döndür, başka açıklama ekleme.`;
+  const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+  const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -169,7 +244,7 @@ Sadece kapak yazısını döndür, başka açıklama ekleme.`;
       messages: [
         { 
           role: 'user', 
-          content: `Başlık: "${adaptedTitle}"\n\nHikaye özeti: ${adaptedContent.substring(0, 500)}...\n\nDikkat çekici kapak yazısı oluştur.` 
+          content: userPrompt
         }
       ],
       temperature: 0.8 // Daha yaratıcı

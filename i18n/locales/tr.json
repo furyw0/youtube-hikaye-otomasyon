@@ -133,7 +133,9 @@
       "coquiNotConfigured": "Coqui TTS henüz yapılandırılmamış. Lütfen Ayarlar sayfasından Tunnel URL'ini girin.",
       "coquiLanguage": "Seslendirme Dili",
       "coquiVoice": "Referans Ses",
-      "coquiNoVoices": "Kullanılabilir ses bulunamadı"
+      "coquiNoVoices": "Kullanılabilir ses bulunamadı",
+      "visualStyle": "Görsel Stili",
+      "promptScenario": "Prompt Senaryosu"
     },
 
     "hints": {
@@ -278,6 +280,53 @@
       "title": "ElevenLabs Ayarları",
       "cloudBased": "Bulut tabanlı, yüksek kaliteli sesler. API key gerektirir.",
       "model": "ElevenLabs Modeli"
+    },
+    "visualStyles": {
+      "title": "Görsel Stilleri",
+      "addNew": "Yeni Stil Ekle",
+      "edit": "Düzenle",
+      "delete": "Sil",
+      "default": "Varsayılan",
+      "cannotDeleteDefault": "Varsayılan stiller silinemez",
+      "form": {
+        "name": "Stil Adı",
+        "description": "Açıklama",
+        "systemPrompt": "Stil Tanımı",
+        "technicalPrefix": "Teknik Prefix",
+        "styleSuffix": "Stil Suffix"
+      }
+    },
+    "promptScenarios": {
+      "title": "Prompt Senaryoları",
+      "addNew": "Yeni Senaryo Ekle",
+      "edit": "Düzenle",
+      "delete": "Sil",
+      "default": "Varsayılan",
+      "cannotDeleteDefault": "Varsayılan senaryolar silinemez",
+      "form": {
+        "name": "Senaryo Adı",
+        "description": "Açıklama"
+      },
+      "tabs": {
+        "translation": "Çeviri",
+        "adaptation": "Adaptasyon",
+        "scene": "Sahne",
+        "visual": "Görsel",
+        "metadata": "Metadata"
+      },
+      "fields": {
+        "contentTranslation": "İçerik Çevirisi",
+        "titleTranslation": "Başlık Çevirisi",
+        "contentAdaptation": "İçerik Adaptasyonu",
+        "titleAdaptation": "Başlık Adaptasyonu",
+        "sceneFirstThree": "İlk 3 Dakika Sahneleri",
+        "sceneRemaining": "Kalan Sahneler",
+        "visualPrompt": "Görsel Prompt",
+        "youtubeDescription": "YouTube Açıklaması",
+        "coverText": "Kapak Yazısı",
+        "systemPrompt": "System Prompt",
+        "userPrompt": "User Prompt"
+      }
     }
   },
 

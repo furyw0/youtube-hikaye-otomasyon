@@ -123,6 +123,20 @@ const StorySchema = new Schema<IStory>(
       required: false
     },
     
+    // Görsel Stili
+    visualStyleId: {
+      type: Schema.Types.ObjectId,
+      ref: 'VisualStyle',
+      required: false
+    },
+    
+    // Prompt Senaryosu
+    promptScenarioId: {
+      type: Schema.Types.ObjectId,
+      ref: 'PromptScenario',
+      required: false
+    },
+    
     // İşlem Durumu
     status: {
       type: String,

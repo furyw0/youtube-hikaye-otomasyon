@@ -13,6 +13,13 @@ import {
   type LLMProvider 
 } from './llm-router.service';
 
+interface PromptScenario {
+  adaptationSystemPrompt: string;
+  adaptationUserPrompt: string;
+  titleAdaptationSystemPrompt?: string;
+  titleAdaptationUserPrompt?: string;
+}
+
 interface AdaptationOptions {
   content: string;
   title: string;
@@ -20,6 +27,7 @@ interface AdaptationOptions {
   targetLanguage: string;
   model: string;
   provider?: LLMProvider;
+  promptScenario?: PromptScenario | null;
 }
 
 interface AdaptationResult {
@@ -31,22 +39,62 @@ interface AdaptationResult {
 }
 
 /**
- * Başlığı hedef ülkeye adapte eder
+ * Varsayılan adaptasyon system prompt'u
  */
-async function adaptTitle(
-  title: string,
-  targetCountry: string,
-  targetLanguage: string,
-  model: string,
-  provider: LLMProvider = 'openai'
-): Promise<string> {
-  const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
+const DEFAULT_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın. Hikayeleri BİREBİR adapte ediyorsun - KISALTMA YOK!
+
+🚨 KRİTİK KURAL: Bu bir ÇEVİRİ DEĞİL, KÜLTÜREL ADAPTASYON. Metin uzunluğu AYNI kalmalı!
+
+⛔ YASAK - ASLA YAPMA:
+- ❌ ASLA içeriği KISALTMA, ÖZETLEME veya KONDENSE ETME
+- ❌ ASLA paragraf, cümle, kelime veya karakter ATLAMA
+- ❌ ASLA sahne, olay, diyalog veya detay ÇIKARMA
+
+🔄 SADECE BU DEĞİŞİKLİKLERİ YAP:
+1. KİŞİ İSİMLERİ → {{TARGET_COUNTRY}}'de yaygın isimlerle değiştir
+2. YER İSİMLERİ → {{TARGET_COUNTRY}}'deki yerlerle değiştir
+3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi yerelleştir
+4. DİL STİLİ → {{TARGET_LANGUAGE}} dilinde doğal ifadeler kullan
+
+🎙️ SESLENDİRME UYGUNLUĞU:
+1. KISALTMALARI AÇ: "Dr." → "Doktor", "vb." → "ve benzeri"
+2. SAYILARI YAZIYLA YAZ: "3" → "üç", "1990" → "bin dokuz yüz doksan"
+3. PARANTEZLERİ KALDIR veya cümleye entegre et
+4. UZUN CÜMLELERİ BÖL: 150 karakterden uzun cümleleri nokta ile ayır
+
+{{VARIABLES}}
+
+JSON FORMAT:
+{"adapted": "TAM METİN", "notes": ["değişiklik1", "değişiklik2"]}`;
+
+const DEFAULT_ADAPTATION_USER_PROMPT = `ADAPTE ET (BİREBİR - KISALTMA YOK!):
+
+{{CONTENT}}`;
+
+/**
+ * Prompt şablonunu değişkenlerle doldurur
+ */
+function fillPromptTemplate(
+  template: string,
+  variables: Record<string, string>
+): string {
+  let result = template;
+  for (const [key, value] of Object.entries(variables)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+  return result;
+}
+
+/**
+ * Varsayılan başlık adaptasyonu promptları
+ */
+const DEFAULT_TITLE_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
 
 KURALLAR:
-1. Başlıktaki İSİMLERİ ${targetCountry}'de yaygın isimlerle DEĞİŞTİR
-2. Başlıktaki YER İSİMLERİNİ ${targetCountry}'deki yerlerle DEĞİŞTİR
+1. Başlıktaki İSİMLERİ {{TARGET_COUNTRY}}'de yaygın isimlerle DEĞİŞTİR
+2. Başlıktaki YER İSİMLERİNİ {{TARGET_COUNTRY}}'deki yerlerle DEĞİŞTİR
 3. Başlığın temel anlamını ve çekiciliğini koru
-4. ${targetCountry} kültürüne uygun yerel ifadeler kullan
+4. {{TARGET_COUNTRY}} kültürüne uygun yerel ifadeler kullan
 5. Uzunluğu benzer tut
 6. Çekici ve merak uyandırıcı olsun
 7. Sadece adapte edilmiş başlığı döndür
@@ -60,8 +108,35 @@ KURALLAR:
 - "John's Secret Garden" → "El Jardín Secreto de Juan" (İspanya)
 - "A Night in Paris" → "Madridde Bir Gece" (İspanya/Türkçe)
 
-Hedef Ülke: ${targetCountry}
-Hedef Dil: ${targetLanguage}`;
+Hedef Ülke: {{TARGET_COUNTRY}}
+Hedef Dil: {{TARGET_LANGUAGE}}`;
+
+const DEFAULT_TITLE_ADAPTATION_USER_PROMPT = `Başlık: "{{TITLE}}"`;
+
+/**
+ * Başlığı hedef ülkeye adapte eder
+ */
+async function adaptTitle(
+  title: string,
+  targetCountry: string,
+  targetLanguage: string,
+  model: string,
+  provider: LLMProvider = 'openai',
+  promptScenario?: PromptScenario | null
+): Promise<string> {
+  // Değişkenler
+  const variables: Record<string, string> = {
+    TARGET_COUNTRY: targetCountry,
+    TARGET_LANGUAGE: targetLanguage,
+    TITLE: title
+  };
+
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.titleAdaptationSystemPrompt || DEFAULT_TITLE_ADAPTATION_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.titleAdaptationUserPrompt || DEFAULT_TITLE_ADAPTATION_USER_PROMPT;
+
+  const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+  const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -69,7 +144,7 @@ Hedef Dil: ${targetLanguage}`;
       model,
       systemPrompt,
       messages: [
-        { role: 'user', content: `Başlık: "${title}"` }
+        { role: 'user', content: userPrompt }
       ],
       temperature: 0.6 // Biraz daha yaratıcı
     }),
@@ -90,7 +165,8 @@ async function adaptChunk(
   chunkIndex: number,
   totalChunks: number,
   previousNotes?: string[],  // Önceki chunk'lardaki isim değişiklikleri
-  provider: LLMProvider = 'openai'
+  provider: LLMProvider = 'openai',
+  promptScenario?: PromptScenario | null
 ): Promise<{ adapted: string; notes: string[] }> {
   const originalLength = chunk.length;
   const MIN_LENGTH_RATIO = 0.90; // Adaptasyon en az orijinalin %90'ı olmalı
@@ -109,77 +185,40 @@ async function adaptChunk(
   let lastAttemptLength = 0;
   let lastAttemptRatio = 0;
 
+  // Değişkenler
+  const variables: Record<string, string> = {
+    VARIABLES: `📊 ORİJİNAL METİN İSTATİSTİKLERİ:
+- Karakter sayısı: ${originalLength} karakter
+- Kelime sayısı: ~${wordCount} kelime
+- Cümle sayısı: ~${sentenceCount} cümle
+- Paragraf sayısı: ~${paragraphCount} paragraf
+
+📏 UZUNLUK KONTROLÜ:
+- Adapte edilmiş metin EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI (%90 minimum)
+
+${previousChanges}
+Hedef: ${targetCountry} / ${targetLanguage}
+Parça: ${chunkIndex + 1}/${totalChunks}`,
+    CONTENT: chunk,
+    TARGET_COUNTRY: targetCountry,
+    TARGET_LANGUAGE: targetLanguage
+  };
+
+  // Prompt şablonlarını al (senaryo varsa kullan, yoksa varsayılan)
+  const systemPromptTemplate = promptScenario?.adaptationSystemPrompt || DEFAULT_ADAPTATION_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.adaptationUserPrompt || DEFAULT_ADAPTATION_USER_PROMPT;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     // Önceki deneme bilgisi (retry için)
     const retryWarning = attempt > 1 && lastAttemptLength > 0
       ? `\n🚨 ÖNCEKİ DENEME HATASI:\n- Önceki çıktı: ${lastAttemptLength} karakter (${Math.round(lastAttemptRatio * 100)}%)\n- Bu çok kısa! Bu sefer EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter olmalı!\n- Her cümleyi, her paragrafı, her detayı koru!\n`
       : '';
 
-    const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Hikayeleri BİREBİR adapte ediyorsun - KISALTMA YOK!
-
-🚨 KRİTİK KURAL: Bu bir ÇEVİRİ DEĞİL, KÜLTÜREL ADAPTASYON. Metin uzunluğu AYNI kalmalı!
-
-⛔ YASAK - ASLA YAPMA:
-- ❌ ASLA içeriği KISALTMA, ÖZETLEME veya KONDENSE ETME
-- ❌ ASLA paragraf, cümle, kelime veya karakter ATLAMA
-- ❌ ASLA sahne, olay, diyalog veya detay ÇIKARMA
-- ❌ ASLA "..." veya "[...]" ile kısaltma yapma
-- ❌ ASLA "özellikle", "özellikle", "kısaca" gibi özetleme ifadeleri kullanma
-- ❌ ASLA birden fazla cümleyi tek cümleye indirgeme
-
-📊 ORİJİNAL METİN İSTATİSTİKLERİ (BUNLARI KORU!):
-- Karakter sayısı: ${originalLength} karakter
-- Kelime sayısı: ~${wordCount} kelime
-- Cümle sayısı: ~${sentenceCount} cümle
-- Paragraf sayısı: ~${paragraphCount} paragraf
-
-📏 UZUNLUK KONTROLÜ (ZORUNLU):
-- Adapte edilmiş metin EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI (%90 minimum)
-- İdeal: ${originalLength} karakter (±%5 tolerans)
-- Eğer çıktı ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakterden az ise, YANLIŞ YAPTIN!
-- Her paragraf, her cümle, her detay korunmalı
-
-🔄 SADECE BU DEĞİŞİKLİKLERİ YAP:
-1. KİŞİ İSİMLERİ → ${targetCountry}'de yaygın isimlerle değiştir (örn: "John" → "Juan", "Maria" → "María")
-2. YER İSİMLERİ → ${targetCountry}'deki yerlerle değiştir (örn: "New York" → "Madrid", "London" → "Barcelona")
-3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi, ölçü birimleri yerelleştir
-4. DİL STİLİ → ${targetLanguage} dilinde doğal ve akıcı ifadeler kullan
-
-🎙️ SESLENDİRME UYGUNLUĞU (TTS İÇİN ÖNEMLİ):
-1. KISALTMALARI AÇ: "Dr." → "Doktor", "Prof." → "Profesör", "vb." → "ve benzeri", "vs." → "vesaire", "örn." → "örneğin"
-2. SAYILARI YAZIYLA YAZ: "3" → "üç", "1990" → "bin dokuz yüz doksan", "15:30" → "on beş otuz"
-3. PARANTEZLERİ KALDIR: Parantez içi açıklamaları cümleye entegre et veya tamamen çıkar
-4. UZUN CÜMLELERİ BÖL: 150 karakterden uzun cümleleri nokta ile ayır
-5. ÖZEL KARAKTERLERİ KALDIR: *, #, @, &, %, $ gibi karakterleri kaldır veya yazıyla yaz
-6. URL/E-POSTA KALDIR: Web adresleri ve e-posta adreslerini kaldır
-7. DİYALOG TIRNAKLARINI KORU: Konuşma tırnakları seslendirmede önemli
-8. DOĞAL DURAKLAMALAR: Virgül yerine nokta tercih et (daha doğal duraklamalar için)
-
-✅ KORU (DEĞİŞTİRME - ÇOK ÖNEMLİ):
-- ✅ Paragraf sayısı AYNI kalmalı (~${paragraphCount} paragraf)
-- ✅ Cümle sayısı AYNI kalmalı (~${sentenceCount} cümle)
-- ✅ Kelime sayısı BENZER kalmalı (~${wordCount} kelime)
-- ✅ Karakter sayısı BENZER kalmalı (~${originalLength} karakter)
-- ✅ Her olay, her diyalog, her detay korunmalı
-- ✅ Hikaye akışı ve yapısı AYNI kalmalı
-
-💡 ÖRNEK (DOĞRU):
-Orijinal: "John walked slowly through the garden. He saw beautiful red roses. The sun was setting."
-Adapte: "Juan caminó lentamente por el jardín. Vio hermosas rosas rojas. El sol se estaba poniendo."
-→ Aynı cümle sayısı, benzer uzunluk, sadece isim ve dil değişti
-
-💡 ÖRNEK (YANLIŞ - YAPMA!):
-Orijinal: "John walked slowly through the garden. He saw beautiful red roses. The sun was setting."
-Yanlış: "Juan caminó por el jardín y vio rosas mientras se ponía el sol."
-→ Cümleler birleştirildi, detaylar kayboldu, uzunluk azaldı!
-
-${retryWarning}${previousChanges}
-Hedef: ${targetCountry} / ${targetLanguage}
-Parça: ${chunkIndex + 1}/${totalChunks}
-Deneme: ${attempt}/${MAX_RETRIES}
-
-JSON FORMAT:
-{"adapted": "TAM METİN (kısaltılmamış, ${originalLength} karakter civarı)", "notes": ["değişiklik1", "değişiklik2"]}`;
+    // Retry uyarısını variables'a ekle
+    variables.RETRY_WARNING = retryWarning;
+    
+    const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+    const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
     const response = await retryOpenAI(
       () => createCompletion({
@@ -187,7 +226,7 @@ JSON FORMAT:
         model,
         systemPrompt,
         messages: [
-          { role: 'user', content: `ADAPTE ET (BİREBİR - KISALTMA YOK!):\n\n${chunk}` }
+          { role: 'user', content: userPrompt }
         ],
         temperature: 0.2, // Daha düşük temperature = daha tutarlı, daha az yaratıcılık
         responseFormat: 'json_object'
@@ -271,7 +310,7 @@ JSON FORMAT:
  * Tam hikayeyi adapte eder
  */
 export async function adaptStory(options: AdaptationOptions): Promise<AdaptationResult> {
-  const { content, title, targetCountry, targetLanguage, model, provider = 'openai' } = options;
+  const { content, title, targetCountry, targetLanguage, model, provider = 'openai', promptScenario } = options;
 
   logger.info('Kültürel adaptasyon başlatılıyor', {
     targetCountry,
@@ -285,7 +324,7 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
   try {
     // 1. Başlık adaptasyonu
     logger.debug('Başlık adapte ediliyor...');
-    const adaptedTitle = await adaptTitle(title, targetCountry, targetLanguage, model, provider);
+    const adaptedTitle = await adaptTitle(title, targetCountry, targetLanguage, model, provider, promptScenario);
     
     logger.info('Başlık adapte edildi', { 
       original: title, 
@@ -321,7 +360,8 @@ export async function adaptStory(options: AdaptationOptions): Promise<Adaptation
         i,
         chunks.length,
         i > 0 ? allNotes : undefined,  // İlk chunk hariç önceki notları geçir
-        provider
+        provider,
+        promptScenario
       );
 
       adaptedChunks.push(result.adapted);

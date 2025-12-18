@@ -35,6 +35,20 @@ interface Model {
   description: string;
 }
 
+interface VisualStyle {
+  _id: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+}
+
+interface PromptScenario {
+  _id: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+}
+
 export function StoryForm() {
   const t = useTranslations('storyForm');
   const tCommon = useTranslations('common');
@@ -68,7 +82,11 @@ export function StoryForm() {
     // ImageFX
     imagefxModel: 'IMAGEN_4',
     imagefxAspectRatio: 'LANDSCAPE',
-    imagefxSeed: undefined as number | undefined
+    imagefxSeed: undefined as number | undefined,
+    // Visual Style
+    visualStyleId: '',
+    // Prompt Scenario
+    promptScenarioId: ''
   });
 
   // UI state
@@ -79,10 +97,14 @@ export function StoryForm() {
   const [coquiVoices, setCoquiVoices] = useState<CoquiVoice[]>([]);
   const [coquiLanguages, setCoquiLanguages] = useState<CoquiLanguage[]>([]);
   const [models, setModels] = useState<Model[]>([]);
+  const [visualStyles, setVisualStyles] = useState<VisualStyle[]>([]);
+  const [promptScenarios, setPromptScenarios] = useState<PromptScenario[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [loadingCoquiVoices, setLoadingCoquiVoices] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [loadingSettings, setLoadingSettings] = useState(true);
+  const [loadingVisualStyles, setLoadingVisualStyles] = useState(true);
+  const [loadingPromptScenarios, setLoadingPromptScenarios] = useState(true);
 
   // Load default settings from Settings API
   useEffect(() => {
@@ -124,6 +146,60 @@ export function StoryForm() {
     }
 
     fetchSettings();
+  }, []);
+
+  // Load Visual Styles
+  useEffect(() => {
+    async function fetchVisualStyles() {
+      try {
+        const response = await fetch('/api/visual-styles');
+        const data = await response.json();
+        
+        if (data.success && data.styles) {
+          setVisualStyles(data.styles);
+          // İlk stili varsayılan olarak seç
+          if (data.styles.length > 0) {
+            setFormData(prev => ({
+              ...prev,
+              visualStyleId: prev.visualStyleId || data.styles[0]._id
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Görsel stiller yüklenemedi:', err);
+      } finally {
+        setLoadingVisualStyles(false);
+      }
+    }
+
+    fetchVisualStyles();
+  }, []);
+
+  // Load Prompt Scenarios
+  useEffect(() => {
+    async function fetchPromptScenarios() {
+      try {
+        const response = await fetch('/api/prompt-scenarios');
+        const data = await response.json();
+        
+        if (data.success && data.scenarios) {
+          setPromptScenarios(data.scenarios);
+          // İlk senaryoyu varsayılan olarak seç
+          if (data.scenarios.length > 0) {
+            setFormData(prev => ({
+              ...prev,
+              promptScenarioId: prev.promptScenarioId || data.scenarios[0]._id
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Prompt senaryoları yüklenemedi:', err);
+      } finally {
+        setLoadingPromptScenarios(false);
+      }
+    }
+
+    fetchPromptScenarios();
   }, []);
 
   // Load ElevenLabs voices
@@ -275,7 +351,9 @@ export function StoryForm() {
         openaiModel: selectedModel, // Backend hala openaiModel field'ını kullanıyor, ikisi için de buraya yazıyoruz
         translationOnly: formData.translationOnly,
         ttsProvider,
-        coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined
+        coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined,
+        visualStyleId: formData.visualStyleId || undefined,
+        promptScenarioId: formData.promptScenarioId || undefined
       };
 
       // 1. Hikaye oluştur
@@ -520,6 +598,33 @@ export function StoryForm() {
         </div>
       </div>
 
+      {/* Prompt Scenario Selection */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          📝 {t('fields.promptScenario')}
+        </label>
+        {loadingPromptScenarios ? (
+          <div className="text-sm text-gray-500">{tCommon('loading')}</div>
+        ) : promptScenarios.length === 0 ? (
+          <div className="text-sm text-gray-500">Henüz prompt senaryosu tanımlanmamış</div>
+        ) : (
+          <select
+            value={formData.promptScenarioId}
+            onChange={(e) => setFormData({ ...formData, promptScenarioId: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+          >
+            {promptScenarios.map(scenario => (
+              <option key={scenario._id} value={scenario._id}>
+                {scenario.name} {scenario.isDefault ? '⭐' : ''} {scenario.description ? `- ${scenario.description}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
+        <p className="text-xs text-gray-500 mt-1">
+          Çeviri ve adaptasyon için kullanılacak prompt şablonu. Ayarlar sayfasından yeni senaryolar ekleyebilirsiniz.
+        </p>
+      </div>
+
       {/* LLM Model Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -685,36 +790,66 @@ export function StoryForm() {
       )}
 
       {/* ImageFX Settings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-4">
+        {/* Visual Style Selection */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            {t('fields.imagefxModel')}
+            🎨 {t('fields.visualStyle')}
           </label>
-          <select
-            value={formData.imagefxModel}
-            onChange={(e) => setFormData({ ...formData, imagefxModel: e.target.value })}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-          >
-            <option value="IMAGEN_4">Imagen 4 (En Yeni)</option>
-            <option value="IMAGEN_3_5">Imagen 3.5</option>
-          </select>
+          {loadingVisualStyles ? (
+            <div className="text-sm text-gray-500">{tCommon('loading')}</div>
+          ) : visualStyles.length === 0 ? (
+            <div className="text-sm text-gray-500">Henüz görsel stil tanımlanmamış</div>
+          ) : (
+            <select
+              value={formData.visualStyleId}
+              onChange={(e) => setFormData({ ...formData, visualStyleId: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+            >
+              {visualStyles.map(style => (
+                <option key={style._id} value={style._id}>
+                  {style.name} {style.isDefault ? '⭐' : ''} {style.description ? `- ${style.description}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <p className="text-xs text-gray-500 mt-1">
+            Üretilecek görsellerin tarzını belirler. Ayarlar sayfasından yeni stiller ekleyebilirsiniz.
+          </p>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {t('fields.aspectRatio')}
-          </label>
-          <select
-            value={formData.imagefxAspectRatio}
-            onChange={(e) => setFormData({ ...formData, imagefxAspectRatio: e.target.value })}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-          >
-            {IMAGEFX_ASPECT_RATIOS.map(ratio => (
-              <option key={ratio.id} value={ratio.id}>
-                {ratio.name}
-              </option>
-            ))}
-          </select>
+        {/* Model & Aspect Ratio */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('fields.imagefxModel')}
+            </label>
+            <select
+              value={formData.imagefxModel}
+              onChange={(e) => setFormData({ ...formData, imagefxModel: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+            >
+              <option value="IMAGEN_4">Imagen 4 (En Yeni)</option>
+              <option value="IMAGEN_3_5">Imagen 3.5</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('fields.aspectRatio')}
+            </label>
+            <select
+              value={formData.imagefxAspectRatio}
+              onChange={(e) => setFormData({ ...formData, imagefxAspectRatio: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+            >
+              {IMAGEFX_ASPECT_RATIOS.map(ratio => (
+                <option key={ratio.id} value={ratio.id}>
+                  {ratio.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

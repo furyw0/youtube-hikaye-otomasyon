@@ -42,7 +42,11 @@ const createStorySchema = z.object({
   // ImageFX
   imagefxModel: z.enum(['IMAGEN_4', 'IMAGEN_3_5']).optional().default('IMAGEN_4'),
   imagefxAspectRatio: z.enum(['SQUARE', 'LANDSCAPE', 'PORTRAIT']).optional().default('LANDSCAPE'),
-  imagefxSeed: z.number().int().min(0).max(2147483647).optional()
+  imagefxSeed: z.number().int().min(0).max(2147483647).optional(),
+  // Görsel Stili
+  visualStyleId: z.string().optional(),
+  // Prompt Senaryosu
+  promptScenarioId: z.string().optional()
 }).refine((data) => {
   // TTS Provider'a göre gerekli alanları kontrol et
   if (data.ttsProvider === 'elevenlabs') {
@@ -135,6 +139,10 @@ export async function POST(request: NextRequest) {
       imagefxModel: validated.imagefxModel,
       imagefxAspectRatio: validated.imagefxAspectRatio,
       imagefxSeed: validated.imagefxSeed,
+      // Görsel Stili
+      visualStyleId: validated.visualStyleId || undefined,
+      // Prompt Senaryosu
+      promptScenarioId: validated.promptScenarioId || undefined,
       status: 'created',
       progress: 0,
       retryCount: 0,

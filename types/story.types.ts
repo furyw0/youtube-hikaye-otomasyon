@@ -48,6 +48,12 @@ export interface IStory {
   imagefxAspectRatio: string;
   imagefxSeed?: number;
   
+  // Görsel Stili
+  visualStyleId?: Types.ObjectId;
+  
+  // Prompt Senaryosu
+  promptScenarioId?: Types.ObjectId;
+  
   // İşlem Durumu
   status: 'created' | 'queued' | 'processing' | 'completed' | 'failed';
   progress: number;
@@ -107,5 +113,9 @@ export interface CreateStoryInput {
   imagefxModel?: string;
   imagefxAspectRatio?: string;
   imagefxSeed?: number;
+  // Görsel Stili
+  visualStyleId?: string;
+  // Prompt Senaryosu
+  promptScenarioId?: string;
 }
 

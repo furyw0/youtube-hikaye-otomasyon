@@ -14,6 +14,13 @@ import {
   type LLMProvider
 } from './llm-router.service';
 
+interface PromptScenario {
+  translationSystemPrompt: string;
+  translationUserPrompt: string;
+  titleTranslationSystemPrompt?: string;
+  titleTranslationUserPrompt?: string;
+}
+
 interface TranslationOptions {
   content: string;
   title: string;
@@ -21,6 +28,7 @@ interface TranslationOptions {
   targetLang: string;
   model: string;
   provider?: LLMProvider;
+  promptScenario?: PromptScenario | null;
 }
 
 interface TranslationResult {
@@ -33,16 +41,9 @@ interface TranslationResult {
 }
 
 /**
- * Hikaye başlığını çevirir
+ * Varsayılan başlık çevirisi promptları
  */
-async function translateTitle(
-  title: string,
-  sourceLang: string,
-  targetLang: string,
-  model: string,
-  provider: LLMProvider = 'openai'
-): Promise<string> {
-  const systemPrompt = `Sen profesyonel bir çevirmensin. Hikaye başlıklarını çeviriyorsun.
+const DEFAULT_TITLE_TRANSLATION_SYSTEM_PROMPT = `Sen profesyonel bir çevirmensin. Hikaye başlıklarını çeviriyorsun.
 
 KURALLAR:
 1. Başlığın anlamını ve duygusunu koru
@@ -50,8 +51,35 @@ KURALLAR:
 3. Uzunluğu benzer tut
 4. Sadece çevrilmiş başlığı döndür (ek açıklama yok)
 
-Kaynak Dil: ${sourceLang}
-Hedef Dil: ${targetLang}`;
+Kaynak Dil: {{SOURCE_LANG}}
+Hedef Dil: {{TARGET_LANGUAGE}}`;
+
+const DEFAULT_TITLE_TRANSLATION_USER_PROMPT = `Başlık: "{{TITLE}}"`;
+
+/**
+ * Hikaye başlığını çevirir
+ */
+async function translateTitle(
+  title: string,
+  sourceLang: string,
+  targetLang: string,
+  model: string,
+  provider: LLMProvider = 'openai',
+  promptScenario?: PromptScenario | null
+): Promise<string> {
+  // Değişkenler
+  const variables: Record<string, string> = {
+    SOURCE_LANG: sourceLang,
+    TARGET_LANGUAGE: targetLang,
+    TITLE: title
+  };
+
+  // Prompt şablonlarını al
+  const systemPromptTemplate = promptScenario?.titleTranslationSystemPrompt || DEFAULT_TITLE_TRANSLATION_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.titleTranslationUserPrompt || DEFAULT_TITLE_TRANSLATION_USER_PROMPT;
+
+  const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+  const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -59,7 +87,7 @@ Hedef Dil: ${targetLang}`;
       model,
       systemPrompt,
       messages: [
-        { role: 'user', content: `Başlık: "${title}"` }
+        { role: 'user', content: userPrompt }
       ],
       temperature: 0.5
     }),
@@ -67,6 +95,49 @@ Hedef Dil: ${targetLang}`;
   );
 
   return response.trim().replace(/^["']|["']$/g, ''); // Tırnakları kaldır
+}
+
+/**
+ * Varsayılan çeviri system prompt'u
+ */
+const DEFAULT_TRANSLATION_SYSTEM_PROMPT = `Sen profesyonel bir edebi çevirmensin. Hikayeleri hedef dile BİREBİR çeviriyorsun.
+
+⛔ YASAK - ASLA YAPMA (YAPAN MODELİ SİLERİZ):
+- ❌ ASLA içeriği KISALTMA veya ÖZETLEME
+- ❌ ASLA paragraf, cümle veya kelime ATLAMA
+- ❌ ASLA sahne, olay veya diyalog ÇIKARMA
+- ❌ ASLA hikayeyi değiştirme veya yeniden yazma
+- ❌ ASLA "..." ile kısaltma yapma
+- ❌ ASLA "devamı..." gibi ifadeler kullanma
+
+📏 UZUNLUK KONTROLÜ (ÇOK KRİTİK):
+- Çeviri orijinalin %75-%130 arasında olmalı
+- Eğer çeviri çok kısa ise, EKSİK ÇEVİRDİN demektir!
+
+✅ ZORUNLU KURALLAR:
+1. HER PARAGRAF, HER CÜMLE, HER KELİME eksiksiz çevrilmeli
+2. Paragraf sayısı AYNI kalmalı
+3. Karakter ve yer isimleri AYNEN KALSIN (adaptasyonda değişecek)
+4. SADECE çevrilmiş metni döndür
+
+{{VARIABLES}}`;
+
+const DEFAULT_TRANSLATION_USER_PROMPT = `ÇEVİR (KISALTMADAN!):
+
+{{CONTENT}}`;
+
+/**
+ * Prompt şablonunu değişkenlerle doldurur
+ */
+function fillPromptTemplate(
+  template: string,
+  variables: Record<string, string>
+): string {
+  let result = template;
+  for (const [key, value] of Object.entries(variables)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+  return result;
 }
 
 /**
@@ -80,48 +151,42 @@ async function translateChunk(
   chunkIndex: number,
   totalChunks: number,
   previousContext?: string,
-  provider: LLMProvider = 'openai'
+  provider: LLMProvider = 'openai',
+  promptScenario?: PromptScenario | null
 ): Promise<string> {
   const originalLength = chunk.length;
   const MIN_LENGTH_RATIO = 0.75; // Çeviri en az orijinalin %75'i olmalı
   const MAX_RETRIES = 3;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const systemPrompt = `Sen profesyonel bir edebi çevirmensin. Hikayeleri hedef dile BİREBİR çeviriyorsun.
-
-⛔ YASAK - ASLA YAPMA (YAPAN MODELİ SİLERİZ):
-- ❌ ASLA içeriği KISALTMA veya ÖZETLEME
-- ❌ ASLA paragraf, cümle veya kelime ATLAMA
-- ❌ ASLA sahne, olay veya diyalog ÇIKARMA
-- ❌ ASLA hikayeyi değiştirme veya yeniden yazma
-- ❌ ASLA "..." ile kısaltma yapma
-- ❌ ASLA "devamı..." gibi ifadeler kullanma
-
-📏 UZUNLUK KONTROLÜ (ÇOK KRİTİK):
-- Orijinal metin: ~${originalLength} karakter
-- Çeviri EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI
-- Çeviri orijinalin %75-%130 arasında olmalı
-- Eğer çeviri çok kısa ise, EKSİK ÇEVİRDİN demektir!
-
-✅ ZORUNLU KURALLAR:
-1. HER PARAGRAF, HER CÜMLE, HER KELİME eksiksiz çevrilmeli
-2. Paragraf sayısı AYNI kalmalı
-3. Cümle sayısı yaklaşık AYNI kalmalı
-4. Karakter ve yer isimleri AYNEN KALSIN (adaptasyonda değişecek)
-5. SADECE çevrilmiş metni döndür
-
-Kaynak Dil: ${sourceLang}
+  // Değişkenler
+  const variables: Record<string, string> = {
+    VARIABLES: `Kaynak Dil: ${sourceLang}
 Hedef Dil: ${targetLang}
-${previousContext ? `\n[Bağlam: ...${previousContext}]\n` : ''}
-Parça: ${chunkIndex + 1}/${totalChunks}`;
+Orijinal metin: ~${originalLength} karakter
+Çeviri EN AZ ${Math.round(originalLength * MIN_LENGTH_RATIO)} karakter OLMALI
+${previousContext ? `[Bağlam: ...${previousContext}]` : ''}
+Parça: ${chunkIndex + 1}/${totalChunks}`,
+    CONTENT: chunk,
+    SOURCE_LANG: sourceLang,
+    TARGET_LANG: targetLang
+  };
 
+  // Prompt şablonlarını al (senaryo varsa kullan, yoksa varsayılan)
+  const systemPromptTemplate = promptScenario?.translationSystemPrompt || DEFAULT_TRANSLATION_SYSTEM_PROMPT;
+  const userPromptTemplate = promptScenario?.translationUserPrompt || DEFAULT_TRANSLATION_USER_PROMPT;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const systemPrompt = fillPromptTemplate(systemPromptTemplate, variables);
+
+    const userPrompt = fillPromptTemplate(userPromptTemplate, variables);
+    
     const response = await retryOpenAI(
       () => createCompletion({
         provider,
         model,
         systemPrompt,
         messages: [
-          { role: 'user', content: `ÇEVİR (KISALTMADAN!):\n\n${chunk}` }
+          { role: 'user', content: userPrompt }
         ],
         temperature: 0.3
       }),
@@ -167,7 +232,7 @@ Parça: ${chunkIndex + 1}/${totalChunks}`;
  * Tam hikayeyi çevirir (chunk-based)
  */
 export async function translateStory(options: TranslationOptions): Promise<TranslationResult> {
-  const { content, title, sourceLang, targetLang, model, provider = 'openai' } = options;
+  const { content, title, sourceLang, targetLang, model, provider = 'openai', promptScenario } = options;
 
   logger.info('Hikaye çevirisi başlatılıyor', {
     sourceLang,
@@ -181,7 +246,7 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
   try {
     // 1. Başlık çevirisi
     logger.debug('Başlık çevriliyor...');
-    const translatedTitle = await translateTitle(title, sourceLang, targetLang, model, provider);
+    const translatedTitle = await translateTitle(title, sourceLang, targetLang, model, provider, promptScenario);
     
     logger.info('Başlık çevirildi', { 
       original: title, 
@@ -221,7 +286,8 @@ export async function translateStory(options: TranslationOptions): Promise<Trans
         i,
         chunks.length,
         previousContext,
-        provider
+        provider,
+        promptScenario
       );
 
       translatedChunks.push(translatedChunk);

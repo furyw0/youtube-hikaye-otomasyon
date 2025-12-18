@@ -21,6 +21,8 @@ import { uploadImage, uploadAudio, uploadZip } from '@/services/blob.service';
 import { createZipArchive } from '@/services/zip.service';
 import { getLLMConfig } from '@/services/llm-router.service';
 import Settings from '@/models/Settings';
+import VisualStyle from '@/models/VisualStyle';
+import PromptScenario from '@/models/PromptScenario';
 
 export const processStory = inngest.createFunction(
   { 
@@ -132,7 +134,11 @@ export const processStory = inngest.createFunction(
           // ImageFX
           imagefxModel: story.imagefxModel,
           imagefxAspectRatio: story.imagefxAspectRatio,
-          imagefxSeed: story.imagefxSeed
+          imagefxSeed: story.imagefxSeed,
+          // Visual Style
+          visualStyleId: story.visualStyleId?.toString() || undefined,
+          // Prompt Scenario
+          promptScenarioId: story.promptScenarioId?.toString() || undefined
         };
       });
 
@@ -141,13 +147,31 @@ export const processStory = inngest.createFunction(
         await dbConnect();
         await updateProgress(10, 'Hikaye çevriliyor...');
 
+        // Prompt senaryosunu yükle (varsa)
+        let promptScenario = null;
+        if (storyData.promptScenarioId) {
+          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+          if (promptScenario) {
+            logger.info('Çeviri için prompt senaryosu yüklendi', {
+              storyId,
+              scenarioName: promptScenario.name
+            });
+          }
+        }
+
         const result = await translateStory({
           content: storyData.originalContent,
           title: storyData.originalTitle,
           sourceLang: storyData.originalLanguage,
           targetLang: storyData.targetLanguage,
           model: storyData.llmModel,
-          provider: storyData.llmProvider
+          provider: storyData.llmProvider,
+          promptScenario: promptScenario ? {
+            translationSystemPrompt: promptScenario.translationSystemPrompt,
+            translationUserPrompt: promptScenario.translationUserPrompt,
+            titleTranslationSystemPrompt: promptScenario.titleTranslationSystemPrompt,
+            titleTranslationUserPrompt: promptScenario.titleTranslationUserPrompt
+          } : null
         });
 
         // UZUNLUK KONTROLÜ - Çeviri orijinalin en az %70'i olmalı
@@ -207,12 +231,30 @@ export const processStory = inngest.createFunction(
         
         await updateProgress(25, 'Kültürel adaptasyon yapılıyor...');
 
+        // Prompt senaryosunu yükle (varsa)
+        let promptScenario = null;
+        if (storyData.promptScenarioId) {
+          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+          if (promptScenario) {
+            logger.info('Adaptasyon için prompt senaryosu yüklendi', {
+              storyId,
+              scenarioName: promptScenario.name
+            });
+          }
+        }
+
         const result = await adaptStory({
           content: translationData.adaptedContent,
           title: translationData.adaptedTitle,
           targetCountry: storyData.targetCountry,
           targetLanguage: storyData.targetLanguage,
-          model: storyData.openaiModel
+          model: storyData.openaiModel,
+          promptScenario: promptScenario ? {
+            adaptationSystemPrompt: promptScenario.adaptationSystemPrompt,
+            adaptationUserPrompt: promptScenario.adaptationUserPrompt,
+            titleAdaptationSystemPrompt: promptScenario.titleAdaptationSystemPrompt,
+            titleAdaptationUserPrompt: promptScenario.titleAdaptationUserPrompt
+          } : null
         });
 
         // UZUNLUK KONTROLÜ - Adaptasyon çevirinin en az %80'i olmalı
@@ -279,7 +321,19 @@ export const processStory = inngest.createFunction(
         }
         
         const { provider, model } = getLLMConfig(settings);
-        
+
+        // Prompt senaryosunu yükle (varsa)
+        let promptScenario = null;
+        if (storyData.promptScenarioId) {
+          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+          if (promptScenario) {
+            logger.info('Metadata için prompt senaryosu yüklendi', {
+              storyId,
+              scenarioName: promptScenario.name
+            });
+          }
+        }
+
         const result = await generateYouTubeMetadata({
           adaptedTitle: adaptationData.adaptedTitle,
           adaptedContent: adaptationData.adaptedContent,
@@ -289,7 +343,13 @@ export const processStory = inngest.createFunction(
           targetCountry: story.targetCountry,
           model,
           provider,
-          adaptationNotes: adaptationData.adaptationNotes || []
+          adaptationNotes: adaptationData.adaptationNotes || [],
+          promptScenario: promptScenario ? {
+            youtubeDescriptionSystemPrompt: promptScenario.youtubeDescriptionSystemPrompt,
+            youtubeDescriptionUserPrompt: promptScenario.youtubeDescriptionUserPrompt,
+            coverTextSystemPrompt: promptScenario.coverTextSystemPrompt,
+            coverTextUserPrompt: promptScenario.coverTextUserPrompt
+          } : null
         });
         
         // Metadata'yı Story'ye kaydet
@@ -312,11 +372,29 @@ export const processStory = inngest.createFunction(
         await dbConnect();
         await updateProgress(35, 'Sahneler oluşturuluyor...');
 
+        // Prompt senaryosunu yükle (varsa)
+        let promptScenario = null;
+        if (storyData.promptScenarioId) {
+          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+          if (promptScenario) {
+            logger.info('Sahne oluşturma için prompt senaryosu yüklendi', {
+              storyId,
+              scenarioName: promptScenario.name
+            });
+          }
+        }
+
         const result = await generateScenes({
           originalContent: storyData.originalContent,
           adaptedContent: adaptationData.adaptedContent,
           model: storyData.llmModel,
-          provider: storyData.llmProvider
+          provider: storyData.llmProvider,
+          promptScenario: promptScenario ? {
+            sceneFirstThreeSystemPrompt: promptScenario.sceneFirstThreeSystemPrompt,
+            sceneFirstThreeUserPrompt: promptScenario.sceneFirstThreeUserPrompt,
+            sceneRemainingSystemPrompt: promptScenario.sceneRemainingSystemPrompt,
+            sceneRemainingUserPrompt: promptScenario.sceneRemainingUserPrompt
+          } : null
         });
 
         // Sahneleri MongoDB'ye kaydet
@@ -395,12 +473,42 @@ export const processStory = inngest.createFunction(
         await updateProgress(55, 'Görsel promptları hazırlanıyor...');
 
         const storyContext = `${adaptationData.adaptedTitle}\n\n${adaptationData.adaptedContent?.substring(0, 1000)}`;
-        
+
+        // Visual Style'ı yükle (varsa)
+        let visualStyle = null;
+        if (storyData.visualStyleId) {
+          visualStyle = await VisualStyle.findById(storyData.visualStyleId);
+          if (visualStyle) {
+            logger.info('Visual Style yüklendi', {
+              storyId,
+              styleName: visualStyle.name,
+              styleId: visualStyle._id
+            });
+          }
+        }
+
+        // Prompt senaryosunu yükle (varsa)
+        let promptScenario = null;
+        if (storyData.promptScenarioId) {
+          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+          if (promptScenario) {
+            logger.info('Görsel prompt için senaryo yüklendi', {
+              storyId,
+              scenarioName: promptScenario.name
+            });
+          }
+        }
+
         const prompts = await generateVisualPrompts(
           scenesData,
           storyContext,
           storyData.llmModel,
-          storyData.llmProvider
+          storyData.llmProvider,
+          visualStyle,
+          promptScenario ? {
+            visualPromptSystemPrompt: promptScenario.visualPromptSystemPrompt,
+            visualPromptUserPrompt: promptScenario.visualPromptUserPrompt
+          } : null
         );
 
         // Promptları sahnelere kaydet

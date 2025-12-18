@@ -8,6 +8,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { VisualStyleManager } from '@/components/settings/VisualStyleManager';
+import { PromptScenarioManager } from '@/components/settings/PromptScenarioManager';
 
 interface Settings {
   llmProvider: 'openai' | 'claude';
@@ -1406,6 +1408,12 @@ function SettingsContent() {
               </div>
             </div>
           </div>
+
+          {/* Prompt Scenarios Section */}
+          <PromptScenarioManager />
+
+          {/* Visual Styles Section */}
+          <VisualStyleManager />
 
           {/* Message */}
           {message && (
