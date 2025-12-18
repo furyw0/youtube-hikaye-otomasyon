@@ -1201,61 +1201,95 @@ export const processStory = inngest.createFunction(
 
       // --- 9. ZIP OLUŞTUR (98%) ---
       await step.run('create-zip', async () => {
-        await dbConnect();
-        await updateProgress(97, 'ZIP dosyası oluşturuluyor...');
+        try {
+          await dbConnect();
+          await updateProgress(97, 'ZIP dosyası oluşturuluyor...');
 
-        const fullStory = await Story.findById(storyId).populate('scenes');
-        if (!fullStory) {
-          throw new Error('Hikaye bulunamadı');
+          const fullStory = await Story.findById(storyId).populate('scenes');
+          if (!fullStory) {
+            logger.warn('ZIP oluşturma: Hikaye bulunamadı', { storyId });
+            return { success: false, error: 'Hikaye bulunamadı' };
+          }
+
+          const zipBuffer = await createZipArchive(fullStory as any);
+
+          // Blob'a yükle
+          const filename = `${adaptationData.adaptedTitle?.replace(/[^a-z0-9]/gi, '-') || 'story'}`;
+          const uploaded = await uploadZip(storyId, zipBuffer, filename);
+
+          // findByIdAndUpdate kullan
+          await Story.findByIdAndUpdate(storyId, {
+            'blobUrls.zipFile': uploaded.url
+          });
+
+          await updateProgress(98, 'ZIP dosyası oluşturuldu');
+
+          logger.info('ZIP oluşturuldu', {
+            storyId,
+            zipUrl: uploaded.url,
+            zipSize: uploaded.size
+          });
+          
+          return { success: true, url: uploaded.url };
+        } catch (error) {
+          logger.error('ZIP oluşturma hatası', {
+            storyId,
+            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+          });
+          // ZIP oluşturulamazsa bile devam et - kritik değil
+          return { success: false, error: error instanceof Error ? error.message : 'Bilinmeyen hata' };
         }
-        
-        const zipBuffer = await createZipArchive(fullStory as any);
-
-        // Blob'a yükle
-        const filename = `${adaptationData.adaptedTitle?.replace(/[^a-z0-9]/gi, '-') || 'story'}`;
-        const uploaded = await uploadZip(storyId, zipBuffer, filename);
-
-        // findByIdAndUpdate kullan
-        await Story.findByIdAndUpdate(storyId, {
-          'blobUrls.zipFile': uploaded.url
-        });
-
-        await updateProgress(98, 'ZIP dosyası oluşturuldu');
-
-        logger.info('ZIP oluşturuldu', {
-          storyId,
-          zipUrl: uploaded.url,
-          zipSize: uploaded.size
-        });
       });
 
       // --- 10. TAMAMLANDI (100%) ---
       await step.run('complete', async () => {
-        await dbConnect();
-        
-        // İşleme süresini hesapla
-        const processingEndTime = Date.now();
-        const processingDuration = Math.round((processingEndTime - processingStartTime) / 1000); // Saniye
-        
-        // findByIdAndUpdate kullan
-        await Story.findByIdAndUpdate(storyId, {
-          status: 'completed',
-          progress: 100,
-          currentStep: 'İşlem tamamlandı!',
-          processingCompletedAt: new Date(),
-          processingDuration: processingDuration
-        });
+        try {
+          await dbConnect();
 
-        // Süreyi okunabilir formata çevir
-        const minutes = Math.floor(processingDuration / 60);
-        const seconds = processingDuration % 60;
-        const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
+          // İşleme süresini hesapla
+          const processingEndTime = Date.now();
+          const processingDuration = Math.round((processingEndTime - processingStartTime) / 1000); // Saniye
 
-        logger.info('Hikaye işleme tamamlandı', { 
-          storyId,
-          processingDuration,
-          durationText
-        });
+          // findByIdAndUpdate kullan
+          await Story.findByIdAndUpdate(storyId, {
+            status: 'completed',
+            progress: 100,
+            currentStep: 'İşlem tamamlandı!',
+            processingCompletedAt: new Date(),
+            processingDuration: processingDuration
+          });
+
+          // Süreyi okunabilir formata çevir
+          const minutes = Math.floor(processingDuration / 60);
+          const seconds = processingDuration % 60;
+          const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
+
+          logger.info('Hikaye işleme tamamlandı', {
+            storyId,
+            processingDuration,
+            durationText
+          });
+          
+          return { success: true, duration: processingDuration };
+        } catch (error) {
+          logger.error('Complete adımı hatası', {
+            storyId,
+            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+          });
+          
+          // Hata durumunda bile status'u güncellemeye çalış
+          try {
+            await Story.findByIdAndUpdate(storyId, {
+              status: 'completed',
+              progress: 100,
+              currentStep: 'İşlem tamamlandı (hata ile)'
+            });
+          } catch (updateError) {
+            logger.error('Status güncelleme hatası', { storyId });
+          }
+          
+          return { success: false };
+        }
       });
 
       return {
