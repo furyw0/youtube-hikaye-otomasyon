@@ -63,66 +63,74 @@ const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   zh: '用中文写，使用友好且吸引人的语气'
 };
 
-// Hook açıklamaları - Daha doğal ve hikaye odaklı
-const HOOK_DESCRIPTIONS: Record<HookType, { purpose: string; maxWords: number; transition: string }> = {
+// Hook açıklamaları - İkna edici ve etkili
+const HOOK_DESCRIPTIONS: Record<HookType, { purpose: string; maxWords: number; style: string }> = {
   intro: {
-    purpose: 'Merak uyandır ve izleyiciyi hikayeye çek. Doğrudan "abone ol" DEME. Hikayenin gizemini vurgula.',
-    maxWords: 35,
-    transition: 'Hikayeye yumuşak giriş yap, sanki sır paylaşıyormuşsun gibi'
+    purpose: 'İzleyicinin dikkatini yakala ve merak uyandır. Hikayenin en çarpıcı anına ipucu ver. "Sonunda olanlar sizi şoke edecek" gibi güçlü ifadeler kullan.',
+    maxWords: 30,
+    style: 'Gizemli ve çekici. İzleyici "ne olacak?" diye merak etmeli.'
   },
   subscribe: {
-    purpose: 'Hikaye akışında doğal bir mola ver ve dolaylı yoldan kanala değin. "Bu noktada bir an duralım" gibi geçiş cümleleri kullan.',
-    maxWords: 40,
-    transition: 'Önce hikayeyle ilgili bir yorum yap, sonra dolaylı olarak kanaldan bahset'
+    purpose: 'Kanalın değerini vurgula. "Bu tür içerikler için abone olun" şeklinde net ve samimi bir çağrı yap. Bildirimleri açmalarını iste.',
+    maxWords: 35,
+    style: 'Samimi ama net. İzleyiciye kanalın ona ne katacağını söyle.'
   },
   like: {
-    purpose: 'Sahnenin duygusal etkisini pekiştir. Doğrudan "beğen" DEME. İzleyicinin hissettiklerini yansıt ve paylaşmaya davet et.',
-    maxWords: 35,
-    transition: 'Duygusal bir bağ kur, "bu an..." veya "şimdi hissettikleriniz..." gibi başla'
+    purpose: 'Duygusal doruk noktasında beğeni iste. "Bu an sizi de etkilediyse beğenin" gibi direkt ama içten bir çağrı.',
+    maxWords: 25,
+    style: 'Duygusal ve içten. Az önce yaşanan anın etkisini kullan.'
   },
   comment: {
-    purpose: 'İzleyiciyi düşünmeye davet et. Hikayedeki karakterin kararıyla ilgili düşündürücü bir soru sor.',
-    maxWords: 40,
-    transition: 'Hikayedeki durumu izleyiciye bağla, "siz olsaydınız..." veya "düşünsenize..." gibi'
+    purpose: 'İzleyiciyi tartışmaya davet et. Güçlü ve düşündürücü bir soru sor. "Yorumlarda buluşalım" de.',
+    maxWords: 30,
+    style: 'Merak uyandırıcı soru. İzleyici cevap vermek istemeli.'
   },
   outro: {
-    purpose: 'Hikayeyi duygusal bir kapanışla bitir. Teşekkür et ve gelecek hikayelere köprü kur. Doğrudan komut verme.',
-    maxWords: 45,
-    transition: 'Önce hikayeyi özetle veya son bir düşünce paylaş, sonra vedalaş'
+    purpose: 'Güçlü bir kapanış. Abone ol + bildirim çanı + teşekkür. Bir sonraki video için beklenti oluştur.',
+    maxWords: 40,
+    style: 'Sıcak vedalaşma ve net çağrı. "Abone olun, bildirimleri açın" de.'
   }
 };
 
 /**
  * Hook yerleştirme pozisyonlarını hesapla
+ * NOT: İzleyicilerin çoğu videoyu tamamlamıyor, bu yüzden hook'lar ERKen yerleştirilmeli!
+ * 
+ * Yerleşim Stratejisi:
+ * - Intro: %5-10 (ilk 30 saniye - merak uyandır)
+ * - Subscribe: %15-20 (1-2 dakika - hemen abone çağrısı)
+ * - Like: %30-35 (erken doruk - duygusal an)
+ * - Comment: %50 (orta nokta - etkileşim)
+ * - Outro: Son sahne (izleyenler için kapanış)
  */
 export function determineHookPlacements(sceneCount: number): HookPlacement[] {
   const placements: HookPlacement[] = [];
   
   if (sceneCount < 5) {
-    // Çok kısa hikayeler için sadece intro ve outro
+    // Çok kısa hikayeler için yoğun hook'lar
     placements.push({ sceneIndex: 0, type: 'intro', position: 'after' });
+    if (sceneCount >= 3) {
+      placements.push({ sceneIndex: 1, type: 'subscribe', position: 'after' });
+    }
     placements.push({ sceneIndex: sceneCount - 1, type: 'outro', position: 'after' });
     return placements;
   }
   
-  // Intro hook: Sahne 2 (ilk sahne çok kısa olabilir)
-  placements.push({ sceneIndex: 1, type: 'intro', position: 'after' });
+  // Intro hook: Sahne 1 veya 2 (%5-10)
+  const introIndex = Math.max(0, Math.floor(sceneCount * 0.05));
+  placements.push({ sceneIndex: introIndex, type: 'intro', position: 'after' });
   
-  // Subscribe hook: ~%25 noktası
-  const subscribeIndex = Math.floor(sceneCount * 0.25);
-  if (subscribeIndex > 1) {
-    placements.push({ sceneIndex: subscribeIndex, type: 'subscribe', position: 'after' });
-  }
+  // Subscribe hook: %15-20 noktası (ERKEN!)
+  const subscribeIndex = Math.max(introIndex + 1, Math.floor(sceneCount * 0.15));
+  placements.push({ sceneIndex: subscribeIndex, type: 'subscribe', position: 'after' });
   
-  // Like hook: ~%60 noktası (doruk noktası)
-  const likeIndex = Math.floor(sceneCount * 0.60);
-  if (likeIndex > subscribeIndex) {
-    placements.push({ sceneIndex: likeIndex, type: 'like', position: 'after' });
-  }
+  // Like hook: %30-35 noktası (erken doruk)
+  const likeIndex = Math.max(subscribeIndex + 1, Math.floor(sceneCount * 0.30));
+  placements.push({ sceneIndex: likeIndex, type: 'like', position: 'after' });
   
-  // Comment hook: ~%75 noktası
-  const commentIndex = Math.floor(sceneCount * 0.75);
-  if (commentIndex > likeIndex && commentIndex < sceneCount - 1) {
+  // Comment hook: %50 noktası (orta)
+  const commentIndex = Math.max(likeIndex + 1, Math.floor(sceneCount * 0.50));
+  if (commentIndex < sceneCount - 1) {
     placements.push({ sceneIndex: commentIndex, type: 'comment', position: 'after' });
   }
   
@@ -134,40 +142,44 @@ export function determineHookPlacements(sceneCount: number): HookPlacement[] {
 
 /**
  * Tek bir hook metni üret
+ * LLM her zaman sahneye özel hook üretir, başarısız olursa null döner
  */
-async function generateSingleHookText(options: GenerateHookTextOptions): Promise<string> {
+async function generateSingleHookText(options: GenerateHookTextOptions): Promise<string | null> {
   const { hookType, storyContext, sceneContext, targetLanguage, model, provider } = options;
   
   const langInstruction = LANGUAGE_INSTRUCTIONS[targetLanguage] || LANGUAGE_INSTRUCTIONS['en'];
   const hookInfo = HOOK_DESCRIPTIONS[hookType];
   
-  const systemPrompt = `Sen profesyonel bir hikaye anlatıcısısın. YouTube videoları için DOĞAL ve AKICİ hook metinleri yazıyorsun.
+  const systemPrompt = `Sen başarılı bir YouTube içerik üreticisisin. İzleyicileri harekete geçiren, İKNA EDİCİ hook metinleri yazıyorsun.
 
-ÖNEMLİ KURALLAR:
-1. Hiçbir zaman doğrudan "abone ol", "beğen", "yorum yap" gibi komutlar KULLANMA
-2. Hook, hikayenin bir parçası gibi akmalı - izleyici bunun bir çağrı olduğunu hissetmemeli
-3. ${langInstruction}
-4. Geçiş cümlesi kullan: ${hookInfo.transition}
-5. Maksimum ${hookInfo.maxWords} kelime
+SENİN GÜCÜN:
+- Doğrudan ve samimi konuşursun, dolaylı değil
+- İzleyiciyle duygusal bağ kurarsın
+- Net çağrılar yaparsın ama spam gibi değil, içten
+- ${langInstruction}
 
-ÖRNEK YAKLAŞIMLAR:
-- Intro: "Şimdi anlatacaklarım... hayatınıza farklı bakmanızı sağlayabilir."
-- Subscribe: "Bu noktada bir an duralım... Bu tür hikayeler ruhunuza iyi geliyorsa, burada daha nicesi var."
-- Like: "Az önce yaşananlar... içinizi bir şekilde etkilediyse, o duyguyu benimle paylaşabilirsiniz."
-- Comment: "Şimdi düşünün... siz onun yerinde olsaydınız, hangi kapıyı seçerdiniz?"
-- Outro: "Hikayemiz burada son buluyor ama... bu kanalda keşfedilmeyi bekleyen daha nice hayatlar var."`;
+HOOK STİLİ: ${hookInfo.style}
 
-  const userPrompt = `HİKAYE BAĞLAMI:
-${storyContext.substring(0, 1000)}
+ÖRNEK ETKİLİ HOOK'LAR:
+- Intro: "Bu hikayenin sonunda gözleriniz dolacak... Hazır mısınız?"
+- Subscribe: "Bu tür gerçek hikayeler ilginizi çekiyorsa, abone olun ve bildirimleri açın. Haftada 3 yeni hikaye paylaşıyorum."
+- Like: "Bu sahne içinizi sızlattıysa, bir beğeni bırakın. Bu hikayeyi daha fazla kişiye ulaştırmama yardımcı olur."
+- Comment: "Siz olsaydınız ne yapardınız? Yorumlarda tartışalım, merak ediyorum."
+- Outro: "Hikaye burada bitiyor ama kanal bitmiyor. Abone olun, bir sonraki hikayede görüşelim."
 
-SAHNE İÇERİĞİ:
+Maksimum ${hookInfo.maxWords} kelime.`;
+
+  const userPrompt = `HİKAYE:
+${storyContext.substring(0, 800)}
+
+BU SAHNE:
 ${sceneContext}
 
 GÖREV: ${hookType.toUpperCase()} hook'u yaz
 AMAÇ: ${hookInfo.purpose}
 
-Bu sahnenin duygusal tonuna ve hikayenin akışına uygun, DOĞAL bir hook metni yaz.
-Metni direkt yaz, tırnak işareti veya açıklama ekleme.`;
+Bu sahneye uygun, İKNA EDİCİ ve SAMİMİ bir hook yaz.
+SADECE hook metnini yaz, başka açıklama ekleme.`;
 
   try {
     const response = await createCompletion({
@@ -184,61 +196,22 @@ Metni direkt yaz, tırnak işareti veya açıklama ekleme.`;
     let cleanedResponse = response.trim().replace(/^["']|["']$/g, '');
     // Başındaki ve sonundaki fazla boşlukları temizle
     cleanedResponse = cleanedResponse.replace(/^\s+|\s+$/g, '');
+    
+    // Boş yanıt kontrolü
+    if (!cleanedResponse || cleanedResponse.length < 10) {
+      logger.warn('Hook metni çok kısa veya boş, atlanıyor', { hookType });
+      return null;
+    }
+    
     return cleanedResponse;
   } catch (error) {
-    logger.error('Hook metni üretilemedi', {
+    logger.error('Hook metni üretilemedi, hook atlanacak', {
       hookType,
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     });
-    // Fallback metinler
-    return getFallbackHookText(hookType, targetLanguage);
+    // Fallback kullanmıyoruz - LLM başarısız olursa hook eklenmeyecek
+    return null;
   }
-}
-
-/**
- * Yedek hook metinleri - Daha doğal ve hikaye odaklı
- */
-function getFallbackHookText(hookType: HookType, language: string): string {
-  const fallbacks: Record<string, Record<HookType, string>> = {
-    tr: {
-      intro: 'Şimdi anlatacaklarım belki de hayata bakışınızı değiştirecek... Her şey o gün başladı.',
-      subscribe: 'Bu noktada bir an duralım... Bu tür gerçek hikayeler ruhunuza dokunuyorsa, burada keşfedilmeyi bekleyen daha nicesi var.',
-      like: 'Az önce yaşananlar... eğer içinizde bir şeyler kıpırdattıysa, o duyguyu benimle paylaşabilirsiniz.',
-      comment: 'Şimdi bir düşünün... siz onun yerinde olsaydınız, aynı kararı verir miydiniz? Merak ediyorum.',
-      outro: 'Hikayemiz burada son buluyor... Ama bu kanalda anlatılmayı bekleyen daha nice hayatlar, daha nice kaderler var. Bir sonraki hikayede buluşmak dileğiyle.'
-    },
-    en: {
-      intro: 'What I am about to tell you might change how you see life... It all started on that day.',
-      subscribe: 'Let me pause here for a moment... If stories like this speak to your soul, there are many more waiting to be discovered here.',
-      like: 'What just happened... if it stirred something inside you, feel free to share that feeling with me.',
-      comment: 'Now think about it... if you were in their place, would you have made the same choice? I am curious to know.',
-      outro: 'Our story ends here... But on this channel, there are many more lives, many more destinies waiting to be told. Until we meet in the next story.'
-    },
-    fr: {
-      intro: 'Ce que je vais vous raconter pourrait changer votre façon de voir la vie... Tout a commencé ce jour-là.',
-      subscribe: 'Arrêtons-nous un instant ici... Si ce genre d\'histoires touche votre âme, il y en a bien d\'autres qui attendent d\'être découvertes.',
-      like: 'Ce qui vient de se passer... si cela a éveillé quelque chose en vous, n\'hésitez pas à partager cette émotion avec moi.',
-      comment: 'Maintenant réfléchissez... si vous étiez à sa place, auriez-vous fait le même choix? Je suis curieux de savoir.',
-      outro: 'Notre histoire se termine ici... Mais sur cette chaîne, il y a encore tant de vies, tant de destins qui attendent d\'être racontés. À la prochaine histoire.'
-    },
-    de: {
-      intro: 'Was ich Ihnen gleich erzählen werde, könnte Ihre Sicht auf das Leben verändern... Alles begann an jenem Tag.',
-      subscribe: 'Lassen Sie mich hier kurz innehalten... Wenn solche Geschichten Ihre Seele berühren, warten hier noch viele weitere darauf, entdeckt zu werden.',
-      like: 'Was gerade passiert ist... wenn es etwas in Ihnen bewegt hat, teilen Sie dieses Gefühl gerne mit mir.',
-      comment: 'Denken Sie jetzt darüber nach... Hätten Sie an ihrer Stelle die gleiche Entscheidung getroffen? Ich bin gespannt.',
-      outro: 'Unsere Geschichte endet hier... Aber auf diesem Kanal warten noch viele weitere Leben, viele weitere Schicksale darauf, erzählt zu werden. Bis zur nächsten Geschichte.'
-    },
-    es: {
-      intro: 'Lo que estoy a punto de contarles podría cambiar su forma de ver la vida... Todo comenzó ese día.',
-      subscribe: 'Hagamos una pausa aquí... Si este tipo de historias tocan su alma, hay muchas más esperando ser descubiertas.',
-      like: 'Lo que acaba de pasar... si despertó algo en ustedes, no duden en compartir esa emoción conmigo.',
-      comment: 'Ahora piénsenlo... si estuvieran en su lugar, ¿habrían tomado la misma decisión? Tengo curiosidad por saber.',
-      outro: 'Nuestra historia termina aquí... Pero en este canal hay muchas más vidas, muchos más destinos esperando ser contados. Hasta la próxima historia.'
-    }
-  };
-  
-  const langFallbacks = fallbacks[language] || fallbacks['en'];
-  return langFallbacks[hookType];
 }
 
 /**
@@ -261,11 +234,20 @@ export async function generateAllHookTexts(
     const hookText = await generateSingleHookText({
       hookType: placement.type,
       storyContext,
-      sceneContext: scene.text.substring(0, 300),
+      sceneContext: scene.text.substring(0, 500), // Daha fazla bağlam ver
       targetLanguage,
       model,
       provider
     });
+    
+    // LLM başarısız olduysa veya boş döndüyse, bu hook'u atla
+    if (!hookText) {
+      logger.warn(`Hook üretilemedi, atlanıyor`, { 
+        sceneIndex: placement.sceneIndex, 
+        hookType: placement.type 
+      });
+      return null;
+    }
     
     return {
       sceneIndex: placement.sceneIndex,
