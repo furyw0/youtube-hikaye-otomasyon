@@ -3,7 +3,7 @@
  * Hikaye içeriğini ve kullanıcı girdilerini doğrular
  */
 
-import { STORY_LIMITS, OPENAI_MODELS } from '@/lib/constants';
+import { STORY_LIMITS, OPENAI_MODELS, CLAUDE_MODELS } from '@/lib/constants';
 import { ValidationError } from '@/lib/errors';
 import logger from '@/lib/logger';
 
@@ -147,6 +147,20 @@ export function validateOpenAIModel(modelId: string): boolean {
 }
 
 /**
+ * Claude model seçimini doğrular
+ */
+export function validateClaudeModel(modelId: string): boolean {
+  return CLAUDE_MODELS.some(m => m.id === modelId);
+}
+
+/**
+ * LLM model seçimini doğrular (OpenAI veya Claude)
+ */
+export function validateLLMModel(modelId: string): boolean {
+  return validateOpenAIModel(modelId) || validateClaudeModel(modelId);
+}
+
+/**
  * Hedef dil kodunu doğrular
  */
 export function validateLanguageCode(code: string): boolean {
@@ -171,9 +185,9 @@ export function validateCreateStoryRequest(data: any): ValidationResult {
   errors.push(...contentValidation.errors);
   warnings.push(...contentValidation.warnings);
 
-  // Model
-  if (!validateOpenAIModel(data.openaiModel)) {
-    errors.push(`Geçersiz OpenAI modeli: ${data.openaiModel}`);
+  // Model (OpenAI veya Claude)
+  if (!validateLLMModel(data.openaiModel)) {
+    errors.push(`Geçersiz LLM modeli: ${data.openaiModel}`);
   }
 
   // Hedef dil
