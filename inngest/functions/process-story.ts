@@ -114,6 +114,7 @@ export const processStory = inngest.createFunction(
           originalLanguage: detection.language,
           targetLanguage: story.targetLanguage,
           targetCountry: story.targetCountry,
+          translationOnly: story.translationOnly || false,
           openaiModel: story.openaiModel,
           llmProvider: llmConfig.provider,
           llmModel: llmConfig.model,
@@ -187,6 +188,23 @@ export const processStory = inngest.createFunction(
       // --- 3. KÜLTÜREL UYARLAMA (30%) ---
       const adaptationData = await step.run('adapt-story', async () => {
         await dbConnect();
+        
+        // translationOnly modunda adaptasyon ATLANIYOR
+        if (storyData.translationOnly) {
+          await updateProgress(30, 'Sadece çeviri modu - adaptasyon atlanıyor...');
+          
+          logger.info('Sadece çeviri modu - kültürel adaptasyon atlanıyor', {
+            storyId,
+            translationOnly: true
+          });
+          
+          return {
+            adaptedTitle: translationData.adaptedTitle,
+            adaptedContent: translationData.adaptedContent,
+            adaptationNotes: []
+          };
+        }
+        
         await updateProgress(25, 'Kültürel adaptasyon yapılıyor...');
 
         const result = await adaptStory({

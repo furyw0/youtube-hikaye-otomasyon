@@ -53,6 +53,7 @@ export function StoryForm() {
     coverText: '',
     targetLanguage: 'en',
     targetCountry: 'USA',
+    translationOnly: false,
     // LLM
     openaiModel: 'gpt-4o-mini',
     claudeModel: 'claude-sonnet-4-20250514',
@@ -272,6 +273,7 @@ export function StoryForm() {
       const submitData = {
         ...formData,
         openaiModel: selectedModel, // Backend hala openaiModel field'ını kullanıyor, ikisi için de buraya yazıyoruz
+        translationOnly: formData.translationOnly,
         ttsProvider,
         coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined
       };
@@ -399,6 +401,39 @@ export function StoryForm() {
         <p className="text-sm text-gray-500 mt-1">
           {formData.content.length.toLocaleString()} / 100,000 {t('hints.characters')}
         </p>
+      </div>
+
+      {/* Translation Only Mode Toggle */}
+      <div className={`border rounded-lg p-4 ${formData.translationOnly ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              🌐 {t('fields.translationOnly')}
+              {formData.translationOnly && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-800">
+                  Aktif
+                </span>
+              )}
+            </h3>
+            <p className="text-xs text-gray-600 mt-1">
+              {t('fields.translationOnlyHint')}
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.translationOnly}
+              onChange={(e) => setFormData({ ...formData, translationOnly: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+          </label>
+        </div>
+        {formData.translationOnly && (
+          <div className="mt-3 p-2 bg-purple-100 rounded text-xs text-purple-800">
+            ⚡ Bu modda metin kültürel adaptasyon yapılmadan birebir çevrilecektir. İsimler, yerler ve kültürel unsurlar değiştirilmeyecektir.
+          </div>
+        )}
       </div>
 
       {/* YouTube Metadata (Optional) */}

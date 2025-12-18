@@ -121,6 +121,8 @@
       "contentPlaceholder": "Hikayenizi buraya yapıştırın... (min 1000 karakter)",
       "targetLanguage": "Hedef Dil",
       "targetCountry": "Hedef Ülke",
+      "translationOnly": "Sadece Çeviri Modu",
+      "translationOnlyHint": "Aktif olduğunda metin kültürel adaptasyon yapılmadan birebir çevrilir",
       "openaiModel": "OpenAI Modeli",
       "elevenlabsModel": "ElevenLabs Modeli",
       "voice": "Ses",

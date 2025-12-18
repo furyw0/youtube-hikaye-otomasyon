@@ -21,6 +21,7 @@ const createStorySchema = z.object({
   coverText: z.string().max(100).optional(),
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
+  translationOnly: z.boolean().optional().default(false),
   openaiModel: z.string(),
   // TTS Provider
   ttsProvider: z.enum(['elevenlabs', 'coqui']).optional().default('elevenlabs'),
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
       originalLanguage: detection.language,
       targetLanguage: validated.targetLanguage,
       targetCountry: validated.targetCountry,
+      translationOnly: validated.translationOnly,
       openaiModel: validated.openaiModel,
       // TTS Ayarları
       ttsProvider: validated.ttsProvider || 'elevenlabs',
@@ -149,6 +151,7 @@ export async function POST(request: NextRequest) {
       storyId: story._id,
       userId,
       detectedLanguage: detection.language,
+      translationOnly: validated.translationOnly,
       estimatedTokens: validationResult.estimatedTokens,
       estimatedCost: validationResult.estimatedCost
     });

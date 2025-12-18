@@ -17,6 +17,9 @@ export interface IStory {
   targetLanguage: string;
   targetCountry: string;
   
+  // Çeviri Modu
+  translationOnly?: boolean;
+  
   // Uyarlanmış hikaye
   adaptedTitle?: string;
   adaptedContent?: string;
@@ -87,6 +90,7 @@ export interface CreateStoryInput {
   coverText?: string;
   targetLanguage: string;
   targetCountry: string;
+  translationOnly?: boolean;
   openaiModel: string;
   // TTS
   ttsProvider?: 'elevenlabs' | 'coqui';

@@ -43,6 +43,12 @@ const StorySchema = new Schema<IStory>(
       required: true
     },
     
+    // Çeviri Modu
+    translationOnly: {
+      type: Boolean,
+      default: false
+    },
+    
     // Uyarlanmış hikaye
     adaptedTitle: {
       type: String

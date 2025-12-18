@@ -17,6 +17,7 @@ interface Story {
   originalLanguage: string;
   targetLanguage: string;
   targetCountry: string;
+  translationOnly?: boolean;
   status: 'created' | 'queued' | 'processing' | 'completed' | 'failed';
   progress: number;
   totalScenes: number;
@@ -206,9 +207,16 @@ function StoriesContent() {
                         {story.originalTitle}
                       </p>
                     </div>
-                    <span className={`ml-2 px-2 py-1 text-xs rounded-full ${getStatusColor(story.status)}`}>
-                      {getStatusText(story.status)}
-                    </span>
+                    <div className="flex items-center gap-1 ml-2">
+                      {story.translationOnly && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">
+                          🌐 Çeviri
+                        </span>
+                      )}
+                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(story.status)}`}>
+                        {getStatusText(story.status)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

@@ -121,6 +121,8 @@
       "contentPlaceholder": "Paste your story here... (min 1000 characters)",
       "targetLanguage": "Target Language",
       "targetCountry": "Target Country",
+      "translationOnly": "Translation Only Mode",
+      "translationOnlyHint": "When enabled, text is translated directly without cultural adaptation",
       "openaiModel": "OpenAI Model",
       "elevenlabsModel": "ElevenLabs Model",
       "voice": "Voice",
