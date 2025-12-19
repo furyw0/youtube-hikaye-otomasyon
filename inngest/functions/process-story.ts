@@ -1532,71 +1532,87 @@ export const processStory = inngest.createFunction(
         const seconds = processingDuration % 60;
         const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
 
-        try {
-          await dbConnect();
+        // Retry mekanizması ile güncelleme
+        const maxRetries = 3;
+        let lastError: Error | null = null;
 
-          // findByIdAndUpdate kullan - status'u kesinlikle completed yap
-          const updateResult = await Story.findByIdAndUpdate(
-            storyId, 
-            {
-              status: 'completed',
-              progress: 100,
-              currentStep: 'İşlem tamamlandı!',
-              processingCompletedAt: new Date(),
-              processingDuration: processingDuration
-            },
-            { new: true }
-          );
-
-          if (!updateResult) {
-            logger.error('Complete: Story güncellenemedi - kayıt bulunamadı', { storyId });
-            return { success: false, error: 'Story bulunamadı', duration: processingDuration };
-          }
-
-          logger.info('Hikaye işleme tamamlandı', {
-            storyId,
-            processingDuration,
-            durationText,
-            finalStatus: updateResult.status
-          });
-          
-          return { success: true, duration: processingDuration, status: updateResult.status };
-        } catch (error) {
-          logger.error('Complete adımı hatası', {
-            storyId,
-            error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-          });
-          
-          // Hata durumunda bile status'u güncellemeye çalış - farklı bağlantı ile
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {
-            await dbConnect();
-            await Story.findByIdAndUpdate(storyId, {
-              status: 'completed',
-              progress: 100,
-              currentStep: 'İşlem tamamlandı (hata ile)'
+            // Her denemede fresh connection kullan
+            const { dbConnectFresh } = await import('@/lib/mongodb');
+            await dbConnectFresh();
+
+            logger.info('Complete: Güncelleme deneniyor', { 
+              storyId, 
+              attempt, 
+              maxRetries 
             });
-            logger.info('Complete: Fallback güncelleme başarılı', { storyId });
-          } catch (updateError) {
-            logger.error('Complete: Fallback güncelleme de başarısız', { 
+
+            // findByIdAndUpdate kullan - status'u kesinlikle completed yap
+            const updateResult = await Story.findByIdAndUpdate(
+              storyId, 
+              {
+                status: 'completed',
+                progress: 100,
+                currentStep: 'İşlem tamamlandı!',
+                processingCompletedAt: new Date(),
+                processingDuration: processingDuration
+              },
+              { new: true }
+            );
+
+            if (!updateResult) {
+              logger.error('Complete: Story güncellenemedi - kayıt bulunamadı', { storyId });
+              return { success: false, error: 'Story bulunamadı', duration: processingDuration };
+            }
+
+            logger.info('Hikaye işleme tamamlandı', {
               storyId,
-              error: updateError instanceof Error ? updateError.message : 'Bilinmeyen hata'
+              processingDuration,
+              durationText,
+              finalStatus: updateResult.status,
+              attempt
             });
+            
+            return { success: true, duration: processingDuration, status: updateResult.status };
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error('Bilinmeyen hata');
+            logger.warn(`Complete: Deneme ${attempt}/${maxRetries} başarısız`, {
+              storyId,
+              error: lastError.message,
+              attempt
+            });
+
+            // Son deneme değilse bekle ve tekrar dene
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+            }
           }
-          
-          return { success: false, duration: processingDuration };
         }
+
+        // Tüm denemeler başarısız
+        logger.error('Complete: Tüm denemeler başarısız', {
+          storyId,
+          error: lastError?.message,
+          attempts: maxRetries
+        });
+        
+        return { success: false, duration: processingDuration, error: lastError?.message };
       });
 
       // Son kontrol - eğer complete step başarısız olduysa, bir kez daha dene
       if (!completeResult?.success) {
         await step.run('force-complete', async () => {
-          await dbConnect();
           logger.warn('Force complete çalıştırılıyor - complete step başarısız oldu', { storyId });
+          
+          // Fresh connection ile dene
+          const { dbConnectFresh } = await import('@/lib/mongodb');
+          await dbConnectFresh();
           
           await Story.findByIdAndUpdate(storyId, {
             status: 'completed',
             progress: 100,
-            currentStep: 'İşlem tamamlandı'
+            currentStep: 'İşlem tamamlandı (force)'
           });
           
           logger.info('Force complete başarılı', { storyId });
@@ -1617,16 +1633,26 @@ export const processStory = inngest.createFunction(
         stack: error instanceof Error ? error.stack : undefined
       });
 
-      await dbConnect();
-      await Story.findByIdAndUpdate(storyId, {
-        status: 'failed',
-        errorMessage: error instanceof Error ? error.message : 'Bilinmeyen hata'
-      });
+      // Fresh connection ile güncelle
+      try {
+        const { dbConnectFresh } = await import('@/lib/mongodb');
+        await dbConnectFresh();
+        
+        await Story.findByIdAndUpdate(storyId, {
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'Bilinmeyen hata'
+        });
 
-      // retryCount'u ayrı $inc operatörü ile güncelle
-      await Story.findByIdAndUpdate(storyId, {
-        $inc: { retryCount: 1 }
-      });
+        // retryCount'u ayrı $inc operatörü ile güncelle
+        await Story.findByIdAndUpdate(storyId, {
+          $inc: { retryCount: 1 }
+        });
+      } catch (dbError) {
+        logger.error('Hata durumunda DB güncelleme başarısız', {
+          storyId,
+          dbError: dbError instanceof Error ? dbError.message : 'Bilinmeyen hata'
+        });
+      }
 
       throw error;
     }
