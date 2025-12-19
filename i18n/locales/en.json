@@ -139,7 +139,30 @@
       "coquiVoice": "Reference Voice",
       "coquiNoVoices": "No voices available",
       "visualStyle": "Visual Style",
-      "promptScenario": "Prompt Scenario"
+      "promptScenario": "Prompt Scenario",
+      "transcreation": {
+        "title": "Fluent Rewriting (Transcreation)",
+        "hint": "Makes content more fluent and engaging in target language (max 5% duration difference)",
+        "active": "Active",
+        "presetLabel": "Fluency Level",
+        "presets": {
+          "light": "Light",
+          "lightDesc": "Minimal changes, original structure preserved",
+          "medium": "Medium",
+          "mediumDesc": "Balanced fluency",
+          "strong": "Strong",
+          "strongDesc": "Maximum fluency, free rewriting"
+        },
+        "styleLabel": "Narration Style",
+        "styles": {
+          "philosophical": "Philosophical/Deep",
+          "storyteller": "Storyteller",
+          "documentary": "Documentary",
+          "entertaining": "Entertaining"
+        },
+        "includeAdaptation": "Also apply cultural adaptation (names, places, institutions)",
+        "info": "Content is rewritten to differ at most 5% from source video duration. Narration becomes more fluent and engaging while preserving content."
+      }
     },
 
     "hints": {

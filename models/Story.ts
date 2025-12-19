@@ -69,6 +69,26 @@ const StorySchema = new Schema<IStory>(
       required: false
     },
     
+    // Transcreation (Yeniden Yazım) Modu
+    useTranscreation: {
+      type: Boolean,
+      default: false
+    },
+    transcreationPreset: {
+      type: String,
+      enum: ['light', 'medium', 'strong'],
+      default: 'medium'
+    },
+    transcreationStyle: {
+      type: String,
+      enum: ['philosophical', 'storyteller', 'documentary', 'entertaining'],
+      default: 'storyteller'
+    },
+    skipAdaptation: {
+      type: Boolean,
+      default: false
+    },
+    
     // Uyarlanmış hikaye
     adaptedTitle: {
       type: String

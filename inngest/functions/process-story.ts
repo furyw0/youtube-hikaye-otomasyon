@@ -27,6 +27,14 @@ import {
   type TimestampedScene 
 } from '@/services/transcript-parser.service';
 import { batchTranslateAndAdaptScenes, batchAdaptScenes } from '@/services/batch-translate-adapt.service';
+import { 
+  batchTranscreateScenes, 
+  applyTranscreationResults,
+  transcreateTitle,
+  getPresetById,
+  getStyleById
+} from '@/services/transcreation.service';
+import type { TranscreationPresetId, TranscreationStyleId } from '@/types/transcreation.types';
 import Settings from '@/models/Settings';
 import VisualStyle from '@/models/VisualStyle';
 import PromptScenario from '@/models/PromptScenario';
@@ -130,6 +138,11 @@ export const processStory = inngest.createFunction(
           useTimestampedContent: story.useTimestampedContent || false,
           timestampedContent: story.timestampedContent || undefined,
           totalOriginalDuration: story.totalOriginalDuration || undefined,
+          // Transcreation (Yeniden Yazım) Modu
+          useTranscreation: story.useTranscreation || false,
+          transcreationPreset: story.transcreationPreset || 'medium',
+          transcreationStyle: story.transcreationStyle || 'storyteller',
+          skipAdaptation: story.skipAdaptation || false,
           openaiModel: story.openaiModel,
           llmProvider: llmConfig.provider,
           llmModel: llmConfig.model,
@@ -166,81 +179,183 @@ export const processStory = inngest.createFunction(
       };
 
       if (storyData.useTimestampedContent && storyData.timestampedContent) {
-        // --- ZAMAN DAMGALI MOD: Batch Çeviri + Adaptasyon (Tek Adımda) ---
-        translationData = await step.run('translate-timestamped-batch', async () => {
-          await dbConnect();
-          await updateProgress(10, 'Zaman damgalı transkript işleniyor...');
+        // --- ZAMAN DAMGALI MOD ---
+        
+        // Transcreation modu aktifse farklı işlem yap
+        if (storyData.useTranscreation) {
+          // --- TRANSCREATION MODU: Akıcı Yeniden Yazım (%5 tolerans) ---
+          translationData = await step.run('transcreate-timestamped-batch', async () => {
+            await dbConnect();
+            await updateProgress(10, 'Transcreation: Zaman damgalı transkript işleniyor...');
 
-          logger.info('translate-timestamped-batch başladı', {
-            storyId,
-            contentLength: storyData.timestampedContent?.length || 0,
-            originalLanguage: storyData.originalLanguage,
-            targetLanguage: storyData.targetLanguage,
-            targetCountry: storyData.targetCountry,
-            llmModel: storyData.llmModel,
-            llmProvider: storyData.llmProvider
+            logger.info('transcreate-timestamped-batch başladı', {
+              storyId,
+              contentLength: storyData.timestampedContent?.length || 0,
+              originalLanguage: storyData.originalLanguage,
+              targetLanguage: storyData.targetLanguage,
+              transcreationPreset: storyData.transcreationPreset,
+              transcreationStyle: storyData.transcreationStyle,
+              llmModel: storyData.llmModel,
+              llmProvider: storyData.llmProvider
+            });
+
+            // 1. Transkripti parse et ve sahnelere ayır
+            const parsedTranscript = processTimestampedTranscript(storyData.timestampedContent!);
+            
+            // Boş sahne kontrolü
+            if (parsedTranscript.scenes.length === 0) {
+              logger.error('transcreate-timestamped-batch: Transkriptten sahne üretilemedi', { storyId });
+              throw new Error('Transkriptten sahne üretilemedi. Format kontrol edin.');
+            }
+            
+            logger.info('Transkript parse edildi (Transcreation)', {
+              storyId,
+              totalSegments: parsedTranscript.totalSegments,
+              totalScenes: parsedTranscript.totalScenes,
+              totalDuration: parsedTranscript.totalDuration
+            });
+
+            // Orijinal toplam karakter sayısını kaydet (süre kontrolü için)
+            const originalTotalChars = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
+
+            await updateProgress(15, `${parsedTranscript.totalScenes} sahne transcreation yapılıyor (max %5 fark)...`);
+
+            // 2. Transcreation: Akıcı Yeniden Yazım + Çeviri (%5 tolerans kontrolü ile)
+            const transcreationResult = await batchTranscreateScenes({
+              scenes: parsedTranscript.scenes,
+              sourceLang: storyData.originalLanguage,
+              targetLang: storyData.targetLanguage,
+              presetId: (storyData.transcreationPreset || 'medium') as TranscreationPresetId,
+              styleId: (storyData.transcreationStyle || 'storyteller') as TranscreationStyleId,
+              model: storyData.llmModel,
+              provider: storyData.llmProvider
+            });
+
+            // 3. Başlığı transcreate et
+            const style = getStyleById((storyData.transcreationStyle || 'storyteller') as TranscreationStyleId);
+            const transcreatedTitle = await transcreateTitle(
+              storyData.originalTitle,
+              storyData.originalLanguage,
+              storyData.targetLanguage,
+              style,
+              storyData.llmModel,
+              storyData.llmProvider
+            );
+
+            // 4. Sonuçları sahnelere uygula
+            const transcreatedScenes = applyTranscreationResults(parsedTranscript.scenes, transcreationResult.results);
+
+            // 5. Sonuçları hesapla
+            const translatedContent = transcreatedScenes.map(s => s.textAdapted || s.text).join('\n\n');
+            const translatedLength = translatedContent.length;
+
+            // Süre kontrolü logu
+            logger.info('Transcreation tamamlandı - SÜRE KONTROLÜ', {
+              storyId,
+              originalChars: originalTotalChars,
+              newChars: translatedLength,
+              ratio: `${(translatedLength / originalTotalChars * 100).toFixed(1)}%`,
+              withinTolerance: transcreationResult.stats.withinTolerance,
+              successfulScenes: transcreationResult.stats.successfulScenes,
+              failedScenes: transcreationResult.stats.failedScenes,
+              averageAttempts: transcreationResult.stats.averageAttempts.toFixed(1)
+            });
+
+            // DB güncelle
+            await Story.findByIdAndUpdate(storyId, {
+              adaptedTitle: transcreatedTitle,
+              adaptedContent: translatedContent,
+              originalContentLength: originalTotalChars,
+              translatedContentLength: translatedLength
+            });
+
+            await updateProgress(20, 'Transcreation tamamlandı');
+
+            return {
+              adaptedTitle: transcreatedTitle,
+              adaptedContent: translatedContent,
+              originalLength: originalTotalChars,
+              translatedLength,
+              timestampedScenes: transcreatedScenes
+            };
           });
+        } else {
+          // --- STANDART ZAMAN DAMGALI MOD: Batch Çeviri ---
+          translationData = await step.run('translate-timestamped-batch', async () => {
+            await dbConnect();
+            await updateProgress(10, 'Zaman damgalı transkript işleniyor...');
 
-          // 1. Transkripti parse et ve sahnelere ayır
-          const parsedTranscript = processTimestampedTranscript(storyData.timestampedContent!);
-          
-          // Boş sahne kontrolü
-          if (parsedTranscript.scenes.length === 0) {
-            logger.error('translate-timestamped-batch: Transkriptten sahne üretilemedi', { storyId });
-            throw new Error('Transkriptten sahne üretilemedi. Format kontrol edin.');
-          }
-          
-          logger.info('Transkript parse edildi', {
-            storyId,
-            totalSegments: parsedTranscript.totalSegments,
-            totalScenes: parsedTranscript.totalScenes,
-            totalDuration: parsedTranscript.totalDuration
+            logger.info('translate-timestamped-batch başladı', {
+              storyId,
+              contentLength: storyData.timestampedContent?.length || 0,
+              originalLanguage: storyData.originalLanguage,
+              targetLanguage: storyData.targetLanguage,
+              targetCountry: storyData.targetCountry,
+              llmModel: storyData.llmModel,
+              llmProvider: storyData.llmProvider
+            });
+
+            // 1. Transkripti parse et ve sahnelere ayır
+            const parsedTranscript = processTimestampedTranscript(storyData.timestampedContent!);
+            
+            // Boş sahne kontrolü
+            if (parsedTranscript.scenes.length === 0) {
+              logger.error('translate-timestamped-batch: Transkriptten sahne üretilemedi', { storyId });
+              throw new Error('Transkriptten sahne üretilemedi. Format kontrol edin.');
+            }
+            
+            logger.info('Transkript parse edildi', {
+              storyId,
+              totalSegments: parsedTranscript.totalSegments,
+              totalScenes: parsedTranscript.totalScenes,
+              totalDuration: parsedTranscript.totalDuration
+            });
+
+            await updateProgress(15, `${parsedTranscript.totalScenes} sahne batch çeviri yapılıyor...`);
+
+            // 2. Batch çeviri (sadece çeviri, adaptasyon sonra)
+            const batchResult = await batchTranslateAndAdaptScenes(
+              parsedTranscript.scenes,
+              storyData.originalTitle,
+              storyData.originalLanguage,
+              storyData.targetLanguage,
+              storyData.targetCountry,
+              storyData.llmModel,
+              storyData.llmProvider,
+              true // translationOnly = true (sadece çeviri)
+            );
+
+            // 3. Sonuçları hesapla
+            const translatedContent = batchResult.scenes.map(s => s.textAdapted).join('\n\n');
+            const originalLength = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
+            const translatedLength = translatedContent.length;
+
+            // DB güncelle
+            await Story.findByIdAndUpdate(storyId, {
+              adaptedTitle: batchResult.title,
+              adaptedContent: translatedContent,
+              originalContentLength: originalLength,
+              translatedContentLength: translatedLength
+            });
+
+            await updateProgress(20, 'Zaman damgalı batch çeviri tamamlandı');
+
+            logger.info('Zaman damgalı batch çeviri tamamlandı', {
+              storyId,
+              scenesTranslated: batchResult.scenes.length,
+              originalLength,
+              translatedLength
+            });
+
+            return {
+              adaptedTitle: batchResult.title,
+              adaptedContent: translatedContent,
+              originalLength,
+              translatedLength,
+              timestampedScenes: batchResult.scenes
+            };
           });
-
-          await updateProgress(15, `${parsedTranscript.totalScenes} sahne batch çeviri yapılıyor...`);
-
-          // 2. Batch çeviri (sadece çeviri, adaptasyon sonra)
-          const batchResult = await batchTranslateAndAdaptScenes(
-            parsedTranscript.scenes,
-            storyData.originalTitle,
-            storyData.originalLanguage,
-            storyData.targetLanguage,
-            storyData.targetCountry,
-            storyData.llmModel,
-            storyData.llmProvider,
-            true // translationOnly = true (sadece çeviri)
-          );
-
-          // 3. Sonuçları hesapla
-          const translatedContent = batchResult.scenes.map(s => s.textAdapted).join('\n\n');
-          const originalLength = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
-          const translatedLength = translatedContent.length;
-
-          // DB güncelle
-          await Story.findByIdAndUpdate(storyId, {
-            adaptedTitle: batchResult.title,
-            adaptedContent: translatedContent,
-            originalContentLength: originalLength,
-            translatedContentLength: translatedLength
-          });
-
-          await updateProgress(20, 'Zaman damgalı batch çeviri tamamlandı');
-
-          logger.info('Zaman damgalı batch çeviri tamamlandı', {
-            storyId,
-            scenesTranslated: batchResult.scenes.length,
-            originalLength,
-            translatedLength
-          });
-
-          return {
-            adaptedTitle: batchResult.title,
-            adaptedContent: translatedContent,
-            originalLength,
-            translatedLength,
-            timestampedScenes: batchResult.scenes
-          };
-        });
+        }
       } else {
         // --- STANDART MOD: Mevcut çeviri akışı ---
         translationData = await step.run('translate-story', async () => {
@@ -330,16 +445,30 @@ export const processStory = inngest.createFunction(
           logger.info('adapt-timestamped-batch başladı', {
             storyId,
             sceneCount: translationData.timestampedScenes?.length || 0,
-            translationOnly: storyData.translationOnly
+            translationOnly: storyData.translationOnly,
+            useTranscreation: storyData.useTranscreation,
+            skipAdaptation: storyData.skipAdaptation
           });
           
-          // translationOnly modunda adaptasyon ATLANIYOR
-          if (storyData.translationOnly) {
-            await updateProgress(30, 'Sadece çeviri modu - adaptasyon atlanıyor...');
+          // Adaptasyon atlama koşulları:
+          // 1. translationOnly modu aktif
+          // 2. Transcreation modu aktif VE skipAdaptation true
+          const shouldSkipAdaptation = storyData.translationOnly || 
+            (storyData.useTranscreation && storyData.skipAdaptation);
+          
+          if (shouldSkipAdaptation) {
+            const skipReason = storyData.translationOnly 
+              ? 'Sadece çeviri modu' 
+              : 'Transcreation modu - adaptasyon atlandı';
+            
+            await updateProgress(30, `${skipReason}...`);
 
-            logger.info('Zaman damgalı - sadece çeviri modu, adaptasyon atlanıyor', {
+            logger.info('Zaman damgalı - adaptasyon atlanıyor', {
               storyId,
-              translationOnly: true
+              reason: skipReason,
+              translationOnly: storyData.translationOnly,
+              useTranscreation: storyData.useTranscreation,
+              skipAdaptation: storyData.skipAdaptation
             });
 
             await Story.findByIdAndUpdate(storyId, {
@@ -361,7 +490,8 @@ export const processStory = inngest.createFunction(
             storyId,
             sceneCount: translationData.timestampedScenes!.length,
             targetLanguage: storyData.targetLanguage,
-            targetCountry: storyData.targetCountry
+            targetCountry: storyData.targetCountry,
+            useTranscreation: storyData.useTranscreation
           });
 
           // Batch adaptasyon (sadece adaptasyon, çeviri yok - zaten çevrilmiş)

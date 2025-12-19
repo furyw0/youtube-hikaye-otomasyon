@@ -139,7 +139,30 @@
       "coquiVoice": "Referans Ses",
       "coquiNoVoices": "Kullanılabilir ses bulunamadı",
       "visualStyle": "Görsel Stili",
-      "promptScenario": "Prompt Senaryosu"
+      "promptScenario": "Prompt Senaryosu",
+      "transcreation": {
+        "title": "Akıcı Yeniden Yazım (Transcreation)",
+        "hint": "İçeriği hedef dilde daha akıcı ve çekici hale getirir (max %5 süre farkı)",
+        "active": "Aktif",
+        "presetLabel": "Akıcılık Seviyesi",
+        "presets": {
+          "light": "Hafif",
+          "lightDesc": "Minimal değişiklik, orijinal yapı korunur",
+          "medium": "Orta",
+          "mediumDesc": "Dengeli akıcılaştırma",
+          "strong": "Güçlü",
+          "strongDesc": "Maksimum akıcılık, serbest yeniden yazım"
+        },
+        "styleLabel": "Anlatım Stili",
+        "styles": {
+          "philosophical": "Felsefi/Derin",
+          "storyteller": "Hikaye Anlatıcısı",
+          "documentary": "Belgesel",
+          "entertaining": "Eğlenceli"
+        },
+        "includeAdaptation": "Kültürel adaptasyon da uygula (isimler, yerler, kurumlar)",
+        "info": "Video süresi kaynak ile en fazla %5 farklı olacak şekilde yeniden yazım yapılır. Anlatım daha akıcı ve çekici hale getirilirken içerik korunur."
+      }
     },
 
     "hints": {

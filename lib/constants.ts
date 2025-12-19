@@ -196,3 +196,72 @@ export const ELEVENLABS_SETTINGS = {
   MODELS: ELEVENLABS_MODELS,
   DEFAULT_MODEL: 'eleven_flash_v2_5'
 };
+
+// ============================================
+// TRANSCREATION (YENİDEN YAZIM) AYARLARI
+// ============================================
+
+// Süre/Uzunluk Kontrolü
+export const TRANSCREATION_LENGTH_CONSTRAINTS = {
+  MIN_RATIO: 0.95,      // Minimum %95 (max %5 kısalma)
+  MAX_RATIO: 1.05,      // Maximum %105 (max %5 uzama)
+  MAX_RETRIES: 3        // Tolerans sağlanamazsa max deneme
+};
+
+// Akıcılık Seviyeleri (Presets)
+export const TRANSCREATION_PRESETS = [
+  { 
+    id: 'light', 
+    name: 'Hafif', 
+    description: 'Minimal değişiklik, ana yapı korunur',
+    emoji: '🌱'
+  },
+  { 
+    id: 'medium', 
+    name: 'Orta', 
+    description: 'Dengeli akıcılaştırma',
+    emoji: '🌿'
+  },
+  { 
+    id: 'strong', 
+    name: 'Güçlü', 
+    description: 'Maksimum akıcılık, serbest yeniden yazım',
+    emoji: '🌳'
+  }
+] as const;
+
+// Anlatım Stilleri
+export const TRANSCREATION_STYLES = [
+  { 
+    id: 'philosophical', 
+    name: 'Felsefi/Derin', 
+    description: 'Derin düşündüren anlatım',
+    emoji: '🔮'
+  },
+  { 
+    id: 'storyteller', 
+    name: 'Hikaye Anlatıcısı', 
+    description: 'Sürükleyici hikaye anlatımı',
+    emoji: '📖'
+  },
+  { 
+    id: 'documentary', 
+    name: 'Belgesel', 
+    description: 'Bilgilendirici, profesyonel',
+    emoji: '🎬'
+  },
+  { 
+    id: 'entertaining', 
+    name: 'Eğlenceli', 
+    description: 'Hafif, eğlenceli anlatım',
+    emoji: '🎉'
+  }
+] as const;
+
+export const TRANSCREATION_SETTINGS = {
+  PRESETS: TRANSCREATION_PRESETS,
+  STYLES: TRANSCREATION_STYLES,
+  LENGTH_CONSTRAINTS: TRANSCREATION_LENGTH_CONSTRAINTS,
+  DEFAULT_PRESET: 'medium' as const,
+  DEFAULT_STYLE: 'storyteller' as const
+};

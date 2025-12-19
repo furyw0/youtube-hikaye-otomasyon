@@ -31,6 +31,11 @@ const createStorySchema = z.object({
   // Zaman Damgalı İçerik Modu
   useTimestampedContent: z.boolean().optional().default(false),
   timestampedContent: z.string().max(500000).optional(),
+  // Transcreation (Yeniden Yazım) Modu
+  useTranscreation: z.boolean().optional().default(false),
+  transcreationPreset: z.enum(['light', 'medium', 'strong']).optional().default('medium'),
+  transcreationStyle: z.enum(['philosophical', 'storyteller', 'documentary', 'entertaining']).optional().default('storyteller'),
+  skipAdaptation: z.boolean().optional().default(false),
   openaiModel: z.string(),
   // TTS Provider
   ttsProvider: z.enum(['elevenlabs', 'coqui']).optional().default('elevenlabs'),
@@ -192,6 +197,11 @@ export async function POST(request: NextRequest) {
       useTimestampedContent: validated.useTimestampedContent || false,
       timestampedContent: validated.useTimestampedContent ? validated.timestampedContent : undefined,
       totalOriginalDuration: totalOriginalDuration,
+      // Transcreation (Yeniden Yazım)
+      useTranscreation: validated.useTranscreation || false,
+      transcreationPreset: validated.transcreationPreset,
+      transcreationStyle: validated.transcreationStyle,
+      skipAdaptation: validated.skipAdaptation || false,
       openaiModel: validated.openaiModel,
       // TTS Ayarları
       ttsProvider: validated.ttsProvider || 'elevenlabs',
@@ -230,6 +240,9 @@ export async function POST(request: NextRequest) {
       detectedLanguage: detection.language,
       translationOnly: validated.translationOnly,
       useTimestampedContent: validated.useTimestampedContent,
+      useTranscreation: validated.useTranscreation,
+      transcreationPreset: validated.useTranscreation ? validated.transcreationPreset : undefined,
+      transcreationStyle: validated.useTranscreation ? validated.transcreationStyle : undefined,
       totalOriginalDuration: totalOriginalDuration,
       estimatedTokens: validationResult.estimatedTokens,
       estimatedCost: validationResult.estimatedCost

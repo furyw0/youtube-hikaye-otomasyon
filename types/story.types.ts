@@ -28,6 +28,12 @@ export interface IStory {
   timestampedContent?: string;          // Ham transkript ([00:00:00] format)
   totalOriginalDuration?: number;       // Orijinal video süresi (saniye)
   
+  // Transcreation (Yeniden Yazım) Modu
+  useTranscreation?: boolean;           // Transcreation modu aktif mi
+  transcreationPreset?: 'light' | 'medium' | 'strong';  // Akıcılık seviyesi
+  transcreationStyle?: 'philosophical' | 'storyteller' | 'documentary' | 'entertaining';  // Anlatım stili
+  skipAdaptation?: boolean;             // Adaptasyonu atla (sadece yeniden yazım)
+  
   // Uyarlanmış hikaye
   adaptedTitle?: string;
   adaptedContent?: string;
@@ -119,6 +125,11 @@ export interface CreateStoryInput {
   // Zaman Damgalı İçerik Modu
   useTimestampedContent?: boolean;
   timestampedContent?: string;
+  // Transcreation (Yeniden Yazım) Modu
+  useTranscreation?: boolean;
+  transcreationPreset?: 'light' | 'medium' | 'strong';
+  transcreationStyle?: 'philosophical' | 'storyteller' | 'documentary' | 'entertaining';
+  skipAdaptation?: boolean;
   openaiModel: string;
   // TTS
   ttsProvider?: 'elevenlabs' | 'coqui';

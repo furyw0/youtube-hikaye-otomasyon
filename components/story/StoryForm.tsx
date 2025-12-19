@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
-import { TARGET_LANGUAGES, TARGET_COUNTRIES, IMAGEFX_ASPECT_RATIOS, ELEVENLABS_MODELS } from '@/lib/constants';
+import { TARGET_LANGUAGES, TARGET_COUNTRIES, IMAGEFX_ASPECT_RATIOS, ELEVENLABS_MODELS, TRANSCREATION_PRESETS, TRANSCREATION_STYLES } from '@/lib/constants';
 
 interface Voice {
   voice_id: string;
@@ -72,6 +72,11 @@ export function StoryForm() {
     // Zaman Damgalı İçerik Modu
     useTimestampedContent: false,
     timestampedContent: '',
+    // Transcreation (Yeniden Yazım) Modu
+    useTranscreation: false,
+    transcreationPreset: 'medium' as 'light' | 'medium' | 'strong',
+    transcreationStyle: 'storyteller' as 'philosophical' | 'storyteller' | 'documentary' | 'entertaining',
+    skipAdaptation: false,
     // LLM
     openaiModel: 'gpt-4o-mini',
     claudeModel: 'claude-sonnet-4-20250514',
@@ -358,6 +363,11 @@ export function StoryForm() {
         // Zaman Damgalı İçerik
         useTimestampedContent: formData.useTimestampedContent,
         timestampedContent: formData.useTimestampedContent ? formData.timestampedContent : undefined,
+        // Transcreation (Yeniden Yazım) Modu
+        useTranscreation: formData.useTranscreation,
+        transcreationPreset: formData.useTranscreation ? formData.transcreationPreset : undefined,
+        transcreationStyle: formData.useTranscreation ? formData.transcreationStyle : undefined,
+        skipAdaptation: formData.useTranscreation ? formData.skipAdaptation : undefined,
         // Zaman damgalı modda content boş olabilir, transkriptten üretilecek
         content: formData.useTimestampedContent ? '' : formData.content,
         ttsProvider,
@@ -558,6 +568,111 @@ export function StoryForm() {
 [00:01:30] Bir dakika otuz saniyedeki metin...`}
             </pre>
           </div>
+        </div>
+      )}
+
+      {/* Transcreation (Yeniden Yazım) Modu - Sadece Zaman Damgalı Modda göster */}
+      {formData.useTimestampedContent && (
+        <div className={`border rounded-lg p-4 space-y-4 ${formData.useTranscreation ? 'bg-violet-50 border-violet-200' : 'bg-gray-50 border-gray-200'}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                ✨ Akıcı Yeniden Yazım (Transcreation)
+                {formData.useTranscreation && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-violet-100 text-violet-800">
+                    Aktif
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-gray-600 mt-1">
+                İçeriği hedef dilde daha akıcı ve çekici hale getirir (max %5 süre farkı)
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.useTranscreation}
+                onChange={(e) => setFormData({ ...formData, useTranscreation: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+            </label>
+          </div>
+
+          {formData.useTranscreation && (
+            <>
+              {/* Akıcılık Seviyesi (Preset) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Akıcılık Seviyesi
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {TRANSCREATION_PRESETS.map(preset => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, transcreationPreset: preset.id as 'light' | 'medium' | 'strong' })}
+                      className={`p-3 rounded-lg border text-center transition-all ${
+                        formData.transcreationPreset === preset.id
+                          ? 'bg-violet-100 border-violet-500 text-violet-900'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-violet-300'
+                      }`}
+                    >
+                      <div className="text-lg mb-1">{preset.emoji}</div>
+                      <div className="text-sm font-medium">{preset.name}</div>
+                      <div className="text-xs text-gray-500">{preset.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Anlatım Stili */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Anlatım Stili
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {TRANSCREATION_STYLES.map(style => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, transcreationStyle: style.id as 'philosophical' | 'storyteller' | 'documentary' | 'entertaining' })}
+                      className={`p-3 rounded-lg border text-center transition-all ${
+                        formData.transcreationStyle === style.id
+                          ? 'bg-violet-100 border-violet-500 text-violet-900'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-violet-300'
+                      }`}
+                    >
+                      <div className="text-lg mb-1">{style.emoji}</div>
+                      <div className="text-sm font-medium">{style.name}</div>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {TRANSCREATION_STYLES.find(s => s.id === formData.transcreationStyle)?.description}
+                </p>
+              </div>
+
+              {/* Adaptasyon Seçeneği */}
+              <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                <input
+                  type="checkbox"
+                  id="skipAdaptation"
+                  checked={!formData.skipAdaptation}
+                  onChange={(e) => setFormData({ ...formData, skipAdaptation: !e.target.checked })}
+                  className="w-4 h-4 text-violet-600 rounded border-gray-300 focus:ring-violet-500"
+                />
+                <label htmlFor="skipAdaptation" className="text-sm text-gray-700">
+                  Kültürel adaptasyon da uygula (isimler, yerler, kurumlar)
+                </label>
+              </div>
+
+              <div className="p-3 bg-violet-100 rounded-lg text-xs text-violet-800">
+                ⚡ Video süresi kaynak ile en fazla %5 farklı olacak şekilde yeniden yazım yapılır.
+                Anlatım daha akıcı ve çekici hale getirilirken içerik korunur.
+              </div>
+            </>
+          )}
         </div>
       )}
 
