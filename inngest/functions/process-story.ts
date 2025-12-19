@@ -26,6 +26,7 @@ import {
   applyAdaptedTextsToScenes,
   type TimestampedScene 
 } from '@/services/transcript-parser.service';
+import { batchTranslateAndAdaptScenes } from '@/services/batch-translate-adapt.service';
 import Settings from '@/models/Settings';
 import VisualStyle from '@/models/VisualStyle';
 import PromptScenario from '@/models/PromptScenario';
@@ -165,12 +166,12 @@ export const processStory = inngest.createFunction(
       };
 
       if (storyData.useTimestampedContent && storyData.timestampedContent) {
-        // --- ZAMAN DAMGALI MOD: Transkript Parse + Sahne Bazlı Çeviri ---
-        translationData = await step.run('translate-timestamped', async () => {
+        // --- ZAMAN DAMGALI MOD: Batch Çeviri + Adaptasyon (Tek Adımda) ---
+        translationData = await step.run('translate-timestamped-batch', async () => {
           await dbConnect();
           await updateProgress(10, 'Zaman damgalı transkript işleniyor...');
 
-          logger.info('translate-timestamped başladı', {
+          logger.info('translate-timestamped-batch başladı', {
             storyId,
             contentLength: storyData.timestampedContent?.length || 0
           });
@@ -180,7 +181,7 @@ export const processStory = inngest.createFunction(
           
           // Boş sahne kontrolü
           if (parsedTranscript.scenes.length === 0) {
-            logger.error('translate-timestamped: Transkriptten sahne üretilemedi', { storyId });
+            logger.error('translate-timestamped-batch: Transkriptten sahne üretilemedi', { storyId });
             throw new Error('Transkriptten sahne üretilemedi. Format kontrol edin.');
           }
           
@@ -191,68 +192,48 @@ export const processStory = inngest.createFunction(
             totalDuration: parsedTranscript.totalDuration
           });
 
-          // 2. Başlığı çevir
-          const translatedTitle = await translateText(
+          await updateProgress(15, `${parsedTranscript.totalScenes} sahne batch çeviri yapılıyor...`);
+
+          // 2. Batch çeviri (sadece çeviri, adaptasyon sonra)
+          const batchResult = await batchTranslateAndAdaptScenes(
+            parsedTranscript.scenes,
             storyData.originalTitle,
             storyData.originalLanguage,
             storyData.targetLanguage,
+            storyData.targetCountry,
             storyData.llmModel,
-            storyData.llmProvider
+            storyData.llmProvider,
+            true // translationOnly = true (sadece çeviri)
           );
 
-          // 3. Her sahneyi ayrı ayrı çevir
-          const translatedScenes: TimestampedScene[] = [];
-          
-          for (let i = 0; i < parsedTranscript.scenes.length; i++) {
-            const scene = parsedTranscript.scenes[i];
-            
-            await updateProgress(
-              10 + Math.round((i / parsedTranscript.scenes.length) * 10),
-              `Sahne ${i + 1}/${parsedTranscript.scenes.length} çevriliyor...`
-            );
-
-            const translatedText = await translateText(
-              scene.text,
-              storyData.originalLanguage,
-              storyData.targetLanguage,
-              storyData.llmModel,
-              storyData.llmProvider
-            );
-
-            translatedScenes.push({
-              ...scene,
-              textAdapted: translatedText
-            });
-          }
-
-          // 4. Tüm çevrilmiş metinleri birleştir
-          const translatedContent = translatedScenes.map(s => s.textAdapted).join('\n\n');
+          // 3. Sonuçları hesapla
+          const translatedContent = batchResult.scenes.map(s => s.textAdapted).join('\n\n');
           const originalLength = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
           const translatedLength = translatedContent.length;
 
           // DB güncelle
           await Story.findByIdAndUpdate(storyId, {
-            adaptedTitle: translatedTitle,
+            adaptedTitle: batchResult.title,
             adaptedContent: translatedContent,
             originalContentLength: originalLength,
             translatedContentLength: translatedLength
           });
 
-          await updateProgress(20, 'Zaman damgalı çeviri tamamlandı');
+          await updateProgress(20, 'Zaman damgalı batch çeviri tamamlandı');
 
-          logger.info('Zaman damgalı çeviri tamamlandı', {
+          logger.info('Zaman damgalı batch çeviri tamamlandı', {
             storyId,
-            scenesTranslated: translatedScenes.length,
+            scenesTranslated: batchResult.scenes.length,
             originalLength,
             translatedLength
           });
 
           return {
-            adaptedTitle: translatedTitle,
+            adaptedTitle: batchResult.title,
             adaptedContent: translatedContent,
             originalLength,
             translatedLength,
-            timestampedScenes: translatedScenes
+            timestampedScenes: batchResult.scenes
           };
         });
       } else {
@@ -337,11 +318,11 @@ export const processStory = inngest.createFunction(
       };
 
       if (storyData.useTimestampedContent && translationData.timestampedScenes && translationData.timestampedScenes.length > 0) {
-        // --- ZAMAN DAMGALI MOD: Sahne Bazlı Adaptasyon ---
-        adaptationData = await step.run('adapt-timestamped', async () => {
+        // --- ZAMAN DAMGALI MOD: Batch Adaptasyon ---
+        adaptationData = await step.run('adapt-timestamped-batch', async () => {
           await dbConnect();
           
-          logger.info('adapt-timestamped başladı', {
+          logger.info('adapt-timestamped-batch başladı', {
             storyId,
             sceneCount: translationData.timestampedScenes?.length || 0,
             translationOnly: storyData.translationOnly
@@ -369,68 +350,44 @@ export const processStory = inngest.createFunction(
             };
           }
 
-          await updateProgress(25, 'Zaman damgalı sahneler adapte ediliyor...');
+          await updateProgress(25, `${translationData.timestampedScenes!.length} sahne batch adaptasyon yapılıyor...`);
 
-          const scenes = translationData.timestampedScenes!;
-          const adaptedScenes: TimestampedScene[] = [];
-          const allNotes: string[] = [];
-
-          // Başlığı adapte et
-          const adaptedTitle = await adaptText(
+          // Batch adaptasyon
+          const batchResult = await batchTranslateAndAdaptScenes(
+            translationData.timestampedScenes!,
             translationData.adaptedTitle,
-            storyData.targetCountry,
+            storyData.targetLanguage, // Zaten çevrilmiş, kaynak dil = hedef dil
             storyData.targetLanguage,
-            storyData.openaiModel,
-            storyData.llmProvider
+            storyData.targetCountry,
+            storyData.llmModel,
+            storyData.llmProvider,
+            false // translationOnly = false (adaptasyon yap)
           );
 
-          // Her sahneyi adapte et
-          for (let i = 0; i < scenes.length; i++) {
-            const scene = scenes[i];
-            
-            await updateProgress(
-              25 + Math.round((i / scenes.length) * 5),
-              `Sahne ${i + 1}/${scenes.length} adapte ediliyor...`
-            );
-
-            const adaptedText = await adaptText(
-              scene.textAdapted || scene.text,
-              storyData.targetCountry,
-              storyData.targetLanguage,
-              storyData.openaiModel,
-              storyData.llmProvider
-            );
-
-            adaptedScenes.push({
-              ...scene,
-              textAdapted: adaptedText
-            });
-          }
-
-          const adaptedContent = adaptedScenes.map(s => s.textAdapted).join('\n\n');
+          const adaptedContent = batchResult.scenes.map(s => s.textAdapted).join('\n\n');
           const adaptedLength = adaptedContent.length;
 
           // DB güncelle
           await Story.findByIdAndUpdate(storyId, {
-            adaptedTitle,
+            adaptedTitle: batchResult.title,
             adaptedContent,
             adaptedContentLength: adaptedLength
           });
 
-          await updateProgress(30, 'Zaman damgalı adaptasyon tamamlandı');
+          await updateProgress(30, 'Zaman damgalı batch adaptasyon tamamlandı');
 
-          logger.info('Zaman damgalı adaptasyon tamamlandı', {
+          logger.info('Zaman damgalı batch adaptasyon tamamlandı', {
             storyId,
-            scenesAdapted: adaptedScenes.length,
+            scenesAdapted: batchResult.scenes.length,
             adaptedLength
           });
 
           return {
-            adaptedTitle,
+            adaptedTitle: batchResult.title,
             adaptedContent,
-            adaptationNotes: allNotes,
+            adaptationNotes: [] as string[],
             adaptedLength,
-            timestampedScenes: adaptedScenes
+            timestampedScenes: batchResult.scenes
           };
         });
       } else {
