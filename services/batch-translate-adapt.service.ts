@@ -409,8 +409,15 @@ export async function batchTranslateAndAdaptScenes(
     targetCountry,
     model,
     provider,
-    translationOnly
+    translationOnly,
+    firstScenePreview: scenes[0]?.text?.substring(0, 100)
   });
+
+  // Dil parametrelerini doğrula
+  if (!sourceLang || !targetLang) {
+    logger.error('Dil parametreleri eksik!', { sourceLang, targetLang });
+    throw new Error(`Dil parametreleri eksik: sourceLang=${sourceLang}, targetLang=${targetLang}`);
+  }
 
   // Sahneleri batch'lere böl
   const batches = splitIntoBatches(scenes, 5000, provider);

@@ -250,9 +250,16 @@ export function mergeSegmentsToScenes(
       ? idealFirstThreeDuration 
       : idealRemainingDuration;
     
-    // Dinamik min/max (hedefin %70 - %130'u)
-    const dynamicMin = Math.max(targetSceneDurationMin, targetDuration * 0.7);
-    const dynamicMax = Math.min(targetSceneDurationMax * 1.5, targetDuration * 1.3);
+    // Dinamik min/max hesapla
+    // Min: hedefin %70'i veya sabit minimum (15sn), hangisi büyükse
+    // Max: hedefin %130'u veya sabit maksimum (45sn), hangisi büyükse
+    let dynamicMin = Math.max(targetSceneDurationMin, targetDuration * 0.7);
+    let dynamicMax = Math.max(targetSceneDurationMax, targetDuration * 1.3);
+    
+    // dynamicMax her zaman dynamicMin'den büyük olmalı
+    if (dynamicMax <= dynamicMin) {
+      dynamicMax = dynamicMin + 15; // En az 15 saniye fark olsun
+    }
     
     currentSceneSegments.push(segment);
     currentDuration += segment.duration;
@@ -265,8 +272,8 @@ export function mergeSegmentsToScenes(
       currentDuration >= dynamicMax ||
       // Son segment
       i === segments.length - 1 ||
-      // İlk 3 dakika sınırında
-      (segment.endTime >= firstThreeMinutesDuration && 
+      // İlk 3 dakika sınırında (SADECE geçiş anında, her segment için değil!)
+      (isFirstThreeMinutes && 
        i < segments.length - 1 && 
        segments[i + 1].startTime >= firstThreeMinutesDuration);
     
@@ -289,7 +296,12 @@ export function mergeSegmentsToScenes(
     totalScenes: scenes.length,
     firstThreeMinutesScenes: scenes.filter(s => s.isFirstThreeMinutes).length,
     remainingScenes: scenes.filter(s => !s.isFirstThreeMinutes).length,
-    totalDuration: formatDuration(totalDuration)
+    totalDuration: formatDuration(totalDuration),
+    avgSceneDuration: scenes.length > 0 
+      ? formatDuration(totalDuration / scenes.length)
+      : '0',
+    idealFirstThreeDuration: formatDuration(idealFirstThreeDuration),
+    idealRemainingDuration: formatDuration(idealRemainingDuration)
   });
 
   return scenes;

@@ -26,7 +26,7 @@ import {
   applyAdaptedTextsToScenes,
   type TimestampedScene 
 } from '@/services/transcript-parser.service';
-import { batchTranslateAndAdaptScenes } from '@/services/batch-translate-adapt.service';
+import { batchTranslateAndAdaptScenes, batchAdaptScenes } from '@/services/batch-translate-adapt.service';
 import Settings from '@/models/Settings';
 import VisualStyle from '@/models/VisualStyle';
 import PromptScenario from '@/models/PromptScenario';
@@ -173,7 +173,12 @@ export const processStory = inngest.createFunction(
 
           logger.info('translate-timestamped-batch başladı', {
             storyId,
-            contentLength: storyData.timestampedContent?.length || 0
+            contentLength: storyData.timestampedContent?.length || 0,
+            originalLanguage: storyData.originalLanguage,
+            targetLanguage: storyData.targetLanguage,
+            targetCountry: storyData.targetCountry,
+            llmModel: storyData.llmModel,
+            llmProvider: storyData.llmProvider
           });
 
           // 1. Transkripti parse et ve sahnelere ayır
@@ -352,17 +357,22 @@ export const processStory = inngest.createFunction(
 
           await updateProgress(25, `${translationData.timestampedScenes!.length} sahne batch adaptasyon yapılıyor...`);
 
-          // Batch adaptasyon
-          const batchResult = await batchTranslateAndAdaptScenes(
-            translationData.timestampedScenes!,
-            translationData.adaptedTitle,
-            storyData.targetLanguage, // Zaten çevrilmiş, kaynak dil = hedef dil
-            storyData.targetLanguage,
-            storyData.targetCountry,
-            storyData.llmModel,
-            storyData.llmProvider,
-            false // translationOnly = false (adaptasyon yap)
-          );
+          logger.info('adapt-timestamped-batch: Adaptasyon başlıyor', {
+            storyId,
+            sceneCount: translationData.timestampedScenes!.length,
+            targetLanguage: storyData.targetLanguage,
+            targetCountry: storyData.targetCountry
+          });
+
+          // Batch adaptasyon (sadece adaptasyon, çeviri yok - zaten çevrilmiş)
+          const batchResult = await batchAdaptScenes({
+            scenes: translationData.timestampedScenes!,
+            title: translationData.adaptedTitle,
+            targetCountry: storyData.targetCountry,
+            targetLang: storyData.targetLanguage,
+            model: storyData.llmModel,
+            provider: storyData.llmProvider
+          });
 
           const adaptedContent = batchResult.scenes.map(s => s.textAdapted).join('\n\n');
           const adaptedLength = adaptedContent.length;
