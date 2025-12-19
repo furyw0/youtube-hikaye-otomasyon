@@ -1653,23 +1653,47 @@ export const processStory = inngest.createFunction(
 
       // --- 10. TAMAMLANDI (100%) ---
       const completeResult = await step.run('complete', async () => {
-        // İşleme süresini hesapla
-        const processingEndTime = Date.now();
-        const processingDuration = Math.round((processingEndTime - processingStartTime) / 1000); // Saniye
+        // Fresh connection ile başla
+        const { dbConnectFresh } = await import('@/lib/mongodb');
+        await dbConnectFresh();
+
+        // Story'den gerçek başlangıç zamanını al
+        const story = await Story.findById(storyId).lean();
+        if (!story) {
+          logger.error('Complete: Story bulunamadı', { storyId });
+          return { success: false, error: 'Story bulunamadı', duration: 0 };
+        }
+
+        // İşleme süresini hesapla - DB'deki gerçek başlangıç zamanından
+        const processingEndTime = new Date();
+        let processingDuration = 0;
+        
+        if (story.processingStartedAt) {
+          const startTime = new Date(story.processingStartedAt).getTime();
+          processingDuration = Math.round((processingEndTime.getTime() - startTime) / 1000); // Saniye
+        }
 
         // Süreyi okunabilir formata çevir
         const minutes = Math.floor(processingDuration / 60);
         const seconds = processingDuration % 60;
         const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
 
+        logger.info('Complete: Süre hesaplandı', {
+          storyId,
+          processingStartedAt: story.processingStartedAt,
+          processingEndTime: processingEndTime.toISOString(),
+          processingDuration,
+          durationText
+        });
+
         // Retry mekanizması ile güncelleme
-        const maxRetries = 3;
-        let lastError: Error | null = null;
+        const maxRetries = 5;
+        let lastErrorMessage = '';
+        let updateVerified = false;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {
             // Her denemede fresh connection kullan
-            const { dbConnectFresh } = await import('@/lib/mongodb');
             await dbConnectFresh();
 
             logger.info('Complete: Güncelleme deneniyor', { 
@@ -1678,76 +1702,225 @@ export const processStory = inngest.createFunction(
               maxRetries 
             });
 
-            // findByIdAndUpdate kullan - status'u kesinlikle completed yap
-            const updateResult = await Story.findByIdAndUpdate(
-              storyId, 
+            // updateOne kullan - daha düşük seviye, daha güvenilir
+            const updateResult = await Story.updateOne(
+              { _id: storyId },
               {
-                status: 'completed',
-                progress: 100,
-                currentStep: 'İşlem tamamlandı!',
-                processingCompletedAt: new Date(),
-                processingDuration: processingDuration
-              },
-              { new: true }
+                $set: {
+                  status: 'completed',
+                  progress: 100,
+                  currentStep: 'İşlem tamamlandı!',
+                  processingCompletedAt: processingEndTime,
+                  processingDuration: processingDuration
+                }
+              }
             );
 
-            if (!updateResult) {
-              logger.error('Complete: Story güncellenemedi - kayıt bulunamadı', { storyId });
-              return { success: false, error: 'Story bulunamadı', duration: processingDuration };
+            logger.info('Complete: updateOne sonucu', {
+              storyId,
+              matchedCount: updateResult.matchedCount,
+              modifiedCount: updateResult.modifiedCount,
+              acknowledged: updateResult.acknowledged
+            });
+
+            if (updateResult.matchedCount === 0) {
+              logger.error('Complete: Story bulunamadı (updateOne)', { storyId });
+              lastErrorMessage = 'Story not found in updateOne';
+              continue;
             }
 
-            logger.info('Hikaye işleme tamamlandı', {
-              storyId,
-              processingDuration,
-              durationText,
-              finalStatus: updateResult.status,
-              attempt
-            });
+            // Güncellemeyi doğrula - yeni connection ile
+            await dbConnectFresh();
+            const verifyStory = await Story.findById(storyId).lean();
             
-            return { success: true, duration: processingDuration, status: updateResult.status };
+            if (verifyStory && verifyStory.status === 'completed' && verifyStory.progress === 100) {
+              updateVerified = true;
+              logger.info('Hikaye işleme tamamlandı - DOĞRULANDI', {
+                storyId,
+                processingDuration,
+                durationText,
+                finalStatus: verifyStory.status,
+                finalProgress: verifyStory.progress,
+                attempt
+              });
+              
+              return { 
+                success: true, 
+                duration: processingDuration, 
+                status: verifyStory.status,
+                verified: true
+              };
+            } else {
+              lastErrorMessage = `Verification failed: status=${verifyStory?.status}, progress=${verifyStory?.progress}`;
+              logger.warn('Complete: Güncelleme doğrulanamadı', {
+                storyId,
+                expectedStatus: 'completed',
+                actualStatus: verifyStory?.status,
+                expectedProgress: 100,
+                actualProgress: verifyStory?.progress,
+                attempt
+              });
+            }
           } catch (error) {
-            lastError = error instanceof Error ? error : new Error('Bilinmeyen hata');
+            lastErrorMessage = error instanceof Error ? error.message : 'Unknown error';
             logger.warn(`Complete: Deneme ${attempt}/${maxRetries} başarısız`, {
               storyId,
-              error: lastError.message,
+              error: lastErrorMessage,
               attempt
             });
+          }
 
-            // Son deneme değilse bekle ve tekrar dene
-            if (attempt < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
-            }
+          // Son deneme değilse bekle ve tekrar dene
+          if (attempt < maxRetries) {
+            const waitTime = 1000 * attempt * 2; // 2s, 4s, 6s, 8s
+            logger.info(`Complete: ${waitTime}ms bekleniyor...`, { storyId, attempt });
+            await new Promise(resolve => setTimeout(resolve, waitTime));
           }
         }
 
-        // Tüm denemeler başarısız
-        logger.error('Complete: Tüm denemeler başarısız', {
+        // Tüm denemeler başarısız veya doğrulanamadı
+        logger.error('Complete: Tüm denemeler başarısız veya doğrulanamadı', {
           storyId,
-          error: lastError?.message,
-          attempts: maxRetries
+          error: lastErrorMessage,
+          attempts: maxRetries,
+          updateVerified
         });
         
-        return { success: false, duration: processingDuration, error: lastError?.message };
+        return { success: false, duration: processingDuration, error: lastErrorMessage || 'All retries failed', verified: false };
       });
 
-      // Son kontrol - eğer complete step başarısız olduysa, bir kez daha dene
-      if (!completeResult?.success) {
+      // Son kontrol - eğer complete step başarısız olduysa veya doğrulanamadıysa, bir kez daha dene
+      const shouldForceComplete = !completeResult || 
+        completeResult.success === false || 
+        ('verified' in completeResult && completeResult.verified === false);
+      
+      if (shouldForceComplete) {
         await step.run('force-complete', async () => {
-          logger.warn('Force complete çalıştırılıyor - complete step başarısız oldu', { storyId });
+          logger.warn('Force complete çalıştırılıyor', { 
+            storyId,
+            completeResult: JSON.stringify(completeResult)
+          });
           
-          // Fresh connection ile dene
+          // Mongoose connection'ı tamamen kapat ve yeniden bağlan
+          const mongoose = await import('mongoose');
+          if (mongoose.connection.readyState !== 0) {
+            await mongoose.connection.close();
+          }
+          
+          // Yeni connection
           const { dbConnectFresh } = await import('@/lib/mongodb');
           await dbConnectFresh();
           
-          await Story.findByIdAndUpdate(storyId, {
-            status: 'completed',
-            progress: 100,
-            currentStep: 'İşlem tamamlandı (force)'
-          });
+          // Native MongoDB driver kullan
+          const result = await Story.collection.updateOne(
+            { _id: new mongoose.Types.ObjectId(storyId) },
+            {
+              $set: {
+                status: 'completed',
+                progress: 100,
+                currentStep: 'İşlem tamamlandı (force)',
+                processingCompletedAt: new Date()
+              }
+            }
+          );
           
-          logger.info('Force complete başarılı', { storyId });
+          logger.info('Force complete sonucu', { 
+            storyId,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+          });
+
+          // Doğrula
+          const verifyDoc = await Story.collection.findOne({ _id: new mongoose.Types.ObjectId(storyId) });
+          logger.info('Force complete doğrulama', {
+            storyId,
+            status: verifyDoc?.status,
+            progress: verifyDoc?.progress
+          });
         });
       }
+
+      // --- 11. FİNALİZASYON - Son kontrol ve doğrulama ---
+      await step.run('finalization', async () => {
+        // 2 saniye bekle - önceki write işlemlerinin tamamlanmasını garantile
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const mongoose = await import('mongoose');
+        const { nativeUpdate } = await import('@/lib/mongodb');
+        
+        // Native driver ile final kontrol
+        const { dbConnectFresh } = await import('@/lib/mongodb');
+        await dbConnectFresh();
+        
+        const finalDoc = await Story.collection.findOne({ 
+          _id: new mongoose.Types.ObjectId(storyId) 
+        });
+
+        if (!finalDoc) {
+          logger.error('Finalization: Story bulunamadı', { storyId });
+          return { success: false, error: 'Story not found' };
+        }
+
+        logger.info('Finalization: Mevcut durum', {
+          storyId,
+          status: finalDoc.status,
+          progress: finalDoc.progress
+        });
+
+        // Eğer hala completed değilse, native driver ile güncelle
+        if (finalDoc.status !== 'completed' || finalDoc.progress !== 100) {
+          logger.warn('Finalization: Story hala completed değil, native update yapılıyor', {
+            storyId,
+            currentStatus: finalDoc.status,
+            currentProgress: finalDoc.progress
+          });
+
+          // Süre hesapla
+          let duration = 0;
+          if (finalDoc.processingStartedAt) {
+            const startTime = new Date(finalDoc.processingStartedAt).getTime();
+            duration = Math.round((Date.now() - startTime) / 1000);
+          }
+
+          await nativeUpdate('stories', 
+            { _id: new mongoose.Types.ObjectId(storyId) },
+            {
+              status: 'completed',
+              progress: 100,
+              currentStep: 'İşlem tamamlandı!',
+              processingCompletedAt: new Date(),
+              processingDuration: duration
+            }
+          );
+
+          // Son doğrulama
+          const verifyFinal = await Story.collection.findOne({ 
+            _id: new mongoose.Types.ObjectId(storyId) 
+          });
+          
+          logger.info('Finalization: Native update sonrası durum', {
+            storyId,
+            status: verifyFinal?.status,
+            progress: verifyFinal?.progress,
+            duration: verifyFinal?.processingDuration
+          });
+
+          return { 
+            success: verifyFinal?.status === 'completed',
+            nativeUpdateApplied: true,
+            finalStatus: verifyFinal?.status,
+            finalProgress: verifyFinal?.progress
+          };
+        }
+
+        return { 
+          success: true, 
+          alreadyCompleted: true,
+          finalStatus: finalDoc.status,
+          finalProgress: finalDoc.progress,
+          processingDuration: finalDoc.processingDuration
+        };
+      });
 
       return {
         success: true,

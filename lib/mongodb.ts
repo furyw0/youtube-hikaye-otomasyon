@@ -76,7 +76,43 @@ async function dbConnect(forceNew: boolean = false) {
  * Stale connection sorunlarını önler
  */
 export async function dbConnectFresh() {
-  return dbConnect(true);
+  // Mevcut bağlantı durumunu logla
+  logger.debug('dbConnectFresh: Current connection state', {
+    readyState: mongoose.connection.readyState,
+    // 0: disconnected, 1: connected, 2: connecting, 3: disconnecting
+    readyStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown'
+  });
+
+  // Bağlantı connecting veya connected ise, önce kapat
+  if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
+    try {
+      await mongoose.connection.close();
+      logger.info('dbConnectFresh: Existing connection closed');
+    } catch (e) {
+      logger.warn('dbConnectFresh: Error closing connection', { error: e });
+    }
+  }
+
+  // Cache'i temizle
+  cached.conn = null;
+  cached.promise = null;
+
+  // Yeni bağlantı kur
+  return dbConnect(false);
+}
+
+/**
+ * Doğrudan MongoDB native driver ile güncelleme yapar
+ * Mongoose katmanını bypass eder
+ */
+export async function nativeUpdate(collectionName: string, filter: object, update: object) {
+  await dbConnectFresh();
+  const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error('Database connection not available');
+  }
+  const collection = db.collection(collectionName);
+  return collection.updateOne(filter, { $set: update });
 }
 
 export default dbConnect;
