@@ -387,6 +387,18 @@
       "view": "View",
       "download": "Download",
       "delete": "Delete"
+    },
+    "selection": {
+      "selected": "stories selected",
+      "clear": "Clear Selection",
+      "selectAll": "Select All",
+      "assignChannel": "Assign to Channel",
+      "assignChannelTitle": "Select Channel",
+      "storiesWillBeAssigned": "stories will be assigned to selected channel",
+      "removeFromChannel": "Remove from Channel",
+      "removeFromChannelDesc": "Remove selected stories from their current channels",
+      "noChannels": "No channels created yet",
+      "cancel": "Cancel"
     }
   },
 

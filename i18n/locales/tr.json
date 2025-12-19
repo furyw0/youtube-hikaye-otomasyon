@@ -387,6 +387,18 @@
       "view": "Görüntüle",
       "download": "İndir",
       "delete": "Sil"
+    },
+    "selection": {
+      "selected": "hikaye seçildi",
+      "clear": "Seçimi Temizle",
+      "selectAll": "Tümünü Seç",
+      "assignChannel": "Kanala Ekle",
+      "assignChannelTitle": "Kanal Seç",
+      "storiesWillBeAssigned": "hikaye seçilen kanala eklenecek",
+      "removeFromChannel": "Kanaldan Çıkar",
+      "removeFromChannelDesc": "Seçili hikayeleri mevcut kanallarından çıkar",
+      "noChannels": "Henüz kanal oluşturulmamış",
+      "cancel": "İptal"
     }
   },
 

@@ -65,6 +65,11 @@ function StoriesContent() {
   const [filter, setFilter] = useState<string>('all');
   const [channelFilter, setChannelFilter] = useState<string>('all');
   const [sort, setSort] = useState<string>('newest');
+  
+  // Çoklu seçim state'leri
+  const [selectedStories, setSelectedStories] = useState<Set<string>>(new Set());
+  const [showChannelModal, setShowChannelModal] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   useEffect(() => {
     // URL'den kanal filtresini al
@@ -136,9 +141,91 @@ function StoriesContent() {
 
       if (response.ok) {
         setStories(stories.filter(s => s._id !== storyId));
+        // Seçimden de kaldır
+        setSelectedStories(prev => {
+          const next = new Set(prev);
+          next.delete(storyId);
+          return next;
+        });
       }
     } catch (error) {
       console.error('Silme hatası:', error);
+    }
+  };
+
+  // Hikaye seçimi toggle
+  const toggleStorySelection = (storyId: string) => {
+    setSelectedStories(prev => {
+      const next = new Set(prev);
+      if (next.has(storyId)) {
+        next.delete(storyId);
+      } else {
+        next.add(storyId);
+      }
+      return next;
+    });
+  };
+
+  // Tümünü seç/kaldır
+  const toggleSelectAll = () => {
+    if (selectedStories.size === filteredStories.length) {
+      setSelectedStories(new Set());
+    } else {
+      setSelectedStories(new Set(filteredStories.map(s => s._id)));
+    }
+  };
+
+  // Seçimi temizle
+  const clearSelection = () => {
+    setSelectedStories(new Set());
+  };
+
+  // Toplu kanal atama
+  const handleBulkChannelAssign = async (channelId: string | null) => {
+    if (selectedStories.size === 0) return;
+
+    setBulkLoading(true);
+    try {
+      const response = await fetch('/api/stories/bulk-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyIds: Array.from(selectedStories),
+          channelId
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Hikayeleri güncelle
+        setStories(prev => prev.map(story => {
+          if (selectedStories.has(story._id)) {
+            return {
+              ...story,
+              channel: data.channel,
+              channelId: data.channel?._id || undefined
+            };
+          }
+          return story;
+        }));
+        
+        // Kanal sayılarını güncelle
+        fetchChannels();
+        
+        // Seçimi temizle ve modalı kapat
+        clearSelection();
+        setShowChannelModal(false);
+        
+        alert(data.message);
+      } else {
+        alert(data.error || 'Bir hata oluştu');
+      }
+    } catch (error) {
+      console.error('Toplu kanal atama hatası:', error);
+      alert('Bir hata oluştu');
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -212,6 +299,109 @@ function StoriesContent() {
         </div>
       </header>
 
+      {/* Seçim Araç Çubuğu */}
+      {selectedStories.size > 0 && (
+        <div className="sticky top-0 z-20 bg-blue-600 text-white shadow-lg">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="font-medium">
+                ✓ {selectedStories.size} {t('selection.selected')}
+              </span>
+              <button
+                onClick={clearSelection}
+                className="text-sm px-3 py-1 bg-white/20 rounded-md hover:bg-white/30"
+              >
+                {t('selection.clear')}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowChannelModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-md hover:bg-blue-50 font-medium"
+              >
+                📺 {t('selection.assignChannel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kanal Seçim Modalı */}
+      {showChannelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {t('selection.assignChannelTitle')}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {selectedStories.size} {t('selection.storiesWillBeAssigned')}
+              </p>
+            </div>
+            <div className="p-4 max-h-80 overflow-y-auto">
+              {/* Kanaldan çıkar */}
+              <button
+                onClick={() => handleBulkChannelAssign(null)}
+                disabled={bulkLoading}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left mb-2"
+              >
+                <span className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-xl">
+                  🚫
+                </span>
+                <div>
+                  <div className="font-medium text-gray-900">{t('selection.removeFromChannel')}</div>
+                  <div className="text-sm text-gray-500">{t('selection.removeFromChannelDesc')}</div>
+                </div>
+              </button>
+
+              <div className="border-t my-3"></div>
+
+              {/* Kanallar */}
+              {channels.map(channel => (
+                <button
+                  key={channel._id}
+                  onClick={() => handleBulkChannelAssign(channel._id)}
+                  disabled={bulkLoading}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left"
+                >
+                  <span 
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-xl text-white"
+                    style={{ backgroundColor: channel.color }}
+                  >
+                    {channel.icon}
+                  </span>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900">{channel.name}</div>
+                    <div className="text-sm text-gray-500">{channel.storyCount} hikaye</div>
+                  </div>
+                </button>
+              ))}
+
+              {channels.length === 0 && (
+                <div className="text-center py-6 text-gray-500">
+                  <p>{t('selection.noChannels')}</p>
+                  <Link 
+                    href="/channels" 
+                    className="text-blue-600 hover:underline text-sm mt-2 inline-block"
+                  >
+                    {t('manageChannels')}
+                  </Link>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setShowChannelModal(false)}
+                disabled={bulkLoading}
+                className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+              >
+                {t('selection.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="max-w-6xl mx-auto px-4 py-4">
         <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
@@ -264,7 +454,26 @@ function StoriesContent() {
           
           {/* Status Filter & Sort */}
           <div className="flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              {/* Tümünü Seç Checkbox */}
+              {filteredStories.length > 0 && (
+                <button
+                  onClick={toggleSelectAll}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm border ${
+                    selectedStories.size === filteredStories.length && filteredStories.length > 0
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-base">
+                    {selectedStories.size === filteredStories.length && filteredStories.length > 0 ? '☑️' : '☐'}
+                  </span>
+                  {t('selection.selectAll')}
+                </button>
+              )}
+              
+              <div className="w-px h-6 bg-gray-300 mx-1"></div>
+              
               {['all', 'completed', 'processing', 'failed'].map(f => (
                 <button
                   key={f}
@@ -308,10 +517,34 @@ function StoriesContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredStories.map(story => (
-              <div key={story._id} className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div 
+                key={story._id} 
+                className={`bg-white rounded-lg shadow-sm overflow-hidden transition-all ${
+                  selectedStories.has(story._id) ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+                }`}
+              >
                 {/* Card Header */}
                 <div className="p-4 border-b">
                   <div className="flex items-start justify-between">
+                    {/* Seçim Checkbox */}
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        toggleStorySelection(story._id);
+                      }}
+                      className={`flex-shrink-0 w-6 h-6 rounded border-2 mr-3 mt-0.5 flex items-center justify-center transition-all ${
+                        selectedStories.has(story._id)
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'border-gray-300 hover:border-blue-400'
+                      }`}
+                    >
+                      {selectedStories.has(story._id) && (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                    
                     <div className="flex-1 min-w-0">
                       {/* Channel Badge */}
                       {story.channel && (
