@@ -57,18 +57,29 @@ const DEFAULT_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın.
 - ❌ ASLA gereksiz ekleme veya uzatma yapma
 
 🔄 SADECE BU DEĞİŞİKLİKLERİ YAP:
-1. KİŞİ İSİMLERİ → {{TARGET_COUNTRY}}'de yaygın isimlerle değiştir
-2. YER İSİMLERİ → {{TARGET_COUNTRY}}'deki yerlerle değiştir
+1. KİŞİ İSİMLERİ → Sıradan/kurgusal isimleri {{TARGET_COUNTRY}}'de yaygın isimlerle değiştir
+2. YER İSİMLERİ → Sıradan yerleri {{TARGET_COUNTRY}}'deki yerlerle değiştir
 3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi yerelleştir
 4. DİL STİLİ → {{TARGET_LANGUAGE}} dilinde doğal ifadeler kullan
+5. YEREL KURUMLAR → Hikayenin geçtiği ülkeye ait kurumları {{TARGET_COUNTRY}} karşılıklarıyla değiştir
 
-🚫 DEĞİŞTİRME - AYNEN BIRAK:
-- ÜNLÜ KİŞİLER: Elon Musk, Bill Gates, Steve Jobs, Jeff Bezos, Mark Zuckerberg, Albert Einstein, Leonardo da Vinci, vb.
-- DÜNYA LİDERLERİ: Başkanlar, başbakanlar ve tarihi figürler (gerçek isimler)
-- BÜYÜK KURUMLAR: NASA, FBI, CIA, WHO, UN, EU, NATO, IMF, Google, Apple, Microsoft, Tesla, SpaceX, Amazon, vb.
-- TARİHİ OLAYLAR VE YERLER: II. Dünya Savaşı, Soğuk Savaş, Berlin Duvarı, vb.
-- DÜNYACA ÜNLÜ YERLER: Eyfel Kulesi, Özgürlük Heykeli, Buckingham Sarayı, vb.
-- MARKA İSİMLERİ: iPhone, Tesla, Ferrari, Coca-Cola, vb.
+📍 YEREL KURUM ADAPTASYONU (Hikaye başka ülkede geçiyorsa {{TARGET_COUNTRY}}'e adapte et):
+- ABD → {{TARGET_COUNTRY}}: CIA→yerel istihbarat, FBI→yerel polis/istihbarat, NYPD→yerel polis
+- Örnek (Fransa): CIA→DGSE, FBI→DGSI, US Army→Fransız Ordusu
+- Örnek (Türkiye): CIA→MİT, FBI→Emniyet, US Army→TSK
+- Örnek (Almanya): CIA→BND, FBI→BKA
+
+🚫 DEĞİŞTİRME - HİKAYENİN ANA KONUSU İSE AYNEN BIRAK:
+- HİKAYENİN KONUSU OLAN KİŞİLER: Eğer hikaye Elon Musk, Bill Gates, Einstein hakkındaysa → isimler değişmez
+- HİKAYENİN KONUSU OLAN KURUMLAR: Eğer hikaye NASA'nın uzay görevi, Google'ın kuruluşu hakkındaysa → kurum isimleri değişmez
+- EVRENSEL MARKALAR: iPhone, Tesla, Ferrari, Coca-Cola gibi dünya çapında bilinen markalar
+- TARİHİ OLAYLAR: II. Dünya Savaşı, Soğuk Savaş, Apollo 11 vb.
+- İKONİK YERLER: Eyfel Kulesi, Özgürlük Heykeli (hikaye bu yerlerle ilgiliyse)
+
+⚠️ KARAR KRİTERİ:
+- Soru: "Bu kişi/kurum hikayenin ANA KONUSU mu, yoksa sadece ARKA PLAN mı?"
+- Ana konu ise → DEĞİŞTİRME
+- Arka plan/yerel detay ise → {{TARGET_COUNTRY}}'e ADAPTE ET
 
 🎙️ SESLENDİRME UYGUNLUĞU:
 1. KISALTMALARI AÇ: "Dr." → "Doktor", "vb." → "ve benzeri"
@@ -113,7 +124,7 @@ KURALLAR:
 6. Çekici ve merak uyandırıcı olsun
 7. Sadece adapte edilmiş başlığı döndür
 
-🚫 DEĞİŞTİRME: Ünlü kişiler (Elon Musk, Bill Gates, Einstein vb.), büyük kurumlar (NASA, Google, Apple vb.), dünyaca ünlü yerler, marka isimleri AYNEN kalmalı!
+⚠️ KURAL: Hikayenin ANA KONUSU olan ünlü kişiler ve kurumlar (Elon Musk, NASA, Google vb.) DEĞİŞMEZ. Ama arka plandaki yerel kurumlar (CIA, FBI vb.) {{TARGET_COUNTRY}} karşılıklarıyla değiştirilmeli.
 
 🎙️ SESLENDİRME UYGUNLUĞU:
 - Kısaltmaları aç (Dr. → Doktor)
