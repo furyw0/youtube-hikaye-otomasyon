@@ -4,14 +4,69 @@
  */
 
 import archiver from 'archiver';
-import { Readable } from 'stream';
 import logger from '@/lib/logger';
 import { AppError } from '@/lib/errors';
 import type { IStory } from '@/types/story.types';
 import type { IScene } from '@/types/scene.types';
 
+interface DownloadedFile {
+  filename: string;
+  buffer: Buffer;
+  type: 'image' | 'audio';
+}
+
+/**
+ * URL'den dosya indir (arşive eklemeden)
+ */
+async function downloadFile(url: string, filename: string, type: 'image' | 'audio'): Promise<DownloadedFile | null> {
+  try {
+    logger.debug('Dosya indiriliyor', { url, filename, type });
+
+    const response = await fetch(url, {
+      headers: {
+        'Accept': type === 'audio' ? 'audio/mpeg, audio/*' : 'image/*',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    // Content-Length kontrolü
+    const contentLength = response.headers.get('content-length');
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    logger.debug('Dosya indirildi', {
+      filename,
+      type,
+      size: buffer.length,
+      expectedSize: contentLength ? parseInt(contentLength) : 'unknown'
+    });
+
+    // Boyut kontrolü - MP3 için minimum 1KB olmalı
+    if (type === 'audio' && buffer.length < 1024) {
+      logger.warn('MP3 dosyası çok küçük, atlanıyor', { filename, size: buffer.length });
+      return null;
+    }
+
+    return { filename, buffer, type };
+
+  } catch (error) {
+    logger.error('Dosya indirme hatası', {
+      url,
+      filename,
+      type,
+      error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+    });
+    return null;
+  }
+}
+
 /**
  * ZIP dosyası oluşturur
+ * ÖNEMLİ: Tüm dosyalar önce indirilir, sonra sırayla arşive eklenir
  */
 export async function createZipArchive(
   story: IStory & { scenes: IScene[] }
@@ -21,9 +76,48 @@ export async function createZipArchive(
     scenesCount: story.scenes.length
   });
 
+  // --- 1. ÖNCE TÜM DOSYALARI İNDİR ---
+  const downloadTasks: Promise<{ sceneNumber: number; file: DownloadedFile | null }>[] = [];
+
+  for (const scene of story.scenes) {
+    const sceneDir = `scenes/scene-${scene.sceneNumber}/`;
+
+    // Görsel indirme görevi
+    if (scene.hasImage && scene.blobUrls?.image) {
+      downloadTasks.push(
+        downloadFile(scene.blobUrls.image, `${sceneDir}image.png`, 'image')
+          .then(file => ({ sceneNumber: scene.sceneNumber, file }))
+      );
+    }
+
+    // Ses indirme görevi
+    if (scene.blobUrls?.audio) {
+      downloadTasks.push(
+        downloadFile(scene.blobUrls.audio, `${sceneDir}audio.mp3`, 'audio')
+          .then(file => ({ sceneNumber: scene.sceneNumber, file }))
+      );
+    }
+  }
+
+  // Tüm indirmeleri bekle
+  logger.info('Dosyalar indiriliyor...', { taskCount: downloadTasks.length });
+  const downloadResults = await Promise.all(downloadTasks);
+  
+  // İndirilen dosyaları filtrele
+  const downloadedFiles = downloadResults
+    .filter(r => r.file !== null)
+    .map(r => r.file as DownloadedFile);
+
+  logger.info('Dosyalar indirildi', {
+    total: downloadTasks.length,
+    successful: downloadedFiles.length,
+    failed: downloadTasks.length - downloadedFiles.length
+  });
+
+  // --- 2. ARŞIV OLUŞTUR ---
   return new Promise((resolve, reject) => {
     const archive = archiver('zip', {
-      zlib: { level: 9 } // Maksimum sıkıştırma
+      zlib: { level: 6 } // Orta seviye sıkıştırma (daha hızlı)
     });
 
     const buffers: Buffer[] = [];
@@ -39,7 +133,8 @@ export async function createZipArchive(
       logger.info('ZIP arşivi oluşturuldu', {
         storyId: story._id,
         zipSize: zipBuffer.length,
-        scenes: story.scenes.length
+        scenes: story.scenes.length,
+        filesIncluded: downloadedFiles.length
       });
       resolve(zipBuffer);
     });
@@ -53,7 +148,7 @@ export async function createZipArchive(
       reject(new AppError(`ZIP oluşturulamadı: ${error.message}`));
     });
 
-    // --- 1. Ana Metadata ---
+    // --- 3. METADATA VE README EKLE ---
     const mainMetadata = {
       title: story.adaptedTitle || story.originalTitle,
       originalTitle: story.originalTitle,
@@ -75,7 +170,6 @@ export async function createZipArchive(
       name: 'metadata.json'
     });
 
-    // --- 2. README ---
     const readme = `# ${story.adaptedTitle || story.originalTitle}
 
 ## Hikaye Bilgileri
@@ -121,9 +215,7 @@ Video editörünüzde kullanabilirsiniz.
 
     archive.append(readme, { name: 'README.md' });
 
-    // --- 3. Her Sahne için İçerik ---
-    const downloadPromises: Promise<void>[] = [];
-
+    // --- 4. HER SAHNE İÇİN METİN VE METADATA ---
     for (const scene of story.scenes) {
       const sceneDir = `scenes/scene-${scene.sceneNumber}/`;
 
@@ -144,12 +236,12 @@ Video editörünüzde kullanabilirsiniz.
       });
 
       // Orijinal metin
-      archive.append(scene.sceneTextOriginal, {
+      archive.append(scene.sceneTextOriginal || '', {
         name: `${sceneDir}text-original.txt`
       });
 
       // Adapte metin
-      archive.append(scene.sceneTextAdapted, {
+      archive.append(scene.sceneTextAdapted || '', {
         name: `${sceneDir}text-adapted.txt`
       });
 
@@ -159,83 +251,22 @@ Video editörünüzde kullanabilirsiniz.
           name: `${sceneDir}text-turkish.txt`
         });
       }
-
-      // Görsel (varsa) - Blob URL'den indir
-      if (scene.hasImage && scene.blobUrls?.image) {
-        downloadPromises.push(
-          downloadAndAppendToArchive(
-            archive,
-            scene.blobUrls.image,
-            `${sceneDir}image.png`
-          )
-        );
-      }
-
-      // Ses - Blob URL'den indir
-      if (scene.blobUrls?.audio) {
-        downloadPromises.push(
-          downloadAndAppendToArchive(
-            archive,
-            scene.blobUrls.audio,
-            `${sceneDir}audio.mp3`
-          )
-        );
-      }
     }
 
-    // Tüm indirmeleri bekle, sonra finalize et
-    Promise.all(downloadPromises)
-      .then(() => {
-        logger.debug("Tüm dosyalar ZIP'e eklendi, finalize ediliyor...");
-        archive.finalize();
-      })
-      .catch((error) => {
-        logger.error('ZIP indirme hatası', { error: error.message });
-        archive.abort();
-        reject(error);
+    // --- 5. İNDİRİLEN DOSYALARI SIRALI OLARAK EKLE ---
+    // ÖNEMLİ: Sıralı ekleme yaparak stream karışmasını önle
+    for (const file of downloadedFiles) {
+      archive.append(file.buffer, { name: file.filename });
+      logger.debug("Dosya arşive eklendi", {
+        filename: file.filename,
+        size: file.buffer.length,
+        type: file.type
       });
-  });
-}
-
-/**
- * URL'den dosya indir ve arşive ekle
- */
-async function downloadAndAppendToArchive(
-  archive: archiver.Archiver,
-  url: string,
-  filename: string
-): Promise<void> {
-  try {
-    logger.debug('Dosya indiriliyor', { url, filename });
-
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    archive.append(buffer, { name: filename });
-
-    logger.debug("Dosya ZIP'e eklendi", {
-      filename,
-      size: buffer.length
-    });
-
-  } catch (error) {
-    logger.error('Dosya indirme/ekleme hatası', {
-      url,
-      filename,
-      error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-    });
-    
-    // Hata olsa bile devam et (eksik dosya olabilir)
-    archive.append(`Dosya indirilemedi: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`, {
-      name: `${filename}.error.txt`
-    });
-  }
+    // --- 6. FİNALİZE ---
+    archive.finalize();
+  });
 }
 
 /**
