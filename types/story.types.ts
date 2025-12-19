@@ -23,6 +23,11 @@ export interface IStory {
   // YouTube Engagement Hook'ları
   enableHooks?: boolean;
   
+  // Zaman Damgalı İçerik Modu
+  useTimestampedContent?: boolean;      // Zaman damgalı mod aktif mi
+  timestampedContent?: string;          // Ham transkript ([00:00:00] format)
+  totalOriginalDuration?: number;       // Orijinal video süresi (saniye)
+  
   // Uyarlanmış hikaye
   adaptedTitle?: string;
   adaptedContent?: string;
@@ -107,6 +112,9 @@ export interface CreateStoryInput {
   targetCountry: string;
   translationOnly?: boolean;
   enableHooks?: boolean;
+  // Zaman Damgalı İçerik Modu
+  useTimestampedContent?: boolean;
+  timestampedContent?: string;
   openaiModel: string;
   // TTS
   ttsProvider?: 'elevenlabs' | 'coqui';

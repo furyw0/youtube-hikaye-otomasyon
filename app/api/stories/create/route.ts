@@ -10,19 +10,27 @@ import Story from '@/models/Story';
 import logger from '@/lib/logger';
 import { detectLanguage } from '@/services/language-detection.service';
 import { validateCreateStoryRequest } from '@/services/validation.service';
+import { 
+  validateTranscriptFormat, 
+  extractFullTextFromScenes,
+  processTimestampedTranscript 
+} from '@/services/transcript-parser.service';
 import { auth } from '@/auth';
 import { IMAGE_SETTINGS } from '@/lib/constants';
 
 // Validation schema
 const createStorySchema = z.object({
   title: z.string().min(3).max(200),
-  content: z.string().min(1000).max(100000),
+  content: z.string().max(100000).optional().default(''),
   youtubeDescription: z.string().max(5000).optional(),
   coverText: z.string().max(100).optional(),
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
   translationOnly: z.boolean().optional().default(false),
   enableHooks: z.boolean().optional().default(false),
+  // Zaman Damgalı İçerik Modu
+  useTimestampedContent: z.boolean().optional().default(false),
+  timestampedContent: z.string().max(500000).optional(),
   openaiModel: z.string(),
   // TTS Provider
   ttsProvider: z.enum(['elevenlabs', 'coqui']).optional().default('elevenlabs'),
@@ -58,6 +66,15 @@ const createStorySchema = z.object({
   return true;
 }, {
   message: 'TTS sağlayıcısı için gerekli alanlar eksik'
+}).refine((data) => {
+  // İçerik kontrolü: Ya content ya da timestampedContent olmalı
+  if (data.useTimestampedContent) {
+    return !!data.timestampedContent && data.timestampedContent.length >= 500;
+  } else {
+    return !!data.content && data.content.length >= 1000;
+  }
+}, {
+  message: 'Zaman damgalı mod için transkript (min 500 karakter) veya standart mod için içerik (min 1000 karakter) gerekli'
 });
 
 export async function POST(request: NextRequest) {
@@ -84,8 +101,54 @@ export async function POST(request: NextRequest) {
     // Zod validation
     const validated = createStorySchema.parse(body);
 
-    // Custom validation (daha detaylı)
-    const validationResult = validateCreateStoryRequest(validated);
+    // Zaman damgalı içerik kontrolü ve işleme
+    let contentForProcessing = validated.content || '';
+    let totalOriginalDuration: number | undefined;
+    
+    if (validated.useTimestampedContent && validated.timestampedContent) {
+      // Transkript formatını doğrula
+      const transcriptValidation = validateTranscriptFormat(validated.timestampedContent);
+      
+      if (!transcriptValidation.valid) {
+        logger.warn('Transkript format hatası', {
+          errors: transcriptValidation.errors,
+          ip,
+          userId
+        });
+        
+        return NextResponse.json({
+          success: false,
+          error: 'Transkript format hatası',
+          details: transcriptValidation.errors.map(e => ({ field: 'timestampedContent', message: e }))
+        }, { status: 400 });
+      }
+      
+      // Uyarıları logla
+      if (transcriptValidation.warnings.length > 0) {
+        logger.warn('Transkript uyarıları', {
+          warnings: transcriptValidation.warnings,
+          userId
+        });
+      }
+      
+      // Transkripti işle ve içeriği çıkar
+      const parsedTranscript = processTimestampedTranscript(validated.timestampedContent);
+      contentForProcessing = extractFullTextFromScenes(parsedTranscript.scenes);
+      totalOriginalDuration = parsedTranscript.totalDuration;
+      
+      logger.info('Zaman damgalı transkript işlendi', {
+        totalSegments: parsedTranscript.totalSegments,
+        totalScenes: parsedTranscript.totalScenes,
+        totalDuration: parsedTranscript.totalDuration,
+        extractedContentLength: contentForProcessing.length
+      });
+    }
+
+    // Custom validation (daha detaylı) - zaman damgalı modda çıkarılmış içeriği kullan
+    const validationResult = validateCreateStoryRequest({
+      ...validated,
+      content: contentForProcessing
+    });
     
     if (!validationResult.valid) {
       logger.warn('Validasyon hatası', {
@@ -104,9 +167,9 @@ export async function POST(request: NextRequest) {
     // MongoDB bağlantısı
     await dbConnect();
 
-    // Dil algılama
+    // Dil algılama - zaman damgalı modda çıkarılmış içeriği kullan
     logger.debug('Dil algılanıyor...');
-    const detection = await detectLanguage(validated.content);
+    const detection = await detectLanguage(contentForProcessing);
     
     logger.info('Dil algılandı', {
       detectedLanguage: detection.language,
@@ -117,7 +180,7 @@ export async function POST(request: NextRequest) {
     const story = await Story.create({
       userId, // Kullanıcı ID'si
       originalTitle: validated.title,
-      originalContent: validated.content,
+      originalContent: contentForProcessing, // Zaman damgalı modda çıkarılmış içerik
       originalYoutubeDescription: validated.youtubeDescription,
       originalCoverText: validated.coverText,
       originalLanguage: detection.language,
@@ -125,6 +188,10 @@ export async function POST(request: NextRequest) {
       targetCountry: validated.targetCountry,
       translationOnly: validated.translationOnly,
       enableHooks: validated.enableHooks,
+      // Zaman Damgalı İçerik
+      useTimestampedContent: validated.useTimestampedContent || false,
+      timestampedContent: validated.useTimestampedContent ? validated.timestampedContent : undefined,
+      totalOriginalDuration: totalOriginalDuration,
       openaiModel: validated.openaiModel,
       // TTS Ayarları
       ttsProvider: validated.ttsProvider || 'elevenlabs',
@@ -162,6 +229,8 @@ export async function POST(request: NextRequest) {
       userId,
       detectedLanguage: detection.language,
       translationOnly: validated.translationOnly,
+      useTimestampedContent: validated.useTimestampedContent,
+      totalOriginalDuration: totalOriginalDuration,
       estimatedTokens: validationResult.estimatedTokens,
       estimatedCost: validationResult.estimatedCost
     });

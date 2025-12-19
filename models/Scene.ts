@@ -70,6 +70,20 @@ const SceneSchema = new Schema<IScene>(
       type: Number
     },
     
+    // Zaman Damgalı İçerik - Orijinal video süreleri
+    originalStartTime: {
+      type: Number,  // Orijinal segment başlangıç (saniye)
+      required: false
+    },
+    originalEndTime: {
+      type: Number,  // Orijinal segment bitiş (saniye)
+      required: false
+    },
+    originalDuration: {
+      type: Number,  // Orijinal süre (saniye)
+      required: false
+    },
+    
     // Dosyalar
     blobUrls: {
       image: String,

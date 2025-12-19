@@ -69,6 +69,9 @@ export function StoryForm() {
     targetCountry: 'USA',
     translationOnly: false,
     enableHooks: false,
+    // Zaman Damgalı İçerik Modu
+    useTimestampedContent: false,
+    timestampedContent: '',
     // LLM
     openaiModel: 'gpt-4o-mini',
     claudeModel: 'claude-sonnet-4-20250514',
@@ -352,6 +355,11 @@ export function StoryForm() {
         openaiModel: selectedModel, // Backend hala openaiModel field'ını kullanıyor, ikisi için de buraya yazıyoruz
         translationOnly: formData.translationOnly,
         enableHooks: formData.enableHooks,
+        // Zaman Damgalı İçerik
+        useTimestampedContent: formData.useTimestampedContent,
+        timestampedContent: formData.useTimestampedContent ? formData.timestampedContent : undefined,
+        // Zaman damgalı modda content boş olabilir, transkriptten üretilecek
+        content: formData.useTimestampedContent ? '' : formData.content,
         ttsProvider,
         coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined,
         visualStyleId: formData.visualStyleId || undefined,
@@ -464,24 +472,94 @@ export function StoryForm() {
         />
       </div>
 
-      {/* Content */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          {t('fields.content')}
-        </label>
-        <textarea
-          value={formData.content}
-          onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-64 font-mono text-sm bg-white text-gray-900 placeholder:text-gray-400"
-          placeholder={t('fields.contentPlaceholder')}
-          required
-          minLength={1000}
-          maxLength={100000}
-        />
-        <p className="text-sm text-gray-500 mt-1">
-          {formData.content.length.toLocaleString()} / 100,000 {t('hints.characters')}
-        </p>
+      {/* Zaman Damgalı İçerik Modu Toggle */}
+      <div className={`border rounded-lg p-4 ${formData.useTimestampedContent ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              ⏱️ {t('fields.useTimestampedContent')}
+              {formData.useTimestampedContent && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-800">
+                  Aktif
+                </span>
+              )}
+            </h3>
+            <p className="text-xs text-gray-600 mt-1">
+              {t('fields.useTimestampedContentHint')}
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.useTimestampedContent}
+              onChange={(e) => setFormData({ ...formData, useTimestampedContent: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+          </label>
+        </div>
+        {formData.useTimestampedContent && (
+          <div className="mt-3 p-2 bg-amber-100 rounded text-xs text-amber-800">
+            ⚡ Video transkripti zaman damgalı formatta girilecek. Süreler otomatik hesaplanacak ve sahneler akıllıca birleştirilecek.
+          </div>
+        )}
       </div>
+
+      {/* Content (Standart Mod) */}
+      {!formData.useTimestampedContent && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {t('fields.content')}
+          </label>
+          <textarea
+            value={formData.content}
+            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-64 font-mono text-sm bg-white text-gray-900 placeholder:text-gray-400"
+            placeholder={t('fields.contentPlaceholder')}
+            required={!formData.useTimestampedContent}
+            minLength={1000}
+            maxLength={100000}
+          />
+          <p className="text-sm text-gray-500 mt-1">
+            {formData.content.length.toLocaleString()} / 100,000 {t('hints.characters')}
+          </p>
+        </div>
+      )}
+
+      {/* Timestamped Content (Zaman Damgalı Mod) */}
+      {formData.useTimestampedContent && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {t('fields.timestampedContent')}
+          </label>
+          <textarea
+            value={formData.timestampedContent}
+            onChange={(e) => setFormData({ ...formData, timestampedContent: e.target.value })}
+            className="w-full px-4 py-3 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent h-80 font-mono text-sm bg-white text-gray-900 placeholder:text-gray-400"
+            placeholder={t('fields.timestampedContentPlaceholder')}
+            required={formData.useTimestampedContent}
+            minLength={500}
+            maxLength={500000}
+          />
+          <div className="flex justify-between items-center mt-1">
+            <p className="text-sm text-gray-500">
+              {formData.timestampedContent.length.toLocaleString()} / 500,000 {t('hints.characters')}
+            </p>
+            <p className="text-xs text-amber-600">
+              {t('hints.timestampedFormat')}
+            </p>
+          </div>
+          <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-xs font-medium text-gray-700 mb-1">Örnek Format:</p>
+            <pre className="text-xs text-gray-600 font-mono whitespace-pre-wrap">
+{`[00:00:00] İlk cümle burada başlıyor.
+[00:00:05] İkinci cümle devam ediyor.
+[00:00:10] Üçüncü cümle ve hikaye gelişiyor.
+[00:01:30] Bir dakika otuz saniyedeki metin...`}
+            </pre>
+          </div>
+        </div>
+      )}
 
       {/* Translation Only Mode Toggle */}
       <div className={`border rounded-lg p-4 ${formData.translationOnly ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>

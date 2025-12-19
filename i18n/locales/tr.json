@@ -119,6 +119,10 @@
       "titlePlaceholder": "Hikaye başlığını girin",
       "content": "Hikaye İçeriği",
       "contentPlaceholder": "Hikayenizi buraya yapıştırın... (min 1000 karakter)",
+      "useTimestampedContent": "Zaman Damgalı İçerik Modu",
+      "useTimestampedContentHint": "Video transkriptini zaman damgalarıyla girerek daha hassas sahne kontrolü sağlayın",
+      "timestampedContent": "Zaman Damgalı Transkript",
+      "timestampedContentPlaceholder": "[00:00:00] İlk satır metni\n[00:00:05] İkinci satır metni\n[00:00:10] Üçüncü satır metni...",
       "targetLanguage": "Hedef Dil",
       "targetCountry": "Hedef Ülke",
       "translationOnly": "Sadece Çeviri Modu",
@@ -142,7 +146,8 @@
       "characters": "karakter",
       "detectedLanguage": "Algılanan dil:",
       "estimatedCost": "Tahmini maliyet:",
-      "estimatedTokens": "Tahmini token:"
+      "estimatedTokens": "Tahmini token:",
+      "timestampedFormat": "Format: [SS:DD:SN] veya [DD:SN]"
     },
 
     "errors": {

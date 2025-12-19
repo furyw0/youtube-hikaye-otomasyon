@@ -34,6 +34,11 @@ export interface IScene {
   estimatedDuration: number;
   actualDuration?: number;
   
+  // Zaman Damgalı İçerik - Orijinal video süreleri
+  originalStartTime?: number;    // Orijinal segment başlangıç (saniye)
+  originalEndTime?: number;      // Orijinal segment bitiş (saniye)
+  originalDuration?: number;     // Orijinal süre (saniye)
+  
   // Dosyalar
   blobUrls: {
     image?: string;

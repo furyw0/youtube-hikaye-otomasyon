@@ -11,8 +11,8 @@ import Scene from '@/models/Scene';
 
 // Servisler
 import { detectLanguage } from '@/services/language-detection.service';
-import { translateStory } from '@/services/translation.service';
-import { adaptStory } from '@/services/adaptation.service';
+import { translateStory, translateText } from '@/services/translation.service';
+import { adaptStory, adaptText } from '@/services/adaptation.service';
 import { generateScenes, generateVisualPrompts } from '@/services/scene.service';
 import { generateYouTubeMetadata, generateThumbnailPrompt } from '@/services/metadata.service';
 import { generateImage } from '@/services/imagefx.service';
@@ -21,9 +21,15 @@ import { uploadImage, uploadAudio, uploadZip, uploadThumbnail } from '@/services
 import { createZipArchive } from '@/services/zip.service';
 import { getLLMConfig } from '@/services/llm-router.service';
 import { addEngagementHooks, mergeHookWithSceneText } from '@/services/hook.service';
+import { 
+  processTimestampedTranscript, 
+  applyAdaptedTextsToScenes,
+  type TimestampedScene 
+} from '@/services/transcript-parser.service';
 import Settings from '@/models/Settings';
 import VisualStyle from '@/models/VisualStyle';
 import PromptScenario from '@/models/PromptScenario';
+import { IMAGE_SETTINGS } from '@/lib/constants';
 
 export const processStory = inngest.createFunction(
   { 
@@ -119,6 +125,10 @@ export const processStory = inngest.createFunction(
           targetCountry: story.targetCountry,
           translationOnly: story.translationOnly || false,
           enableHooks: story.enableHooks || false,
+          // Zaman Damgalı İçerik Modu
+          useTimestampedContent: story.useTimestampedContent || false,
+          timestampedContent: story.timestampedContent || undefined,
+          totalOriginalDuration: story.totalOriginalDuration || undefined,
           openaiModel: story.openaiModel,
           llmProvider: llmConfig.provider,
           llmModel: llmConfig.model,
@@ -145,174 +155,385 @@ export const processStory = inngest.createFunction(
       });
 
       // --- 2. ÇEVİRİ (20%) ---
-      const translationData = await step.run('translate-story', async () => {
-        await dbConnect();
-        await updateProgress(10, 'Hikaye çevriliyor...');
+      // Zaman damgalı modda farklı işlem yapılır
+      let translationData: {
+        adaptedTitle: string;
+        adaptedContent: string;
+        originalLength: number;
+        translatedLength: number;
+        timestampedScenes?: TimestampedScene[];
+      };
 
-        // Prompt senaryosunu yükle (varsa)
-        let promptScenario = null;
-        if (storyData.promptScenarioId) {
-          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
-          if (promptScenario) {
-            logger.info('Çeviri için prompt senaryosu yüklendi', {
-              storyId,
-              scenarioName: promptScenario.name
+      if (storyData.useTimestampedContent && storyData.timestampedContent) {
+        // --- ZAMAN DAMGALI MOD: Transkript Parse + Sahne Bazlı Çeviri ---
+        translationData = await step.run('translate-timestamped', async () => {
+          await dbConnect();
+          await updateProgress(10, 'Zaman damgalı transkript işleniyor...');
+
+          logger.info('translate-timestamped başladı', {
+            storyId,
+            contentLength: storyData.timestampedContent?.length || 0
+          });
+
+          // 1. Transkripti parse et ve sahnelere ayır
+          const parsedTranscript = processTimestampedTranscript(storyData.timestampedContent!);
+          
+          // Boş sahne kontrolü
+          if (parsedTranscript.scenes.length === 0) {
+            logger.error('translate-timestamped: Transkriptten sahne üretilemedi', { storyId });
+            throw new Error('Transkriptten sahne üretilemedi. Format kontrol edin.');
+          }
+          
+          logger.info('Transkript parse edildi', {
+            storyId,
+            totalSegments: parsedTranscript.totalSegments,
+            totalScenes: parsedTranscript.totalScenes,
+            totalDuration: parsedTranscript.totalDuration
+          });
+
+          // 2. Başlığı çevir
+          const translatedTitle = await translateText(
+            storyData.originalTitle,
+            storyData.originalLanguage,
+            storyData.targetLanguage,
+            storyData.llmModel,
+            storyData.llmProvider
+          );
+
+          // 3. Her sahneyi ayrı ayrı çevir
+          const translatedScenes: TimestampedScene[] = [];
+          
+          for (let i = 0; i < parsedTranscript.scenes.length; i++) {
+            const scene = parsedTranscript.scenes[i];
+            
+            await updateProgress(
+              10 + Math.round((i / parsedTranscript.scenes.length) * 10),
+              `Sahne ${i + 1}/${parsedTranscript.scenes.length} çevriliyor...`
+            );
+
+            const translatedText = await translateText(
+              scene.text,
+              storyData.originalLanguage,
+              storyData.targetLanguage,
+              storyData.llmModel,
+              storyData.llmProvider
+            );
+
+            translatedScenes.push({
+              ...scene,
+              textAdapted: translatedText
             });
           }
-        }
 
-        const result = await translateStory({
-          content: storyData.originalContent,
-          title: storyData.originalTitle,
-          sourceLang: storyData.originalLanguage,
-          targetLang: storyData.targetLanguage,
-          model: storyData.llmModel,
-          provider: storyData.llmProvider,
-          promptScenario: promptScenario ? {
-            translationSystemPrompt: promptScenario.translationSystemPrompt,
-            translationUserPrompt: promptScenario.translationUserPrompt,
-            titleTranslationSystemPrompt: promptScenario.titleTranslationSystemPrompt,
-            titleTranslationUserPrompt: promptScenario.titleTranslationUserPrompt
-          } : null
-        });
+          // 4. Tüm çevrilmiş metinleri birleştir
+          const translatedContent = translatedScenes.map(s => s.textAdapted).join('\n\n');
+          const originalLength = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
+          const translatedLength = translatedContent.length;
 
-        // UZUNLUK KONTROLÜ - Çeviri orijinalin en az %70'i olmalı
-        const lengthRatio = result.translatedLength / result.originalLength;
-        if (lengthRatio < 0.70) {
-          logger.error('⚠️ KRİTİK: Çeviri çok kısa! Hikaye kısaltılmış olabilir!', {
-            storyId,
-            originalLength: result.originalLength,
-            translatedLength: result.translatedLength,
-            ratio: Math.round(lengthRatio * 100) + '%',
-            minExpected: Math.round(result.originalLength * 0.70)
-          });
-        }
-
-        // findByIdAndUpdate kullan - karakter sayılarını da kaydet
-        await Story.findByIdAndUpdate(storyId, {
-          adaptedTitle: result.title,
-          adaptedContent: result.content,
-          originalContentLength: result.originalLength,
-          translatedContentLength: result.translatedLength
-        });
-
-        await updateProgress(20, 'Çeviri tamamlandı');
-
-        logger.info('Çeviri tamamlandı', {
-          storyId,
-          originalLength: result.originalLength,
-          translatedLength: result.translatedLength,
-          lengthRatio: Math.round(lengthRatio * 100) + '%',
-          chunks: result.chunksUsed
-        });
-
-        return {
-          adaptedTitle: result.title,
-          adaptedContent: result.content,
-          originalLength: result.originalLength,
-          translatedLength: result.translatedLength
-        };
-      });
-
-      // --- 3. KÜLTÜREL UYARLAMA (30%) ---
-      const adaptationData = await step.run('adapt-story', async () => {
-        await dbConnect();
-        
-        // translationOnly modunda adaptasyon ATLANIYOR
-        if (storyData.translationOnly) {
-          await updateProgress(30, 'Sadece çeviri modu - adaptasyon atlanıyor...');
-
-          logger.info('Sadece çeviri modu - kültürel adaptasyon atlanıyor', {
-            storyId,
-            translationOnly: true
-          });
-
-          // translationOnly modunda adaptedContentLength = translatedContentLength
+          // DB güncelle
           await Story.findByIdAndUpdate(storyId, {
-            adaptedContentLength: translationData.translatedLength
+            adaptedTitle: translatedTitle,
+            adaptedContent: translatedContent,
+            originalContentLength: originalLength,
+            translatedContentLength: translatedLength
+          });
+
+          await updateProgress(20, 'Zaman damgalı çeviri tamamlandı');
+
+          logger.info('Zaman damgalı çeviri tamamlandı', {
+            storyId,
+            scenesTranslated: translatedScenes.length,
+            originalLength,
+            translatedLength
           });
 
           return {
-            adaptedTitle: translationData.adaptedTitle,
-            adaptedContent: translationData.adaptedContent,
-            adaptationNotes: [] as string[],
-            adaptedLength: translationData.translatedLength
+            adaptedTitle: translatedTitle,
+            adaptedContent: translatedContent,
+            originalLength,
+            translatedLength,
+            timestampedScenes: translatedScenes
           };
-        }
-        
-        await updateProgress(25, 'Kültürel adaptasyon yapılıyor...');
+        });
+      } else {
+        // --- STANDART MOD: Mevcut çeviri akışı ---
+        translationData = await step.run('translate-story', async () => {
+          await dbConnect();
+          await updateProgress(10, 'Hikaye çevriliyor...');
 
-        // Prompt senaryosunu yükle (varsa)
-        let promptScenario = null;
-        if (storyData.promptScenarioId) {
-          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
-          if (promptScenario) {
-            logger.info('Adaptasyon için prompt senaryosu yüklendi', {
+          // Prompt senaryosunu yükle (varsa)
+          let promptScenario = null;
+          if (storyData.promptScenarioId) {
+            promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+            if (promptScenario) {
+              logger.info('Çeviri için prompt senaryosu yüklendi', {
+                storyId,
+                scenarioName: promptScenario.name
+              });
+            }
+          }
+
+          const result = await translateStory({
+            content: storyData.originalContent,
+            title: storyData.originalTitle,
+            sourceLang: storyData.originalLanguage,
+            targetLang: storyData.targetLanguage,
+            model: storyData.llmModel,
+            provider: storyData.llmProvider,
+            promptScenario: promptScenario ? {
+              translationSystemPrompt: promptScenario.translationSystemPrompt,
+              translationUserPrompt: promptScenario.translationUserPrompt,
+              titleTranslationSystemPrompt: promptScenario.titleTranslationSystemPrompt,
+              titleTranslationUserPrompt: promptScenario.titleTranslationUserPrompt
+            } : null
+          });
+
+          // UZUNLUK KONTROLÜ - Çeviri orijinalin en az %70'i olmalı
+          const lengthRatio = result.translatedLength / result.originalLength;
+          if (lengthRatio < 0.70) {
+            logger.error('⚠️ KRİTİK: Çeviri çok kısa! Hikaye kısaltılmış olabilir!', {
               storyId,
-              scenarioName: promptScenario.name
+              originalLength: result.originalLength,
+              translatedLength: result.translatedLength,
+              ratio: Math.round(lengthRatio * 100) + '%',
+              minExpected: Math.round(result.originalLength * 0.70)
             });
           }
-        }
 
-        const result = await adaptStory({
-          content: translationData.adaptedContent,
-          title: translationData.adaptedTitle,
-          targetCountry: storyData.targetCountry,
-          targetLanguage: storyData.targetLanguage,
-          model: storyData.openaiModel,
-          promptScenario: promptScenario ? {
-            adaptationSystemPrompt: promptScenario.adaptationSystemPrompt,
-            adaptationUserPrompt: promptScenario.adaptationUserPrompt,
-            titleAdaptationSystemPrompt: promptScenario.titleAdaptationSystemPrompt,
-            titleAdaptationUserPrompt: promptScenario.titleAdaptationUserPrompt
-          } : null
-        });
-
-        // UZUNLUK KONTROLÜ - Adaptasyon çevirinin en az %80'i olmalı
-        const adaptLengthRatio = result.adaptedLength / result.originalLength;
-        if (adaptLengthRatio < 0.80) {
-          logger.error('⚠️ KRİTİK: Adaptasyon çok kısa! Hikaye kısaltılmış olabilir!', {
-            storyId,
-            translatedLength: result.originalLength,
-            adaptedLength: result.adaptedLength,
-            ratio: Math.round(adaptLengthRatio * 100) + '%'
+          // findByIdAndUpdate kullan - karakter sayılarını da kaydet
+          await Story.findByIdAndUpdate(storyId, {
+            adaptedTitle: result.title,
+            adaptedContent: result.content,
+            originalContentLength: result.originalLength,
+            translatedContentLength: result.translatedLength
           });
-        }
 
-        // TOPLAM ORAN KONTROLÜ - Adaptasyon orijinalin en az %60'ı olmalı
-        const totalRatio = result.adaptedLength / (translationData.originalLength || result.originalLength);
-        if (totalRatio < 0.60) {
-          logger.error('🚨 ALARM: Final metin orijinalden çok kısa! (<%60)', {
+          await updateProgress(20, 'Çeviri tamamlandı');
+
+          logger.info('Çeviri tamamlandı', {
             storyId,
-            originalLength: translationData.originalLength,
-            finalLength: result.adaptedLength,
+            originalLength: result.originalLength,
+            translatedLength: result.translatedLength,
+            lengthRatio: Math.round(lengthRatio * 100) + '%',
+            chunks: result.chunksUsed
+          });
+
+          return {
+            adaptedTitle: result.title,
+            adaptedContent: result.content,
+            originalLength: result.originalLength,
+            translatedLength: result.translatedLength
+          };
+        });
+      }
+
+      // --- 3. KÜLTÜREL UYARLAMA (30%) ---
+      let adaptationData: {
+        adaptedTitle: string;
+        adaptedContent: string;
+        adaptationNotes: string[];
+        adaptedLength: number;
+        timestampedScenes?: TimestampedScene[];
+      };
+
+      if (storyData.useTimestampedContent && translationData.timestampedScenes && translationData.timestampedScenes.length > 0) {
+        // --- ZAMAN DAMGALI MOD: Sahne Bazlı Adaptasyon ---
+        adaptationData = await step.run('adapt-timestamped', async () => {
+          await dbConnect();
+          
+          logger.info('adapt-timestamped başladı', {
+            storyId,
+            sceneCount: translationData.timestampedScenes?.length || 0,
+            translationOnly: storyData.translationOnly
+          });
+          
+          // translationOnly modunda adaptasyon ATLANIYOR
+          if (storyData.translationOnly) {
+            await updateProgress(30, 'Sadece çeviri modu - adaptasyon atlanıyor...');
+
+            logger.info('Zaman damgalı - sadece çeviri modu, adaptasyon atlanıyor', {
+              storyId,
+              translationOnly: true
+            });
+
+            await Story.findByIdAndUpdate(storyId, {
+              adaptedContentLength: translationData.translatedLength
+            });
+
+            return {
+              adaptedTitle: translationData.adaptedTitle,
+              adaptedContent: translationData.adaptedContent,
+              adaptationNotes: [] as string[],
+              adaptedLength: translationData.translatedLength,
+              timestampedScenes: translationData.timestampedScenes
+            };
+          }
+
+          await updateProgress(25, 'Zaman damgalı sahneler adapte ediliyor...');
+
+          const scenes = translationData.timestampedScenes!;
+          const adaptedScenes: TimestampedScene[] = [];
+          const allNotes: string[] = [];
+
+          // Başlığı adapte et
+          const adaptedTitle = await adaptText(
+            translationData.adaptedTitle,
+            storyData.targetCountry,
+            storyData.targetLanguage,
+            storyData.openaiModel,
+            storyData.llmProvider
+          );
+
+          // Her sahneyi adapte et
+          for (let i = 0; i < scenes.length; i++) {
+            const scene = scenes[i];
+            
+            await updateProgress(
+              25 + Math.round((i / scenes.length) * 5),
+              `Sahne ${i + 1}/${scenes.length} adapte ediliyor...`
+            );
+
+            const adaptedText = await adaptText(
+              scene.textAdapted || scene.text,
+              storyData.targetCountry,
+              storyData.targetLanguage,
+              storyData.openaiModel,
+              storyData.llmProvider
+            );
+
+            adaptedScenes.push({
+              ...scene,
+              textAdapted: adaptedText
+            });
+          }
+
+          const adaptedContent = adaptedScenes.map(s => s.textAdapted).join('\n\n');
+          const adaptedLength = adaptedContent.length;
+
+          // DB güncelle
+          await Story.findByIdAndUpdate(storyId, {
+            adaptedTitle,
+            adaptedContent,
+            adaptedContentLength: adaptedLength
+          });
+
+          await updateProgress(30, 'Zaman damgalı adaptasyon tamamlandı');
+
+          logger.info('Zaman damgalı adaptasyon tamamlandı', {
+            storyId,
+            scenesAdapted: adaptedScenes.length,
+            adaptedLength
+          });
+
+          return {
+            adaptedTitle,
+            adaptedContent,
+            adaptationNotes: allNotes,
+            adaptedLength,
+            timestampedScenes: adaptedScenes
+          };
+        });
+      } else {
+        // --- STANDART MOD: Mevcut adaptasyon akışı ---
+        adaptationData = await step.run('adapt-story', async () => {
+          await dbConnect();
+          
+          // translationOnly modunda adaptasyon ATLANIYOR
+          if (storyData.translationOnly) {
+            await updateProgress(30, 'Sadece çeviri modu - adaptasyon atlanıyor...');
+
+            logger.info('Sadece çeviri modu - kültürel adaptasyon atlanıyor', {
+              storyId,
+              translationOnly: true
+            });
+
+            // translationOnly modunda adaptedContentLength = translatedContentLength
+            await Story.findByIdAndUpdate(storyId, {
+              adaptedContentLength: translationData.translatedLength
+            });
+
+            return {
+              adaptedTitle: translationData.adaptedTitle,
+              adaptedContent: translationData.adaptedContent,
+              adaptationNotes: [] as string[],
+              adaptedLength: translationData.translatedLength
+            };
+          }
+          
+          await updateProgress(25, 'Kültürel adaptasyon yapılıyor...');
+
+          // Prompt senaryosunu yükle (varsa)
+          let promptScenario = null;
+          if (storyData.promptScenarioId) {
+            promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+            if (promptScenario) {
+              logger.info('Adaptasyon için prompt senaryosu yüklendi', {
+                storyId,
+                scenarioName: promptScenario.name
+              });
+            }
+          }
+
+          const result = await adaptStory({
+            content: translationData.adaptedContent,
+            title: translationData.adaptedTitle,
+            targetCountry: storyData.targetCountry,
+            targetLanguage: storyData.targetLanguage,
+            model: storyData.openaiModel,
+            promptScenario: promptScenario ? {
+              adaptationSystemPrompt: promptScenario.adaptationSystemPrompt,
+              adaptationUserPrompt: promptScenario.adaptationUserPrompt,
+              titleAdaptationSystemPrompt: promptScenario.titleAdaptationSystemPrompt,
+              titleAdaptationUserPrompt: promptScenario.titleAdaptationUserPrompt
+            } : null
+          });
+
+          // UZUNLUK KONTROLÜ - Adaptasyon çevirinin en az %80'i olmalı
+          const adaptLengthRatio = result.adaptedLength / result.originalLength;
+          if (adaptLengthRatio < 0.80) {
+            logger.error('⚠️ KRİTİK: Adaptasyon çok kısa! Hikaye kısaltılmış olabilir!', {
+              storyId,
+              translatedLength: result.originalLength,
+              adaptedLength: result.adaptedLength,
+              ratio: Math.round(adaptLengthRatio * 100) + '%'
+            });
+          }
+
+          // TOPLAM ORAN KONTROLÜ - Adaptasyon orijinalin en az %60'ı olmalı
+          const totalRatio = result.adaptedLength / (translationData.originalLength || result.originalLength);
+          if (totalRatio < 0.60) {
+            logger.error('🚨 ALARM: Final metin orijinalden çok kısa! (<%60)', {
+              storyId,
+              originalLength: translationData.originalLength,
+              finalLength: result.adaptedLength,
+              totalRatio: Math.round(totalRatio * 100) + '%'
+            });
+          }
+
+          // findByIdAndUpdate kullan - karakter sayısını da kaydet
+          await Story.findByIdAndUpdate(storyId, {
+            adaptedTitle: result.title,
+            adaptedContent: result.content,
+            adaptedContentLength: result.adaptedLength
+          });
+
+          await updateProgress(30, 'Kültürel adaptasyon tamamlandı');
+
+          logger.info('Adaptasyon tamamlandı', {
+            storyId,
+            adaptations: result.adaptations.length,
+            adaptedLength: result.adaptedLength,
             totalRatio: Math.round(totalRatio * 100) + '%'
           });
-        }
 
-        // findByIdAndUpdate kullan - karakter sayısını da kaydet
-        await Story.findByIdAndUpdate(storyId, {
-          adaptedTitle: result.title,
-          adaptedContent: result.content,
-          adaptedContentLength: result.adaptedLength
+          return {
+            adaptedTitle: result.title,
+            adaptedContent: result.content,
+            adaptationNotes: result.adaptations,
+            adaptedLength: result.adaptedLength
+          };
         });
-
-        await updateProgress(30, 'Kültürel adaptasyon tamamlandı');
-
-        logger.info('Adaptasyon tamamlandı', {
-          storyId,
-          adaptations: result.adaptations.length,
-          adaptedLength: result.adaptedLength,
-          totalRatio: Math.round(totalRatio * 100) + '%'
-        });
-
-        return {
-          adaptedTitle: result.title,
-          adaptedContent: result.content,
-          adaptationNotes: result.adaptations,
-          adaptedLength: result.adaptedLength
-        };
-      });
+      }
 
       // --- 3.5. YOUTUBE METADATA OLUŞTURMA (32%) ---
       const metadataData = await step.run('generate-metadata', async () => {
@@ -453,104 +674,196 @@ export const processStory = inngest.createFunction(
       });
 
       // --- 4. SAHNE OLUŞTURMA (50%) ---
-      const scenesData = await step.run('generate-scenes', async () => {
-        await dbConnect();
-        await updateProgress(35, 'Sahneler oluşturuluyor...');
+      let scenesData: Array<{
+        sceneNumber: number;
+        text: string;
+        hasImage: boolean;
+        imageIndex?: number;
+        visualDescription?: string;
+        isFirstThreeMinutes: boolean;
+        estimatedDuration: number;
+        originalStartTime?: number;
+        originalEndTime?: number;
+        originalDuration?: number;
+      }>;
 
-        // Prompt senaryosunu yükle (varsa)
-        let promptScenario = null;
-        if (storyData.promptScenarioId) {
-          promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
-          if (promptScenario) {
-            logger.info('Sahne oluşturma için prompt senaryosu yüklendi', {
+      if (storyData.useTimestampedContent && adaptationData.timestampedScenes && adaptationData.timestampedScenes.length > 0) {
+        // --- ZAMAN DAMGALI MOD: Önceden parse edilmiş sahneleri kullan ---
+        scenesData = await step.run('create-timestamped-scenes', async () => {
+          await dbConnect();
+          await updateProgress(35, 'Zaman damgalı sahneler kaydediliyor...');
+
+          const timestampedScenes = adaptationData.timestampedScenes!;
+          
+          logger.info('create-timestamped-scenes başladı', {
+            storyId,
+            sceneCount: timestampedScenes.length
+          });
+
+          // Sahneleri MongoDB'ye kaydet
+          const scenePromises = timestampedScenes.map(sceneData =>
+            Scene.create({
+              storyId: storyId,
+              sceneNumber: sceneData.sceneNumber,
+              sceneTextOriginal: sceneData.text,
+              sceneTextAdapted: sceneData.textAdapted,
+              hasImage: sceneData.hasImage,
+              imageIndex: sceneData.imageIndex,
+              visualDescription: sceneData.visualDescription,
+              isFirstThreeMinutes: sceneData.isFirstThreeMinutes,
+              estimatedDuration: sceneData.estimatedDuration,
+              // Zaman damgalı özel alanlar
+              originalStartTime: sceneData.originalStartTime,
+              originalEndTime: sceneData.originalEndTime,
+              originalDuration: sceneData.originalDuration,
+              status: 'pending',
+              retryCount: 0,
+              blobUrls: {
+                image: null,
+                audio: null,
+                metadata: null
+              }
+            })
+          );
+
+          const scenes = await Promise.all(scenePromises);
+          
+          const totalImages = timestampedScenes.filter(s => s.hasImage).length;
+          const firstThreeMinutesScenes = timestampedScenes.filter(s => s.isFirstThreeMinutes).length;
+          
+          // findByIdAndUpdate kullan
+          await Story.findByIdAndUpdate(storyId, {
+            totalScenes: timestampedScenes.length,
+            totalImages,
+            firstMinuteImages: firstThreeMinutesScenes,
+            scenes: scenes.map(s => s._id)
+          });
+
+          await updateProgress(50, 'Zaman damgalı sahneler oluşturuldu');
+
+          logger.info('Zaman damgalı sahneler oluşturuldu', {
+            storyId,
+            totalScenes: timestampedScenes.length,
+            totalImages,
+            totalDuration: storyData.totalOriginalDuration,
+            textCoverageRatio: '100%' // Zaman damgalı modda %100 kapsam
+          });
+
+          // Plain array olarak dön
+          return timestampedScenes.map(s => ({
+            sceneNumber: s.sceneNumber,
+            text: s.textAdapted || s.text,
+            hasImage: s.hasImage,
+            imageIndex: s.imageIndex,
+            visualDescription: s.visualDescription,
+            isFirstThreeMinutes: s.isFirstThreeMinutes,
+            estimatedDuration: s.estimatedDuration,
+            originalStartTime: s.originalStartTime,
+            originalEndTime: s.originalEndTime,
+            originalDuration: s.originalDuration
+          }));
+        });
+      } else {
+        // --- STANDART MOD: Mevcut sahne oluşturma akışı ---
+        scenesData = await step.run('generate-scenes', async () => {
+          await dbConnect();
+          await updateProgress(35, 'Sahneler oluşturuluyor...');
+
+          // Prompt senaryosunu yükle (varsa)
+          let promptScenario = null;
+          if (storyData.promptScenarioId) {
+            promptScenario = await PromptScenario.findById(storyData.promptScenarioId);
+            if (promptScenario) {
+              logger.info('Sahne oluşturma için prompt senaryosu yüklendi', {
+                storyId,
+                scenarioName: promptScenario.name
+              });
+            }
+          }
+
+          const result = await generateScenes({
+            originalContent: storyData.originalContent,
+            adaptedContent: adaptationData.adaptedContent,
+            model: storyData.llmModel,
+            provider: storyData.llmProvider,
+            promptScenario: promptScenario ? {
+              sceneFirstThreeSystemPrompt: promptScenario.sceneFirstThreeSystemPrompt,
+              sceneFirstThreeUserPrompt: promptScenario.sceneFirstThreeUserPrompt,
+              sceneRemainingSystemPrompt: promptScenario.sceneRemainingSystemPrompt,
+              sceneRemainingUserPrompt: promptScenario.sceneRemainingUserPrompt
+            } : null
+          });
+
+          // Sahneleri MongoDB'ye kaydet
+          // NOT: blobUrls objesini baştan initialize et, yoksa nested update çalışmaz
+          const scenePromises = result.scenes.map(sceneData =>
+            Scene.create({
+              storyId: storyId,
+              sceneNumber: sceneData.sceneNumber,
+              sceneTextOriginal: sceneData.text,
+              sceneTextAdapted: (sceneData as any).textAdapted,
+              hasImage: sceneData.hasImage,
+              imageIndex: sceneData.imageIndex,
+              visualDescription: sceneData.visualDescription,
+              isFirstThreeMinutes: sceneData.isFirstThreeMinutes,
+              estimatedDuration: sceneData.estimatedDuration,
+              status: 'pending',
+              retryCount: 0,
+              blobUrls: {
+                image: null,
+                audio: null,
+                metadata: null
+              }
+            })
+          );
+
+          const scenes = await Promise.all(scenePromises);
+          
+          // findByIdAndUpdate kullan
+          await Story.findByIdAndUpdate(storyId, {
+            totalScenes: result.totalScenes,
+            totalImages: result.totalImages,
+            firstMinuteImages: result.firstThreeMinutesScenes,
+            scenes: scenes.map(s => s._id)
+          });
+
+          await updateProgress(50, 'Sahneler oluşturuldu');
+
+          // Metin kapsama oranı kontrolü
+          const coveragePercent = Math.round(result.textCoverageRatio * 100);
+          
+          if (result.textCoverageRatio < 0.50) {
+            logger.error('🚨 KRİTİK: Sahne bölme sırasında hikaye %50\'den fazla kısaltılmış!', {
               storyId,
-              scenarioName: promptScenario.name
+              textCoverageRatio: coveragePercent + '%',
+              adaptedLength: adaptationData.adaptedContent.length
+            });
+          } else if (result.textCoverageRatio < 0.70) {
+            logger.warn('⚠️ UYARI: Sahne bölme sırasında hikaye kısaltılmış olabilir', {
+              storyId,
+              textCoverageRatio: coveragePercent + '%'
             });
           }
-        }
 
-        const result = await generateScenes({
-          originalContent: storyData.originalContent,
-          adaptedContent: adaptationData.adaptedContent,
-          model: storyData.llmModel,
-          provider: storyData.llmProvider,
-          promptScenario: promptScenario ? {
-            sceneFirstThreeSystemPrompt: promptScenario.sceneFirstThreeSystemPrompt,
-            sceneFirstThreeUserPrompt: promptScenario.sceneFirstThreeUserPrompt,
-            sceneRemainingSystemPrompt: promptScenario.sceneRemainingSystemPrompt,
-            sceneRemainingUserPrompt: promptScenario.sceneRemainingUserPrompt
-          } : null
-        });
-
-        // Sahneleri MongoDB'ye kaydet
-        // NOT: blobUrls objesini baştan initialize et, yoksa nested update çalışmaz
-        const scenePromises = result.scenes.map(sceneData =>
-          Scene.create({
-            storyId: storyId,
-            sceneNumber: sceneData.sceneNumber,
-            sceneTextOriginal: sceneData.text,
-            sceneTextAdapted: (sceneData as any).textAdapted,
-            hasImage: sceneData.hasImage,
-            imageIndex: sceneData.imageIndex,
-            visualDescription: sceneData.visualDescription,
-            isFirstThreeMinutes: sceneData.isFirstThreeMinutes,
-            estimatedDuration: sceneData.estimatedDuration,
-            status: 'pending',
-            retryCount: 0,
-            blobUrls: {
-              image: null,
-              audio: null,
-              metadata: null
-            }
-          })
-        );
-
-        const scenes = await Promise.all(scenePromises);
-        
-        // findByIdAndUpdate kullan
-        await Story.findByIdAndUpdate(storyId, {
-          totalScenes: result.totalScenes,
-          totalImages: result.totalImages,
-          firstMinuteImages: result.firstThreeMinutesScenes,
-          scenes: scenes.map(s => s._id)
-        });
-
-        await updateProgress(50, 'Sahneler oluşturuldu');
-
-        // Metin kapsama oranı kontrolü
-        const coveragePercent = Math.round(result.textCoverageRatio * 100);
-        
-        if (result.textCoverageRatio < 0.50) {
-          logger.error('🚨 KRİTİK: Sahne bölme sırasında hikaye %50\'den fazla kısaltılmış!', {
+          logger.info('Sahneler oluşturuldu', {
             storyId,
-            textCoverageRatio: coveragePercent + '%',
-            adaptedLength: adaptationData.adaptedContent.length
-          });
-        } else if (result.textCoverageRatio < 0.70) {
-          logger.warn('⚠️ UYARI: Sahne bölme sırasında hikaye kısaltılmış olabilir', {
-            storyId,
+            totalScenes: result.totalScenes,
+            totalImages: result.totalImages,
             textCoverageRatio: coveragePercent + '%'
           });
-        }
 
-        logger.info('Sahneler oluşturuldu', {
-          storyId,
-          totalScenes: result.totalScenes,
-          totalImages: result.totalImages,
-          textCoverageRatio: coveragePercent + '%'
+          // Plain array olarak dön
+          return result.scenes.map(s => ({
+            sceneNumber: s.sceneNumber,
+            text: s.text,
+            hasImage: s.hasImage,
+            imageIndex: s.imageIndex,
+            visualDescription: s.visualDescription,
+            isFirstThreeMinutes: s.isFirstThreeMinutes,
+            estimatedDuration: s.estimatedDuration
+          }));
         });
-
-        // Plain array olarak dön
-        return result.scenes.map(s => ({
-          sceneNumber: s.sceneNumber,
-          text: s.text,
-          hasImage: s.hasImage,
-          imageIndex: s.imageIndex,
-          visualDescription: s.visualDescription,
-          isFirstThreeMinutes: s.isFirstThreeMinutes,
-          estimatedDuration: s.estimatedDuration
-        }));
-      });
+      }
 
       // --- 4.5. ENGAGEMENT HOOKS (52%) ---
       const scenesWithHooksData = await step.run('add-engagement-hooks', async () => {
@@ -1242,55 +1555,86 @@ export const processStory = inngest.createFunction(
       });
 
       // --- 10. TAMAMLANDI (100%) ---
-      await step.run('complete', async () => {
+      const completeResult = await step.run('complete', async () => {
+        // İşleme süresini hesapla
+        const processingEndTime = Date.now();
+        const processingDuration = Math.round((processingEndTime - processingStartTime) / 1000); // Saniye
+
+        // Süreyi okunabilir formata çevir
+        const minutes = Math.floor(processingDuration / 60);
+        const seconds = processingDuration % 60;
+        const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
+
         try {
           await dbConnect();
 
-          // İşleme süresini hesapla
-          const processingEndTime = Date.now();
-          const processingDuration = Math.round((processingEndTime - processingStartTime) / 1000); // Saniye
+          // findByIdAndUpdate kullan - status'u kesinlikle completed yap
+          const updateResult = await Story.findByIdAndUpdate(
+            storyId, 
+            {
+              status: 'completed',
+              progress: 100,
+              currentStep: 'İşlem tamamlandı!',
+              processingCompletedAt: new Date(),
+              processingDuration: processingDuration
+            },
+            { new: true }
+          );
 
-          // findByIdAndUpdate kullan
-          await Story.findByIdAndUpdate(storyId, {
-            status: 'completed',
-            progress: 100,
-            currentStep: 'İşlem tamamlandı!',
-            processingCompletedAt: new Date(),
-            processingDuration: processingDuration
-          });
-
-          // Süreyi okunabilir formata çevir
-          const minutes = Math.floor(processingDuration / 60);
-          const seconds = processingDuration % 60;
-          const durationText = minutes > 0 ? `${minutes}dk ${seconds}sn` : `${seconds}sn`;
+          if (!updateResult) {
+            logger.error('Complete: Story güncellenemedi - kayıt bulunamadı', { storyId });
+            return { success: false, error: 'Story bulunamadı', duration: processingDuration };
+          }
 
           logger.info('Hikaye işleme tamamlandı', {
             storyId,
             processingDuration,
-            durationText
+            durationText,
+            finalStatus: updateResult.status
           });
           
-          return { success: true, duration: processingDuration };
+          return { success: true, duration: processingDuration, status: updateResult.status };
         } catch (error) {
           logger.error('Complete adımı hatası', {
             storyId,
             error: error instanceof Error ? error.message : 'Bilinmeyen hata'
           });
           
-          // Hata durumunda bile status'u güncellemeye çalış
+          // Hata durumunda bile status'u güncellemeye çalış - farklı bağlantı ile
           try {
+            await dbConnect();
             await Story.findByIdAndUpdate(storyId, {
               status: 'completed',
               progress: 100,
               currentStep: 'İşlem tamamlandı (hata ile)'
             });
+            logger.info('Complete: Fallback güncelleme başarılı', { storyId });
           } catch (updateError) {
-            logger.error('Status güncelleme hatası', { storyId });
+            logger.error('Complete: Fallback güncelleme de başarısız', { 
+              storyId,
+              error: updateError instanceof Error ? updateError.message : 'Bilinmeyen hata'
+            });
           }
           
-          return { success: false };
+          return { success: false, duration: processingDuration };
         }
       });
+
+      // Son kontrol - eğer complete step başarısız olduysa, bir kez daha dene
+      if (!completeResult?.success) {
+        await step.run('force-complete', async () => {
+          await dbConnect();
+          logger.warn('Force complete çalıştırılıyor - complete step başarısız oldu', { storyId });
+          
+          await Story.findByIdAndUpdate(storyId, {
+            status: 'completed',
+            progress: 100,
+            currentStep: 'İşlem tamamlandı'
+          });
+          
+          logger.info('Force complete başarılı', { storyId });
+        });
+      }
 
       return {
         success: true,

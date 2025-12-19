@@ -119,6 +119,10 @@
       "titlePlaceholder": "Enter story title",
       "content": "Story Content",
       "contentPlaceholder": "Paste your story here... (min 1000 characters)",
+      "useTimestampedContent": "Timestamped Content Mode",
+      "useTimestampedContentHint": "Enter video transcript with timestamps for more precise scene control",
+      "timestampedContent": "Timestamped Transcript",
+      "timestampedContentPlaceholder": "[00:00:00] First line text\n[00:00:05] Second line text\n[00:00:10] Third line text...",
       "targetLanguage": "Target Language",
       "targetCountry": "Target Country",
       "translationOnly": "Translation Only Mode",
@@ -142,7 +146,8 @@
       "characters": "characters",
       "detectedLanguage": "Detected language:",
       "estimatedCost": "Estimated cost:",
-      "estimatedTokens": "Estimated tokens:"
+      "estimatedTokens": "Estimated tokens:",
+      "timestampedFormat": "Format: [HH:MM:SS] or [MM:SS]"
     },
 
     "errors": {

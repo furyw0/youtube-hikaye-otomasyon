@@ -55,6 +55,20 @@ const StorySchema = new Schema<IStory>(
       default: false
     },
     
+    // Zaman Damgalı İçerik Modu
+    useTimestampedContent: {
+      type: Boolean,
+      default: false
+    },
+    timestampedContent: {
+      type: String,
+      required: false
+    },
+    totalOriginalDuration: {
+      type: Number,  // Orijinal video süresi (saniye)
+      required: false
+    },
+    
     // Uyarlanmış hikaye
     adaptedTitle: {
       type: String
