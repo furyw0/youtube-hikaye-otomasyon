@@ -1,6 +1,7 @@
 /**
  * API Endpoint: Hikaye Detayları
  * GET /api/stories/[id]
+ * PATCH /api/stories/[id] - Status güncelleme (manuel tamamlama)
  * DELETE /api/stories/[id]
  */
 
@@ -11,6 +12,7 @@ import Scene from '@/models/Scene';
 import logger from '@/lib/logger';
 import { auth } from '@/auth';
 import { deleteStoryFiles } from '@/services/blob.service';
+import { z } from 'zod';
 
 export async function GET(
   request: NextRequest,
@@ -78,6 +80,98 @@ export async function GET(
       success: false,
       error: 'Sunucu hatası',
       message: error instanceof Error ? error.message : 'Bilinmeyen hata'
+    }, { status: 500 });
+  }
+}
+
+// PATCH - Hikaye status güncelleme (manuel tamamlama için)
+const patchSchema = z.object({
+  action: z.enum(['complete', 'retry']),
+});
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Yetkisiz erişim'
+      }, { status: 401 });
+    }
+
+    const userId = session.user.id;
+    const { id: storyId } = await params;
+    const body = await request.json();
+
+    // Validasyon
+    const validated = patchSchema.safeParse(body);
+    if (!validated.success) {
+      return NextResponse.json({
+        success: false,
+        error: 'Geçersiz istek',
+        details: validated.error.errors
+      }, { status: 400 });
+    }
+
+    await dbConnect();
+
+    const story = await Story.findOne({ _id: storyId, userId });
+    if (!story) {
+      return NextResponse.json({
+        success: false,
+        error: 'Hikaye bulunamadı'
+      }, { status: 404 });
+    }
+
+    if (validated.data.action === 'complete') {
+      // Manuel olarak tamamla
+      await Story.findByIdAndUpdate(storyId, {
+        status: 'completed',
+        progress: 100,
+        currentStep: 'Manuel olarak tamamlandı'
+      });
+
+      logger.info('Hikaye manuel olarak tamamlandı', { storyId, userId });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Hikaye tamamlandı olarak işaretlendi'
+      });
+    }
+
+    if (validated.data.action === 'retry') {
+      // Yeniden deneme için sıfırla
+      await Story.findByIdAndUpdate(storyId, {
+        status: 'pending',
+        progress: 0,
+        currentStep: 'Bekliyor',
+        errorMessage: null
+      });
+
+      logger.info('Hikaye yeniden deneme için sıfırlandı', { storyId, userId });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Hikaye yeniden işleme alınacak'
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      error: 'Geçersiz işlem'
+    }, { status: 400 });
+
+  } catch (error) {
+    logger.error('Hikaye güncelleme hatası', {
+      error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+    });
+
+    return NextResponse.json({
+      success: false,
+      error: 'Sunucu hatası'
     }, { status: 500 });
   }
 }

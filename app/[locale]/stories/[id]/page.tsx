@@ -102,12 +102,42 @@ function StoryDetailContent() {
   const [expandedScenes, setExpandedScenes] = useState<Set<number>>(new Set());
   const [showOriginal, setShowOriginal] = useState(true);
   const [showTurkish, setShowTurkish] = useState(true);
+  const [markingComplete, setMarkingComplete] = useState(false);
 
   useEffect(() => {
     if (storyId) {
       fetchStory();
     }
   }, [storyId]);
+
+  // Manuel olarak tamamla
+  const markAsComplete = async () => {
+    if (!confirm('Hikayeyi manuel olarak tamamlandı olarak işaretlemek istediğinize emin misiniz?')) {
+      return;
+    }
+    
+    setMarkingComplete(true);
+    try {
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete' })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Story'yi yeniden yükle
+        fetchStory();
+      } else {
+        alert('Hata: ' + (data.error || 'Bilinmeyen hata'));
+      }
+    } catch (error) {
+      alert('İşlem başarısız oldu');
+    } finally {
+      setMarkingComplete(false);
+    }
+  };
 
   const fetchStory = async () => {
     try {
@@ -266,6 +296,17 @@ function StoryDetailContent() {
                 >
                   ⬇️ {t('downloadAll')}
                 </a>
+              )}
+              {/* Manuel Tamamla butonu - sadece processing durumunda ve %90+ ilerleme */}
+              {story.status === 'processing' && story.progress >= 90 && (
+                <button
+                  onClick={markAsComplete}
+                  disabled={markingComplete}
+                  className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50"
+                  title="Inngest&apos;te tamamlanmış ama panelde takılı kalmış hikayeler için"
+                >
+                  {markingComplete ? '⏳ İşleniyor...' : '✅ Manuel Tamamla'}
+                </button>
               )}
             </div>
           </div>
