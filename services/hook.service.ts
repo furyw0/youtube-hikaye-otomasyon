@@ -47,48 +47,48 @@ interface GenerateHookTextOptions {
   provider?: LLMProvider;
 }
 
-// Dil bazlı hook talimatları
-const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
-  tr: 'Türkçe yaz, samimi ve sıcak bir dil kullan',
-  en: 'Write in English, use a friendly and engaging tone',
-  fr: 'Écris en français, utilise un ton amical et engageant',
-  de: 'Schreibe auf Deutsch, verwende einen freundlichen Ton',
-  es: 'Escribe en español, usa un tono amigable y atractivo',
-  it: 'Scrivi in italiano, usa un tono amichevole e coinvolgente',
-  pt: 'Escreva em português, use um tom amigável e envolvente',
-  ru: 'Пиши на русском, используй дружелюбный тон',
-  ar: 'اكتب بالعربية، استخدم نبرة ودية وجذابة',
-  ja: '日本語で書いて、フレンドリーで魅力的なトーンを使用',
-  ko: '한국어로 작성하고 친근하고 매력적인 톤을 사용',
-  zh: '用中文写，使用友好且吸引人的语气'
+// Dil isimleri (LLM'e hangi dilde yazması gerektiğini söylemek için)
+const LANGUAGE_NAMES: Record<string, string> = {
+  tr: 'Turkish',
+  en: 'English',
+  fr: 'French',
+  de: 'German',
+  es: 'Spanish',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ru: 'Russian',
+  ar: 'Arabic',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Chinese'
 };
 
-// Hook açıklamaları - İkna edici ve etkili
+// Hook açıklamaları - İngilizce (LLM için net talimatlar)
 const HOOK_DESCRIPTIONS: Record<HookType, { purpose: string; maxWords: number; style: string }> = {
   intro: {
-    purpose: 'İzleyicinin dikkatini yakala ve merak uyandır. Hikayenin en çarpıcı anına ipucu ver. "Sonunda olanlar sizi şoke edecek" gibi güçlü ifadeler kullan.',
+    purpose: 'Grab attention and create curiosity. Hint at the most dramatic moment. Use powerful phrases like "What happens at the end will shock you".',
     maxWords: 30,
-    style: 'Gizemli ve çekici. İzleyici "ne olacak?" diye merak etmeli.'
+    style: 'Mysterious and intriguing. Viewer should wonder "what will happen?"'
   },
   subscribe: {
-    purpose: 'Kanalın değerini vurgula. "Bu tür içerikler için abone olun" şeklinde net ve samimi bir çağrı yap. Bildirimleri açmalarını iste.',
+    purpose: 'Highlight channel value. Make a clear and sincere call like "Subscribe for more stories like this". Ask to turn on notifications.',
     maxWords: 35,
-    style: 'Samimi ama net. İzleyiciye kanalın ona ne katacağını söyle.'
+    style: 'Friendly but direct. Tell the viewer what the channel will give them.'
   },
   like: {
-    purpose: 'Duygusal doruk noktasında beğeni iste. "Bu an sizi de etkilediyse beğenin" gibi direkt ama içten bir çağrı.',
+    purpose: 'Ask for like at emotional peak. Direct but sincere call like "If this moment touched you, leave a like".',
     maxWords: 25,
-    style: 'Duygusal ve içten. Az önce yaşanan anın etkisini kullan.'
+    style: 'Emotional and sincere. Use the impact of what just happened.'
   },
   comment: {
-    purpose: 'İzleyiciyi tartışmaya davet et. Güçlü ve düşündürücü bir soru sor. "Yorumlarda buluşalım" de.',
+    purpose: 'Invite viewer to discussion. Ask a strong thought-provoking question. Say "Let\'s meet in the comments".',
     maxWords: 30,
-    style: 'Merak uyandırıcı soru. İzleyici cevap vermek istemeli.'
+    style: 'Curiosity-inducing question. Viewer should want to respond.'
   },
   outro: {
-    purpose: 'Güçlü bir kapanış. Abone ol + bildirim çanı + teşekkür. Bir sonraki video için beklenti oluştur.',
+    purpose: 'Strong closing. Subscribe + notification bell + thank you. Create anticipation for next video.',
     maxWords: 40,
-    style: 'Sıcak vedalaşma ve net çağrı. "Abone olun, bildirimleri açın" de.'
+    style: 'Warm farewell and clear call. "Subscribe and turn on notifications".'
   }
 };
 
@@ -147,39 +147,35 @@ export function determineHookPlacements(sceneCount: number): HookPlacement[] {
 async function generateSingleHookText(options: GenerateHookTextOptions): Promise<string | null> {
   const { hookType, storyContext, sceneContext, targetLanguage, model, provider } = options;
   
-  const langInstruction = LANGUAGE_INSTRUCTIONS[targetLanguage] || LANGUAGE_INSTRUCTIONS['en'];
+  const targetLangName = LANGUAGE_NAMES[targetLanguage] || 'English';
   const hookInfo = HOOK_DESCRIPTIONS[hookType];
   
-  const systemPrompt = `Sen başarılı bir YouTube içerik üreticisisin. İzleyicileri harekete geçiren, İKNA EDİCİ hook metinleri yazıyorsun.
+  const systemPrompt = `You are a successful YouTube content creator. You write PERSUASIVE hook texts that motivate viewers to take action.
 
-SENİN GÜCÜN:
-- Doğrudan ve samimi konuşursun, dolaylı değil
-- İzleyiciyle duygusal bağ kurarsın
-- Net çağrılar yaparsın ama spam gibi değil, içten
-- ${langInstruction}
+CRITICAL INSTRUCTION: Write ONLY in ${targetLangName}. The entire hook text must be in ${targetLangName}.
 
-HOOK STİLİ: ${hookInfo.style}
+YOUR STRENGTHS:
+- You speak directly and sincerely, not indirectly
+- You create emotional connection with viewers
+- You make clear calls but not spammy, sincere
+- Native ${targetLangName} speaker tone
 
-ÖRNEK ETKİLİ HOOK'LAR:
-- Intro: "Bu hikayenin sonunda gözleriniz dolacak... Hazır mısınız?"
-- Subscribe: "Bu tür gerçek hikayeler ilginizi çekiyorsa, abone olun ve bildirimleri açın. Haftada 3 yeni hikaye paylaşıyorum."
-- Like: "Bu sahne içinizi sızlattıysa, bir beğeni bırakın. Bu hikayeyi daha fazla kişiye ulaştırmama yardımcı olur."
-- Comment: "Siz olsaydınız ne yapardınız? Yorumlarda tartışalım, merak ediyorum."
-- Outro: "Hikaye burada bitiyor ama kanal bitmiyor. Abone olun, bir sonraki hikayede görüşelim."
+HOOK STYLE: ${hookInfo.style}
 
-Maksimum ${hookInfo.maxWords} kelime.`;
+Maximum ${hookInfo.maxWords} words. Output ONLY the hook text in ${targetLangName}, nothing else.`;
 
-  const userPrompt = `HİKAYE:
+  const userPrompt = `STORY CONTEXT:
 ${storyContext.substring(0, 800)}
 
-BU SAHNE:
+CURRENT SCENE:
 ${sceneContext}
 
-GÖREV: ${hookType.toUpperCase()} hook'u yaz
-AMAÇ: ${hookInfo.purpose}
+TASK: Write a ${hookType.toUpperCase()} hook
+PURPOSE: ${hookInfo.purpose}
 
-Bu sahneye uygun, İKNA EDİCİ ve SAMİMİ bir hook yaz.
-SADECE hook metnini yaz, başka açıklama ekleme.`;
+IMPORTANT: Write the hook in ${targetLangName} language ONLY.
+Write a PERSUASIVE and SINCERE hook appropriate for this scene.
+Output ONLY the hook text, no explanations.`;
 
   try {
     const response = await createCompletion({
