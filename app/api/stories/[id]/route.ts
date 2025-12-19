@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Story from '@/models/Story';
 import Scene from '@/models/Scene';
+import Channel from '@/models/Channel';
 import logger from '@/lib/logger';
 import { auth } from '@/auth';
 import { deleteStoryFiles, uploadZip } from '@/services/blob.service';
@@ -37,8 +38,14 @@ export async function GET(
     // MongoDB bağlantısı
     await dbConnect();
 
-    // Story'yi getir - userId kontrolü ile
-    const story = await Story.findOne({ _id: storyId, userId }).lean();
+    // Story'yi getir - userId kontrolü ile, channel bilgisi populate edilmiş
+    const story = await Story.findOne({ _id: storyId, userId })
+      .populate({
+        path: 'channelId',
+        select: 'name color icon youtubeChannelUrl',
+        model: Channel
+      })
+      .lean();
 
     if (!story) {
       logger.warn('Hikaye bulunamadı veya yetkisiz', { storyId, userId });
@@ -63,11 +70,34 @@ export async function GET(
       scenesWithAudio: scenes.filter(s => s.blobUrls?.audio).length
     });
 
+    // Channel bilgisini düzgün formatta hazırla
+    interface PopulatedChannel {
+      _id: string;
+      name: string;
+      color: string;
+      icon: string;
+      youtubeChannelUrl?: string;
+    }
+    
+    const populatedChannel = story.channelId && typeof story.channelId === 'object' && 'name' in story.channelId
+      ? story.channelId as unknown as PopulatedChannel
+      : null;
+    
+    const channelInfo = populatedChannel ? {
+      _id: populatedChannel._id,
+      name: populatedChannel.name,
+      color: populatedChannel.color,
+      icon: populatedChannel.icon,
+      youtubeChannelUrl: populatedChannel.youtubeChannelUrl
+    } : null;
+
     return NextResponse.json({
       success: true,
       story: {
         ...story,
         _id: story._id.toString(),
+        channel: channelInfo,
+        channelId: channelInfo?._id,
         scenes: scenes // Direct query'den gelen scenes
       }
     });
@@ -85,10 +115,11 @@ export async function GET(
   }
 }
 
-// PATCH - Hikaye güncelleme (status değişikliği, YouTube URL ekleme, ZIP yeniden oluşturma vb.)
+// PATCH - Hikaye güncelleme (status değişikliği, YouTube URL ekleme, kanal değişikliği, ZIP yeniden oluşturma vb.)
 const patchSchema = z.object({
-  action: z.enum(['complete', 'retry', 'setYoutubeUrl', 'removeYoutubeUrl', 'regenerateZip']),
+  action: z.enum(['complete', 'retry', 'setYoutubeUrl', 'removeYoutubeUrl', 'regenerateZip', 'setChannel', 'removeChannel']),
   youtubeUrl: z.string().url().optional(),
+  channelId: z.string().optional(),
 });
 
 export async function PATCH(
@@ -282,6 +313,61 @@ export async function PATCH(
           details: zipError instanceof Error ? zipError.message : 'Bilinmeyen hata'
         }, { status: 500 });
       }
+    }
+
+    if (validated.data.action === 'setChannel') {
+      // Kanal ata
+      if (!validated.data.channelId) {
+        return NextResponse.json({
+          success: false,
+          error: 'Kanal ID gerekli'
+        }, { status: 400 });
+      }
+
+      // Kanal kullanıcıya ait mi kontrol et
+      const channel = await Channel.findOne({ _id: validated.data.channelId, userId });
+      if (!channel) {
+        return NextResponse.json({
+          success: false,
+          error: 'Kanal bulunamadı'
+        }, { status: 404 });
+      }
+
+      await Story.findByIdAndUpdate(storyId, {
+        channelId: validated.data.channelId
+      });
+
+      logger.info('Hikaye kanala eklendi', { 
+        storyId, 
+        userId, 
+        channelId: validated.data.channelId,
+        channelName: channel.name 
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Hikaye kanala eklendi',
+        channel: {
+          _id: channel._id.toString(),
+          name: channel.name,
+          color: channel.color,
+          icon: channel.icon
+        }
+      });
+    }
+
+    if (validated.data.action === 'removeChannel') {
+      // Kanaldan çıkar
+      await Story.findByIdAndUpdate(storyId, {
+        $unset: { channelId: 1 }
+      });
+
+      logger.info('Hikaye kanaldan çıkarıldı', { storyId, userId });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Hikaye kanaldan çıkarıldı'
+      });
     }
 
     return NextResponse.json({

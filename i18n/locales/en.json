@@ -115,6 +115,9 @@
     "subtitle": "Enter your story and start automatic processing",
     
     "fields": {
+      "channel": "Channel",
+      "noChannel": "No Channel",
+      "channelHint": "Assign story to a YouTube channel (optional)",
       "title": "Title",
       "titlePlaceholder": "Enter story title",
       "content": "Story Content",
@@ -364,11 +367,14 @@
     "empty": "No stories yet",
     "createFirst": "Create your first story",
     "createNew": "New Story",
+    "manageChannels": "Manage Channels",
     "filter": {
       "all": "All",
       "completed": "Completed",
       "processing": "Processing",
-      "failed": "Failed"
+      "failed": "Failed",
+      "allChannels": "All Channels",
+      "ungrouped": "Ungrouped"
     },
     "sort": {
       "newest": "Newest",
@@ -380,6 +386,34 @@
       "view": "View",
       "download": "Download",
       "delete": "Delete"
+    }
+  },
+
+  "channels": {
+    "title": "Channel Management",
+    "subtitle": "Group and manage your YouTube channels",
+    "backToStories": "Back to Stories",
+    "createChannel": "New Channel",
+    "editChannel": "Edit Channel",
+    "empty": "No channels yet",
+    "emptyDescription": "Create your first channel to group your stories",
+    "storyCount": "Story Count",
+    "viewStories": "View Stories",
+    "stats": {
+      "totalChannels": "Total Channels",
+      "groupedStories": "Grouped Stories",
+      "ungroupedStories": "Ungrouped Stories"
+    },
+    "form": {
+      "name": "Channel Name",
+      "description": "Description",
+      "icon": "Icon",
+      "color": "Color",
+      "youtubeUrl": "YouTube Channel Link",
+      "preview": "Preview",
+      "cancel": "Cancel",
+      "create": "Create",
+      "update": "Update"
     }
   },
 

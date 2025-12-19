@@ -6,6 +6,9 @@ export interface IStory {
   // Kullanıcı ilişkisi
   userId: Types.ObjectId;
   
+  // Kanal ilişkisi (YouTube kanalı gruplaması)
+  channelId?: Types.ObjectId;
+  
   // Orijinal hikaye
   originalTitle: string;
   originalContent: string;
@@ -120,6 +123,8 @@ export interface CreateStoryInput {
   coverText?: string;
   targetLanguage: string;
   targetCountry: string;
+  // Kanal (opsiyonel)
+  channelId?: string;
   translationOnly?: boolean;
   enableHooks?: boolean;
   // Zaman Damgalı İçerik Modu

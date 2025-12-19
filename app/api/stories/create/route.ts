@@ -26,6 +26,8 @@ const createStorySchema = z.object({
   coverText: z.string().max(100).optional(),
   targetLanguage: z.string().length(2),
   targetCountry: z.string().min(2).max(50),
+  // Kanal (opsiyonel)
+  channelId: z.string().optional(),
   translationOnly: z.boolean().optional().default(false),
   enableHooks: z.boolean().optional().default(false),
   // Zaman Damgalı İçerik Modu
@@ -184,6 +186,7 @@ export async function POST(request: NextRequest) {
     // Story oluştur
     const story = await Story.create({
       userId, // Kullanıcı ID'si
+      channelId: validated.channelId || undefined, // Kanal ilişkisi (opsiyonel)
       originalTitle: validated.title,
       originalContent: contentForProcessing, // Zaman damgalı modda çıkarılmış içerik
       originalYoutubeDescription: validated.youtubeDescription,

@@ -115,6 +115,9 @@
     "subtitle": "Hikayenizi girin ve otomatik işleme başlayın",
     
     "fields": {
+      "channel": "Kanal",
+      "noChannel": "Kanalsız",
+      "channelHint": "Hikayeyi bir YouTube kanalına atayın (opsiyonel)",
       "title": "Başlık",
       "titlePlaceholder": "Hikaye başlığını girin",
       "content": "Hikaye İçeriği",
@@ -364,11 +367,14 @@
     "empty": "Henüz hikaye yok",
     "createFirst": "İlk hikayenizi oluşturun",
     "createNew": "Yeni Hikaye",
+    "manageChannels": "Kanalları Yönet",
     "filter": {
       "all": "Tümü",
       "completed": "Tamamlanan",
       "processing": "İşleniyor",
-      "failed": "Başarısız"
+      "failed": "Başarısız",
+      "allChannels": "Tüm Kanallar",
+      "ungrouped": "Gruplanmamış"
     },
     "sort": {
       "newest": "En Yeni",
@@ -380,6 +386,34 @@
       "view": "Görüntüle",
       "download": "İndir",
       "delete": "Sil"
+    }
+  },
+
+  "channels": {
+    "title": "Kanal Yönetimi",
+    "subtitle": "YouTube kanallarınızı gruplayın ve yönetin",
+    "backToStories": "Hikayelere Dön",
+    "createChannel": "Yeni Kanal",
+    "editChannel": "Kanal Düzenle",
+    "empty": "Henüz kanal yok",
+    "emptyDescription": "İlk kanalınızı oluşturarak hikayelerinizi gruplandırın",
+    "storyCount": "Hikaye Sayısı",
+    "viewStories": "Hikayeleri Gör",
+    "stats": {
+      "totalChannels": "Toplam Kanal",
+      "groupedStories": "Gruplanmış Hikayeler",
+      "ungroupedStories": "Gruplanmamış Hikayeler"
+    },
+    "form": {
+      "name": "Kanal Adı",
+      "description": "Açıklama",
+      "icon": "İkon",
+      "color": "Renk",
+      "youtubeUrl": "YouTube Kanal Linki",
+      "preview": "Önizleme",
+      "cancel": "İptal",
+      "create": "Oluştur",
+      "update": "Güncelle"
     }
   },
 

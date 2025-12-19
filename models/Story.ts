@@ -11,6 +11,14 @@ const StorySchema = new Schema<IStory>(
       index: true
     },
     
+    // Kanal ilişkisi (YouTube kanalı gruplaması)
+    channelId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Channel',
+      required: false,
+      index: true
+    },
+    
     // Orijinal hikaye
     originalTitle: {
       type: String,

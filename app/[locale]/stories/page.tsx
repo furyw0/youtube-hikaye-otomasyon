@@ -10,6 +10,13 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 
+interface Channel {
+  _id: string;
+  name: string;
+  color: string;
+  icon: string;
+}
+
 interface Story {
   _id: string;
   originalTitle: string;
@@ -34,6 +41,9 @@ interface Story {
   // YouTube
   youtubeUrl?: string;
   youtubePublishedAt?: string;
+  // Kanal
+  channel?: Channel;
+  channelId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,17 +60,44 @@ function StoriesContent() {
   const t = useTranslations('stories');
   
   const [stories, setStories] = useState<Story[]>([]);
+  const [channels, setChannels] = useState<(Channel & { storyCount: number })[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const [channelFilter, setChannelFilter] = useState<string>('all');
   const [sort, setSort] = useState<string>('newest');
 
   useEffect(() => {
-    fetchStories();
+    // URL'den kanal filtresini al
+    const params = new URLSearchParams(window.location.search);
+    const channelId = params.get('channelId');
+    if (channelId) {
+      setChannelFilter(channelId);
+    }
+    
+    fetchChannels();
+    fetchStories(channelId || undefined);
   }, []);
 
-  const fetchStories = async () => {
+  const fetchChannels = async () => {
     try {
-      const response = await fetch('/api/stories');
+      const response = await fetch('/api/channels');
+      const data = await response.json();
+      
+      if (data.success) {
+        setChannels(data.channels || []);
+      }
+    } catch (error) {
+      console.error('Kanallar yüklenemedi:', error);
+    }
+  };
+
+  const fetchStories = async (channelId?: string) => {
+    try {
+      let url = '/api/stories';
+      if (channelId && channelId !== 'all') {
+        url += `?channelId=${channelId}`;
+      }
+      const response = await fetch(url);
       const data = await response.json();
       
       if (data.success) {
@@ -71,6 +108,22 @@ function StoriesContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleChannelFilterChange = (channelId: string) => {
+    setChannelFilter(channelId);
+    setLoading(true);
+    
+    // URL'i güncelle
+    const url = new URL(window.location.href);
+    if (channelId === 'all') {
+      url.searchParams.delete('channelId');
+    } else {
+      url.searchParams.set('channelId', channelId);
+    }
+    window.history.pushState({}, '', url.toString());
+    
+    fetchStories(channelId === 'all' ? undefined : channelId);
   };
 
   const handleDelete = async (storyId: string) => {
@@ -161,30 +214,80 @@ function StoriesContent() {
 
       {/* Filters */}
       <div className="max-w-6xl mx-auto px-4 py-4">
-        <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 rounded-lg shadow-sm">
-          <div className="flex gap-2">
-            {['all', 'completed', 'processing', 'failed'].map(f => (
+        <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
+          {/* Channel Filter */}
+          {channels.length > 0 && (
+            <div className="flex flex-wrap gap-2 pb-4 border-b">
               <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-md text-sm ${
-                  filter === f 
-                    ? 'bg-blue-600 text-white' 
+                onClick={() => handleChannelFilterChange('all')}
+                className={`px-3 py-1.5 rounded-md text-sm flex items-center gap-1 ${
+                  channelFilter === 'all'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {t(`filter.${f}`)}
+                📚 {t('filter.allChannels')}
               </button>
-            ))}
+              {channels.map(channel => (
+                <button
+                  key={channel._id}
+                  onClick={() => handleChannelFilterChange(channel._id)}
+                  className={`px-3 py-1.5 rounded-md text-sm flex items-center gap-1 ${
+                    channelFilter === channel._id
+                      ? 'text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  style={channelFilter === channel._id ? { backgroundColor: channel.color } : undefined}
+                >
+                  {channel.icon} {channel.name}
+                  <span className="text-xs opacity-75">({channel.storyCount})</span>
+                </button>
+              ))}
+              <button
+                onClick={() => handleChannelFilterChange('ungrouped')}
+                className={`px-3 py-1.5 rounded-md text-sm flex items-center gap-1 ${
+                  channelFilter === 'ungrouped'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                📁 {t('filter.ungrouped')}
+              </button>
+              <Link
+                href="/channels"
+                className="px-3 py-1.5 rounded-md text-sm flex items-center gap-1 bg-gray-100 text-gray-700 hover:bg-gray-200 ml-auto"
+              >
+                ⚙️ {t('manageChannels')}
+              </Link>
+            </div>
+          )}
+          
+          {/* Status Filter & Sort */}
+          <div className="flex flex-wrap gap-4 items-center justify-between">
+            <div className="flex gap-2">
+              {['all', 'completed', 'processing', 'failed'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1.5 rounded-md text-sm ${
+                    filter === f 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {t(`filter.${f}`)}
+                </button>
+              ))}
+            </div>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-md text-sm bg-white text-gray-900"
+            >
+              <option value="newest">{t('sort.newest')}</option>
+              <option value="oldest">{t('sort.oldest')}</option>
+            </select>
           </div>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md text-sm bg-white text-gray-900"
-          >
-            <option value="newest">{t('sort.newest')}</option>
-            <option value="oldest">{t('sort.oldest')}</option>
-          </select>
         </div>
       </div>
 
@@ -210,6 +313,15 @@ function StoriesContent() {
                 <div className="p-4 border-b">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
+                      {/* Channel Badge */}
+                      {story.channel && (
+                        <div 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-white mb-2"
+                          style={{ backgroundColor: story.channel.color }}
+                        >
+                          {story.channel.icon} {story.channel.name}
+                        </div>
+                      )}
                       <h3 className="font-semibold text-gray-900 truncate">
                         {story.adaptedTitle || story.originalTitle}
                       </h3>

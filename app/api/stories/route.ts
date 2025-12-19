@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Story from '@/models/Story';
+import Channel from '@/models/Channel';
 import logger from '@/lib/logger';
 import { auth } from '@/auth';
 
@@ -28,14 +29,27 @@ export async function GET(request: NextRequest) {
     // Query parametreleri
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status');
+    const channelId = searchParams.get('channelId');
     const limit = parseInt(searchParams.get('limit') || '50');
     const skip = parseInt(searchParams.get('skip') || '0');
     const sort = searchParams.get('sort') || 'newest';
 
     // Filter - sadece kullanıcının hikayeleri
     const filter: Record<string, unknown> = { userId };
+    
+    // Status filter
     if (status && status !== 'all') {
       filter.status = status;
+    }
+
+    // Channel filter
+    if (channelId) {
+      if (channelId === 'ungrouped') {
+        // Gruplanmamış hikayeler
+        filter.channelId = { $exists: false };
+      } else {
+        filter.channelId = channelId;
+      }
     }
 
     // Sort
@@ -43,9 +57,14 @@ export async function GET(request: NextRequest) {
       ? { createdAt: 1 } 
       : { createdAt: -1 };
 
-    // Query
+    // Query - Channel bilgisini de getir
     const stories = await Story.find(filter)
       .select('-originalContent -adaptedContent') // Büyük alanları hariç tut
+      .populate({
+        path: 'channelId',
+        select: 'name color icon',
+        model: Channel
+      })
       .sort(sortOption)
       .skip(skip)
       .limit(limit)
@@ -53,9 +72,35 @@ export async function GET(request: NextRequest) {
 
     const total = await Story.countDocuments(filter);
 
+    // Stories'i formatla ve channel bilgisini düzgün şekilde ekle
+    interface PopulatedChannel {
+      _id: string;
+      name: string;
+      color: string;
+      icon: string;
+    }
+    
+    const formattedStories = stories.map(story => {
+      // channelId populated olmuşsa obje olacak, olmamışsa ObjectId
+      const populatedChannel = story.channelId && typeof story.channelId === 'object' && 'name' in story.channelId
+        ? story.channelId as unknown as PopulatedChannel
+        : null;
+      
+      return {
+        ...story,
+        channel: populatedChannel ? {
+          _id: populatedChannel._id,
+          name: populatedChannel.name,
+          color: populatedChannel.color,
+          icon: populatedChannel.icon
+        } : null,
+        channelId: populatedChannel ? populatedChannel._id : story.channelId?.toString()
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      stories,
+      stories: formattedStories,
       pagination: {
         total,
         limit,

@@ -49,6 +49,14 @@ interface PromptScenario {
   isDefault: boolean;
 }
 
+interface Channel {
+  _id: string;
+  name: string;
+  color: string;
+  icon: string;
+  storyCount: number;
+}
+
 export function StoryForm() {
   const t = useTranslations('storyForm');
   const tCommon = useTranslations('common');
@@ -95,7 +103,9 @@ export function StoryForm() {
     // Visual Style
     visualStyleId: '',
     // Prompt Scenario
-    promptScenarioId: ''
+    promptScenarioId: '',
+    // Channel (Kanal)
+    channelId: ''
   });
 
   // UI state
@@ -108,12 +118,14 @@ export function StoryForm() {
   const [models, setModels] = useState<Model[]>([]);
   const [visualStyles, setVisualStyles] = useState<VisualStyle[]>([]);
   const [promptScenarios, setPromptScenarios] = useState<PromptScenario[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [loadingCoquiVoices, setLoadingCoquiVoices] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [loadingVisualStyles, setLoadingVisualStyles] = useState(true);
   const [loadingPromptScenarios, setLoadingPromptScenarios] = useState(true);
+  const [loadingChannels, setLoadingChannels] = useState(true);
 
   // Load default settings from Settings API
   useEffect(() => {
@@ -209,6 +221,26 @@ export function StoryForm() {
     }
 
     fetchPromptScenarios();
+  }, []);
+
+  // Load Channels
+  useEffect(() => {
+    async function fetchChannels() {
+      try {
+        const response = await fetch('/api/channels');
+        const data = await response.json();
+        
+        if (data.success && data.channels) {
+          setChannels(data.channels);
+        }
+      } catch (err) {
+        console.error('Kanallar yüklenemedi:', err);
+      } finally {
+        setLoadingChannels(false);
+      }
+    }
+
+    fetchChannels();
   }, []);
 
   // Load ElevenLabs voices
@@ -373,7 +405,9 @@ export function StoryForm() {
         ttsProvider,
         coquiTunnelUrl: ttsProvider === 'coqui' ? coquiTunnelUrl : undefined,
         visualStyleId: formData.visualStyleId || undefined,
-        promptScenarioId: formData.promptScenarioId || undefined
+        promptScenarioId: formData.promptScenarioId || undefined,
+        // Kanal
+        channelId: formData.channelId || undefined
       };
 
       // 1. Hikaye oluştur
@@ -462,6 +496,46 @@ export function StoryForm() {
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* Channel Selection */}
+      {!loadingChannels && channels.length > 0 && (
+        <div className="border rounded-lg p-4 bg-gray-50">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            📺 {t('fields.channel')}
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, channelId: '' })}
+              className={`px-3 py-2 rounded-md text-sm flex items-center gap-1 transition-colors ${
+                !formData.channelId
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              📁 {t('fields.noChannel')}
+            </button>
+            {channels.map(channel => (
+              <button
+                key={channel._id}
+                type="button"
+                onClick={() => setFormData({ ...formData, channelId: channel._id })}
+                className={`px-3 py-2 rounded-md text-sm flex items-center gap-1 transition-colors ${
+                  formData.channelId === channel._id
+                    ? 'text-white'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                }`}
+                style={formData.channelId === channel._id ? { backgroundColor: channel.color } : undefined}
+              >
+                {channel.icon} {channel.name}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {t('fields.channelHint')}
+          </p>
         </div>
       )}
 
