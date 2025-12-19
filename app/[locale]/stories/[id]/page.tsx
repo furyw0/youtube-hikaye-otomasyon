@@ -110,6 +110,8 @@ function StoryDetailContent() {
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
   const [savingYoutubeUrl, setSavingYoutubeUrl] = useState(false);
   const [showYoutubeInput, setShowYoutubeInput] = useState(false);
+  // ZIP regeneration state
+  const [regeneratingZip, setRegeneratingZip] = useState(false);
 
   useEffect(() => {
     if (storyId) {
@@ -199,6 +201,35 @@ function StoryDetailContent() {
       }
     } catch (error) {
       alert('İşlem başarısız oldu');
+    }
+  };
+
+  // ZIP'i yeniden oluştur
+  const regenerateZip = async () => {
+    if (!confirm('ZIP dosyasını yeniden oluşturmak istediğinize emin misiniz? Bu işlem birkaç dakika sürebilir.')) {
+      return;
+    }
+
+    setRegeneratingZip(true);
+    try {
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'regenerateZip' })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(`✅ ZIP başarıyla yeniden oluşturuldu!\n\nBoyut: ${(data.zipSize / 1024 / 1024).toFixed(2)} MB`);
+        fetchStory(); // Story'yi yeniden yükle
+      } else {
+        alert('Hata: ' + (data.error || 'Bilinmeyen hata'));
+      }
+    } catch (error) {
+      alert('ZIP oluşturma başarısız oldu');
+    } finally {
+      setRegeneratingZip(false);
     }
   };
 
@@ -1081,15 +1112,39 @@ function StoryDetailContent() {
               ))}
             </div>
             
-            {/* Download All */}
+            {/* Download All & Regenerate ZIP */}
             {story.status === 'completed' && (
-              <div className="mt-6 pt-6 border-t text-center">
-                <a 
-                  href={`/api/download/${story._id}`}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
-                  ⬇️ Tüm Dosyaları ZIP Olarak İndir
-                </a>
+              <div className="mt-6 pt-6 border-t">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                  <a 
+                    href={`/api/download/${story._id}`}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700"
+                  >
+                    ⬇️ Tüm Dosyaları ZIP Olarak İndir
+                  </a>
+                  
+                  <button
+                    onClick={regenerateZip}
+                    disabled={regeneratingZip}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {regeneratingZip ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        ZIP Oluşturuluyor...
+                      </>
+                    ) : (
+                      <>🔄 ZIP&apos;i Yeniden Oluştur</>
+                    )}
+                  </button>
+                </div>
+                
+                <p className="text-center text-sm text-gray-500 mt-3">
+                  💡 MP3 dosyaları bozuksa &quot;ZIP&apos;i Yeniden Oluştur&quot; butonunu kullanın
+                </p>
               </div>
             )}
           </div>

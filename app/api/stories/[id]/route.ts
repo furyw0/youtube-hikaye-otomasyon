@@ -11,7 +11,8 @@ import Story from '@/models/Story';
 import Scene from '@/models/Scene';
 import logger from '@/lib/logger';
 import { auth } from '@/auth';
-import { deleteStoryFiles } from '@/services/blob.service';
+import { deleteStoryFiles, uploadZip } from '@/services/blob.service';
+import { createZipArchive } from '@/services/zip.service';
 import { z } from 'zod';
 
 export async function GET(
@@ -84,9 +85,9 @@ export async function GET(
   }
 }
 
-// PATCH - Hikaye güncelleme (status değişikliği, YouTube URL ekleme vb.)
+// PATCH - Hikaye güncelleme (status değişikliği, YouTube URL ekleme, ZIP yeniden oluşturma vb.)
 const patchSchema = z.object({
-  action: z.enum(['complete', 'retry', 'setYoutubeUrl', 'removeYoutubeUrl']),
+  action: z.enum(['complete', 'retry', 'setYoutubeUrl', 'removeYoutubeUrl', 'regenerateZip']),
   youtubeUrl: z.string().url().optional(),
 });
 
@@ -203,6 +204,72 @@ export async function PATCH(
         success: true,
         message: 'YouTube linki kaldırıldı'
       });
+    }
+
+    if (validated.data.action === 'regenerateZip') {
+      // ZIP'i yeniden oluştur
+      logger.info('ZIP yeniden oluşturma başlatılıyor', { storyId, userId });
+
+      // Sahneleri getir
+      const scenes = await Scene.find({ storyId }).sort({ sceneNumber: 1 }).lean();
+      
+      if (scenes.length === 0) {
+        return NextResponse.json({
+          success: false,
+          error: 'Hikayede sahne bulunamadı'
+        }, { status: 400 });
+      }
+
+      // Story'yi lean() olmadan getir (tam obje için)
+      const storyData = await Story.findById(storyId).lean();
+      if (!storyData) {
+        return NextResponse.json({
+          success: false,
+          error: 'Hikaye bulunamadı'
+        }, { status: 404 });
+      }
+
+      try {
+        // ZIP oluştur
+        const zipBuffer = await createZipArchive({
+          ...storyData,
+          scenes: scenes
+        } as any);
+
+        // Blob'a yükle
+        const uploaded = await uploadZip(storyId, zipBuffer, 'story-package');
+
+        // Story'yi güncelle
+        await Story.findByIdAndUpdate(storyId, {
+          'blobUrls.zipFile': uploaded.url
+        });
+
+        logger.info('ZIP yeniden oluşturuldu', {
+          storyId,
+          userId,
+          zipSize: uploaded.size,
+          zipUrl: uploaded.url
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: 'ZIP dosyası yeniden oluşturuldu',
+          zipUrl: uploaded.url,
+          zipSize: uploaded.size
+        });
+
+      } catch (zipError) {
+        logger.error('ZIP yeniden oluşturma hatası', {
+          storyId,
+          error: zipError instanceof Error ? zipError.message : 'Bilinmeyen hata'
+        });
+
+        return NextResponse.json({
+          success: false,
+          error: 'ZIP oluşturulurken hata oluştu',
+          details: zipError instanceof Error ? zipError.message : 'Bilinmeyen hata'
+        }, { status: 500 });
+      }
     }
 
     return NextResponse.json({
