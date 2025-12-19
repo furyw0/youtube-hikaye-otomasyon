@@ -9,7 +9,8 @@ import { generateAudio, GeneratedAudio } from './elevenlabs.service';
 import { 
   generateSpeechWithCoqui, 
   GeneratedCoquiAudio,
-  CoquiLanguageCode 
+  CoquiLanguageCode,
+  getSpeedFromSettings
 } from './coqui.service';
 
 export interface TTSResult {
@@ -124,18 +125,23 @@ async function generateWithCoqui(
   
   const coquiLanguage = settings.coquiLanguage || mapLanguageToCoqui(language);
   
+  // Settings'ten dil bazlı hızı al
+  const speed = getSpeedFromSettings(coquiLanguage, settings.languageSpeeds);
+  
   logger.info('Coqui TTS ile ses üretiliyor', { 
     textLength: text.length,
     tunnelUrl: settings.coquiTunnelUrl,
     language: coquiLanguage,
-    voiceId: settings.coquiSelectedVoiceId
+    voiceId: settings.coquiSelectedVoiceId,
+    speed
   });
   
   const result: GeneratedCoquiAudio = await generateSpeechWithCoqui({
     text,
     tunnelUrl: settings.coquiTunnelUrl,
     language: coquiLanguage as CoquiLanguageCode,
-    voiceId: settings.coquiSelectedVoiceId
+    voiceId: settings.coquiSelectedVoiceId,
+    speed
   });
   
   return {

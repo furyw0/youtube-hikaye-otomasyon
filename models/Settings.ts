@@ -3,6 +3,13 @@ import mongoose, { Schema, Model, Types } from 'mongoose';
 export type TTSProvider = 'elevenlabs' | 'coqui';
 export type LLMProvider = 'openai' | 'claude';
 
+// Dil bazlı konuşma hızı ayarı
+export interface LanguageSpeedSetting {
+  code: string;      // 'fr', 'de', 'en', vb.
+  name: string;      // 'Fransızca', 'Almanca', vb.
+  speed: number;     // 0.5-2.0 arası
+}
+
 export interface ISettings {
   _id: Types.ObjectId;
   userId: Types.ObjectId; // Kullanıcıya özel ayarlar
@@ -23,6 +30,9 @@ export interface ISettings {
   coquiTunnelUrl?: string;
   coquiLanguage?: string;        // 'tr', 'en', 'de', vb.
   coquiSelectedVoiceId?: string; // Seçili referans ses ID'si
+  
+  // Dil bazlı konuşma hızları
+  languageSpeeds?: LanguageSpeedSetting[];
   
   // Varsayılan ayarlar
   defaultOpenaiModel: string;
@@ -95,6 +105,13 @@ const SettingsSchema = new Schema<ISettings>(
     coquiSelectedVoiceId: {
       type: String
     },
+    
+    // Dil bazlı konuşma hızları
+    languageSpeeds: [{
+      code: { type: String, required: true },
+      name: { type: String, required: true },
+      speed: { type: Number, required: true, min: 0.5, max: 2.0, default: 1.0 }
+    }],
     
     // Varsayılan ayarlar
     defaultOpenaiModel: {

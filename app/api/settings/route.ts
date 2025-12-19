@@ -44,6 +44,8 @@ export async function GET() {
       coquiTunnelUrl: settings.coquiTunnelUrl || '',
       coquiLanguage: settings.coquiLanguage || 'tr',
       coquiSelectedVoiceId: settings.coquiSelectedVoiceId || '',
+      // Dil konuşma hızları
+      languageSpeeds: settings.languageSpeeds || [],
       // Varsayılan ayarlar
       defaultOpenaiModel: settings.defaultOpenaiModel,
       defaultClaudeModel: settings.defaultClaudeModel || 'claude-sonnet-4-20250514',
@@ -139,6 +141,11 @@ export async function PUT(request: NextRequest) {
     }
     if (body.coquiSelectedVoiceId !== undefined) {
       updateFields.coquiSelectedVoiceId = body.coquiSelectedVoiceId || undefined;
+    }
+    
+    // Dil konuşma hızları
+    if (body.languageSpeeds !== undefined) {
+      updateFields.languageSpeeds = body.languageSpeeds;
     }
 
     // API Keys (boş string gönderilirse silme)

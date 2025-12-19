@@ -54,6 +54,7 @@ export interface CoquiTTSOptions {
   tunnelUrl: string;
   language: CoquiLanguageCode;
   voiceId: string;
+  speed?: number; // Konuşma hızı: 0.5-2.0 arası, varsayılan 1.0 (bazı diller için 0.85-0.9 önerilir)
 }
 
 export interface GeneratedCoquiAudio {
@@ -532,6 +533,58 @@ function splitTextIntoChunks(text: string, options: Partial<ChunkOptions> = {}):
 }
 
 /**
+ * Dile göre varsayılan konuşma hızı
+ * Bazı diller doğal olarak daha hızlı konuşulur, yavaşlatmak gerekiyor
+ */
+const LANGUAGE_SPEED_DEFAULTS: Record<string, number> = {
+  'fr': 0.85,    // Fransızca - doğal olarak hızlı
+  'es': 0.88,    // İspanyolca - hızlı  
+  'it': 0.88,    // İtalyanca - hızlı
+  'pt': 0.88,    // Portekizce - hızlı
+  'en': 0.92,    // İngilizce - orta-hızlı
+  'de': 0.95,    // Almanca - normal
+  'tr': 0.95,    // Türkçe - normal
+  'ru': 0.92,    // Rusça - orta
+  'nl': 0.92,    // Hollandaca - orta
+  'pl': 0.92,    // Lehçe - orta
+  'ar': 0.90,    // Arapça - biraz yavaş
+  'zh-cn': 0.90, // Çince - biraz yavaş
+  'ja': 0.88,    // Japonca - hızlı
+  'ko': 0.90,    // Korece - biraz yavaş
+  'hi': 0.90,    // Hintçe - biraz yavaş
+  'cs': 0.92,    // Çekçe - orta
+  'hu': 0.92,    // Macarca - orta
+};
+
+/**
+ * Dile göre varsayılan speed değerini al
+ */
+export function getDefaultSpeedForLanguage(language: string): number {
+  return LANGUAGE_SPEED_DEFAULTS[language.toLowerCase()] || 0.92;
+}
+
+/**
+ * Settings'ten dil hızını al (kullanıcı ayarları öncelikli)
+ */
+export function getSpeedFromSettings(
+  language: string, 
+  languageSpeeds?: Array<{ code: string; speed: number }>
+): number {
+  // Kullanıcı ayarlarında varsa onu kullan
+  if (languageSpeeds && languageSpeeds.length > 0) {
+    const userSetting = languageSpeeds.find(
+      ls => ls.code.toLowerCase() === language.toLowerCase()
+    );
+    if (userSetting) {
+      return userSetting.speed;
+    }
+  }
+  
+  // Yoksa varsayılan değeri döndür
+  return getDefaultSpeedForLanguage(language);
+}
+
+/**
  * Tek bir metin parçası için ses üret
  */
 async function generateSingleChunk(
@@ -539,6 +592,7 @@ async function generateSingleChunk(
   text: string,
   language: string,
   voiceId: string,
+  speed: number = 1.0,
   timeoutMs: number = 120000
 ): Promise<Buffer> {
   const controller = new AbortController();
@@ -555,7 +609,8 @@ async function generateSingleChunk(
       body: JSON.stringify({
         text,
         language,
-        voice_id: voiceId
+        voice_id: voiceId,
+        speed // Konuşma hızı (XTTS destekliyorsa)
       })
     });
 
@@ -672,8 +727,11 @@ function concatenateWavBuffers(buffers: Buffer[], silenceMs: number = 50): Buffe
  * Coqui TTS ile ses üret (gelişmiş chunking destekli)
  */
 export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise<GeneratedCoquiAudio> {
-  const { text, tunnelUrl, language, voiceId } = options;
+  const { text, tunnelUrl, language, voiceId, speed } = options;
   const url = normalizeUrl(tunnelUrl);
+  
+  // Dile göre varsayılan hız veya kullanıcının belirttiği hız
+  const effectiveSpeed = speed ?? getDefaultSpeedForLanguage(language);
   
   // Metin çok uzunsa akıllı chunk'lara ayır
   const chunks = splitTextIntoChunks(text, DEFAULT_CHUNK_OPTIONS);
@@ -682,7 +740,8 @@ export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise
     textLength: text.length,
     chunks: chunks.length,
     language,
-    voiceId
+    voiceId,
+    speed: effectiveSpeed
   });
   
   try {
@@ -697,7 +756,7 @@ export async function generateSpeechWithCoqui(options: CoquiTTSOptions): Promise
       });
       
       // Her chunk için 120 saniye timeout
-      const buffer = await generateSingleChunk(url, chunk, language, voiceId, 120000);
+      const buffer = await generateSingleChunk(url, chunk, language, voiceId, effectiveSpeed, 120000);
       audioBuffers.push(buffer);
       
       logger.debug(`Chunk ${i + 1}/${chunks.length} tamamlandı`, {

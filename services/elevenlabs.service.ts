@@ -73,6 +73,7 @@ export interface GenerateAudioOptions {
   similarityBoost?: number;
   style?: number;
   useSpeakerBoost?: boolean;
+  speed?: number; // 0.7-1.2 arası, varsayılan 1.0
 }
 
 export interface GeneratedAudio {
@@ -177,14 +178,16 @@ export async function generateAudio(options: GenerateAudioOptions): Promise<Gene
     stability = 0.5,
     similarityBoost = 0.75,
     style = 0,
-    useSpeakerBoost = true
+    useSpeakerBoost = true,
+    speed = 0.9 // Varsayılan: biraz yavaş (daha anlaşılır)
   } = options;
 
   logger.info('Ses üretimi başlatılıyor', {
     voiceId,
     modelId,
     textLength: text.length,
-    wordCount: text.trim().split(/\s+/).length
+    wordCount: text.trim().split(/\s+/).length,
+    speed
   });
 
   try {
@@ -200,7 +203,8 @@ export async function generateAudio(options: GenerateAudioOptions): Promise<Gene
             stability,
             similarityBoost: similarityBoost,
             style,
-            useSpeakerBoost: useSpeakerBoost
+            useSpeakerBoost: useSpeakerBoost,
+            speed // Konuşma hızı (0.7-1.2)
           }
         });
       },
