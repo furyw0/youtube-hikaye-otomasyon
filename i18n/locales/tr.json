@@ -364,6 +364,18 @@
     "title": "Hikaye Detayı",
     "back": "Geri",
     "downloadAll": "Tümünü İndir",
+    "youtube": {
+      "title": "YouTube Yayın Durumu",
+      "published": "Yayınlandı",
+      "notPublished": "Bu hikaye henüz YouTube'a yüklenmedi",
+      "addLink": "YouTube Linki Ekle",
+      "remove": "Kaldır",
+      "save": "Kaydet",
+      "cancel": "İptal",
+      "placeholder": "https://youtube.com/watch?v=... veya https://youtu.be/...",
+      "addedAt": "Eklendi",
+      "watchOnYoutube": "YouTube'da İzle"
+    },
     "tabs": {
       "overview": "Genel Bakış",
       "scenes": "Sahneler",

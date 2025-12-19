@@ -31,6 +31,9 @@ interface Story {
   originalContentLength?: number;
   translatedContentLength?: number;
   adaptedContentLength?: number;
+  // YouTube
+  youtubeUrl?: string;
+  youtubePublishedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -214,7 +217,18 @@ function StoriesContent() {
                         {story.originalTitle}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 ml-2">
+                    <div className="flex items-center gap-1 ml-2 flex-wrap">
+                      {story.youtubeUrl && (
+                        <a 
+                          href={story.youtubeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 hover:bg-red-200 flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          ▶️ YouTube
+                        </a>
+                      )}
                       {story.translationOnly && (
                         <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">
                           🌐 Çeviri

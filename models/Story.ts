@@ -242,6 +242,16 @@ const StorySchema = new Schema<IStory>(
     blobUrls: {
       zipFile: String,
       thumbnail: String  // YouTube kapak görseli
+    },
+    
+    // YouTube Yayın Bilgisi
+    youtubeUrl: {
+      type: String,
+      required: false
+    },
+    youtubePublishedAt: {
+      type: Date,
+      required: false
     }
   },
   {

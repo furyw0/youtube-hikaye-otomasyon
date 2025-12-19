@@ -76,6 +76,9 @@ interface Story {
     zipFile?: string;
     thumbnail?: string;
   };
+  // YouTube Yayın
+  youtubeUrl?: string;
+  youtubePublishedAt?: string;
   scenes: Scene[];
   createdAt: string;
   updatedAt: string;
@@ -103,6 +106,10 @@ function StoryDetailContent() {
   const [showOriginal, setShowOriginal] = useState(true);
   const [showTurkish, setShowTurkish] = useState(true);
   const [markingComplete, setMarkingComplete] = useState(false);
+  // YouTube URL state
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
+  const [savingYoutubeUrl, setSavingYoutubeUrl] = useState(false);
+  const [showYoutubeInput, setShowYoutubeInput] = useState(false);
 
   useEffect(() => {
     if (storyId) {
@@ -136,6 +143,62 @@ function StoryDetailContent() {
       alert('İşlem başarısız oldu');
     } finally {
       setMarkingComplete(false);
+    }
+  };
+
+  // YouTube URL kaydet
+  const saveYoutubeUrl = async () => {
+    if (!youtubeUrlInput.trim()) {
+      alert('YouTube URL girmelisiniz');
+      return;
+    }
+
+    setSavingYoutubeUrl(true);
+    try {
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'setYoutubeUrl', youtubeUrl: youtubeUrlInput.trim() })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        fetchStory();
+        setShowYoutubeInput(false);
+        setYoutubeUrlInput('');
+      } else {
+        alert('Hata: ' + (data.error || 'Bilinmeyen hata'));
+      }
+    } catch (error) {
+      alert('İşlem başarısız oldu');
+    } finally {
+      setSavingYoutubeUrl(false);
+    }
+  };
+
+  // YouTube URL kaldır
+  const removeYoutubeUrl = async () => {
+    if (!confirm('YouTube linkini kaldırmak istediğinize emin misiniz?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'removeYoutubeUrl' })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        fetchStory();
+      } else {
+        alert('Hata: ' + (data.error || 'Bilinmeyen hata'));
+      }
+    } catch (error) {
+      alert('İşlem başarısız oldu');
     }
   };
 
@@ -273,7 +336,18 @@ function StoryDetailContent() {
                 <p className="text-sm text-gray-500">{story.originalTitle}</p>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* YouTube Badge */}
+              {story.youtubeUrl && (
+                <a 
+                  href={story.youtubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 text-sm rounded-full bg-red-100 text-red-700 hover:bg-red-200 flex items-center gap-1"
+                >
+                  ▶️ YouTube&apos;da İzle
+                </a>
+              )}
               {story.translationOnly && (
                 <span className="px-3 py-1 text-sm rounded-full bg-purple-100 text-purple-800">
                   🌐 Sadece Çeviri
@@ -342,6 +416,92 @@ function StoryDetailContent() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* YouTube Yayın Durumu */}
+            <div className={`rounded-lg shadow-sm p-6 ${story.youtubeUrl ? 'bg-red-50 border border-red-200' : 'bg-white'}`}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  📺 YouTube Yayın Durumu
+                  {story.youtubeUrl && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">
+                      Yayınlandı
+                    </span>
+                  )}
+                </h3>
+              </div>
+              
+              {story.youtubeUrl ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-red-200">
+                    <span className="text-2xl">▶️</span>
+                    <div className="flex-1 min-w-0">
+                      <a 
+                        href={story.youtubeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-red-600 hover:text-red-800 font-medium truncate block"
+                      >
+                        {story.youtubeUrl}
+                      </a>
+                      {story.youtubePublishedAt && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Eklendi: {new Date(story.youtubePublishedAt).toLocaleDateString('tr-TR', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={removeYoutubeUrl}
+                      className="px-3 py-1.5 text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-md"
+                    >
+                      Kaldır
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {showYoutubeInput ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={youtubeUrlInput}
+                        onChange={(e) => setYoutubeUrlInput(e.target.value)}
+                        placeholder="https://youtube.com/watch?v=... veya https://youtu.be/..."
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-gray-900"
+                      />
+                      <button
+                        onClick={saveYoutubeUrl}
+                        disabled={savingYoutubeUrl}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {savingYoutubeUrl ? '⏳' : '💾 Kaydet'}
+                      </button>
+                      <button
+                        onClick={() => { setShowYoutubeInput(false); setYoutubeUrlInput(''); }}
+                        className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
+                      >
+                        İptal
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-gray-500 mb-3">Bu hikaye henüz YouTube&apos;a yüklenmedi</p>
+                      <button
+                        onClick={() => setShowYoutubeInput(true)}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 mx-auto"
+                      >
+                        ▶️ YouTube Linki Ekle
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Genel Bilgiler */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Hikaye Bilgileri</h3>

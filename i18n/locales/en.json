@@ -364,6 +364,18 @@
     "title": "Story Detail",
     "back": "Back",
     "downloadAll": "Download All",
+    "youtube": {
+      "title": "YouTube Publishing Status",
+      "published": "Published",
+      "notPublished": "This story has not been uploaded to YouTube yet",
+      "addLink": "Add YouTube Link",
+      "remove": "Remove",
+      "save": "Save",
+      "cancel": "Cancel",
+      "placeholder": "https://youtube.com/watch?v=... or https://youtu.be/...",
+      "addedAt": "Added",
+      "watchOnYoutube": "Watch on YouTube"
+    },
     "tabs": {
       "overview": "Overview",
       "scenes": "Scenes",

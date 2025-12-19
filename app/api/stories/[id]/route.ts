@@ -84,9 +84,10 @@ export async function GET(
   }
 }
 
-// PATCH - Hikaye status güncelleme (manuel tamamlama için)
+// PATCH - Hikaye güncelleme (status değişikliği, YouTube URL ekleme vb.)
 const patchSchema = z.object({
-  action: z.enum(['complete', 'retry']),
+  action: z.enum(['complete', 'retry', 'setYoutubeUrl', 'removeYoutubeUrl']),
+  youtubeUrl: z.string().url().optional(),
 });
 
 export async function PATCH(
@@ -156,6 +157,51 @@ export async function PATCH(
       return NextResponse.json({
         success: true,
         message: 'Hikaye yeniden işleme alınacak'
+      });
+    }
+
+    if (validated.data.action === 'setYoutubeUrl') {
+      // YouTube URL ekle
+      if (!validated.data.youtubeUrl) {
+        return NextResponse.json({
+          success: false,
+          error: 'YouTube URL gerekli'
+        }, { status: 400 });
+      }
+
+      // YouTube URL formatını doğrula
+      const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)/;
+      if (!youtubeRegex.test(validated.data.youtubeUrl)) {
+        return NextResponse.json({
+          success: false,
+          error: 'Geçersiz YouTube URL formatı'
+        }, { status: 400 });
+      }
+
+      await Story.findByIdAndUpdate(storyId, {
+        youtubeUrl: validated.data.youtubeUrl,
+        youtubePublishedAt: new Date()
+      });
+
+      logger.info('YouTube URL eklendi', { storyId, userId, youtubeUrl: validated.data.youtubeUrl });
+
+      return NextResponse.json({
+        success: true,
+        message: 'YouTube linki eklendi'
+      });
+    }
+
+    if (validated.data.action === 'removeYoutubeUrl') {
+      // YouTube URL kaldır
+      await Story.findByIdAndUpdate(storyId, {
+        $unset: { youtubeUrl: 1, youtubePublishedAt: 1 }
+      });
+
+      logger.info('YouTube URL kaldırıldı', { storyId, userId });
+
+      return NextResponse.json({
+        success: true,
+        message: 'YouTube linki kaldırıldı'
       });
     }
 

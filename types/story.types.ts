@@ -99,6 +99,10 @@ export interface IStory {
     thumbnail?: string;  // YouTube kapak görseli
   };
   
+  // YouTube Yayın Bilgisi
+  youtubeUrl?: string;  // YouTube video linki
+  youtubePublishedAt?: Date;  // YouTube'a yüklenme tarihi
+  
   createdAt: Date;
   updatedAt: Date;
 }
