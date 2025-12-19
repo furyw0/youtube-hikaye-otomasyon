@@ -244,18 +244,30 @@ export async function PATCH(
           'blobUrls.zipFile': uploaded.url
         });
 
+        // Sahne bilgilerini topla
+        const scenesWithAudio = scenes.filter(s => s.blobUrls?.audio);
+        const scenesWithImages = scenes.filter(s => s.blobUrls?.image);
+
         logger.info('ZIP yeniden oluşturuldu', {
           storyId,
           userId,
           zipSize: uploaded.size,
-          zipUrl: uploaded.url
+          zipUrl: uploaded.url,
+          totalScenes: scenes.length,
+          scenesWithAudio: scenesWithAudio.length,
+          scenesWithImages: scenesWithImages.length
         });
 
         return NextResponse.json({
           success: true,
           message: 'ZIP dosyası yeniden oluşturuldu',
           zipUrl: uploaded.url,
-          zipSize: uploaded.size
+          zipSize: uploaded.size,
+          stats: {
+            totalScenes: scenes.length,
+            scenesWithAudio: scenesWithAudio.length,
+            scenesWithImages: scenesWithImages.length
+          }
         });
 
       } catch (zipError) {

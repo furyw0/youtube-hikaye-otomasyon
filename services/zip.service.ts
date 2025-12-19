@@ -17,51 +17,93 @@ interface DownloadedFile {
 
 /**
  * URL'den dosya indir (arşive eklemeden)
+ * Retry mekanizması ve boyut doğrulaması ile
  */
 async function downloadFile(url: string, filename: string, type: 'image' | 'audio'): Promise<DownloadedFile | null> {
-  try {
-    logger.debug('Dosya indiriliyor', { url, filename, type });
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-    const response = await fetch(url, {
-      headers: {
-        'Accept': type === 'audio' ? 'audio/mpeg, audio/*' : 'image/*',
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logger.debug('Dosya indiriliyor', { url, filename, type, attempt });
+
+      // AbortController ile timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 saniye timeout
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Accept': type === 'audio' ? 'audio/mpeg, audio/*' : 'image/*',
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      // Content-Length kontrolü
+      const contentLength = response.headers.get('content-length');
+      const expectedSize = contentLength ? parseInt(contentLength) : 0;
+      
+      // Dosyayı tamamen oku
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Boyut doğrulaması
+      if (expectedSize > 0 && buffer.length !== expectedSize) {
+        throw new Error(`Boyut uyuşmazlığı: beklenen ${expectedSize}, alınan ${buffer.length}`);
+      }
+
+      logger.info('Dosya indirildi', {
+        filename,
+        type,
+        size: buffer.length,
+        expectedSize: expectedSize || 'unknown',
+        attempt
+      });
+
+      // Boyut kontrolü - MP3 için minimum 1KB olmalı
+      if (type === 'audio' && buffer.length < 1024) {
+        logger.warn('MP3 dosyası çok küçük, atlanıyor', { filename, size: buffer.length });
+        return null;
+      }
+
+      // Görsel için minimum 100 byte
+      if (type === 'image' && buffer.length < 100) {
+        logger.warn('Görsel dosyası çok küçük, atlanıyor', { filename, size: buffer.length });
+        return null;
+      }
+
+      return { filename, buffer, type };
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Bilinmeyen hata');
+      
+      logger.warn(`Dosya indirme denemesi ${attempt}/${maxRetries} başarısız`, {
+        url,
+        filename,
+        type,
+        error: lastError.message
+      });
+
+      // Son deneme değilse bekle
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
     }
-
-    // Content-Length kontrolü
-    const contentLength = response.headers.get('content-length');
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    logger.debug('Dosya indirildi', {
-      filename,
-      type,
-      size: buffer.length,
-      expectedSize: contentLength ? parseInt(contentLength) : 'unknown'
-    });
-
-    // Boyut kontrolü - MP3 için minimum 1KB olmalı
-    if (type === 'audio' && buffer.length < 1024) {
-      logger.warn('MP3 dosyası çok küçük, atlanıyor', { filename, size: buffer.length });
-      return null;
-    }
-
-    return { filename, buffer, type };
-
-  } catch (error) {
-    logger.error('Dosya indirme hatası', {
-      url,
-      filename,
-      type,
-      error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-    });
-    return null;
   }
+
+  logger.error('Dosya indirme tamamen başarısız', {
+    url,
+    filename,
+    type,
+    error: lastError?.message
+  });
+  
+  return null;
 }
 
 /**
@@ -108,10 +150,22 @@ export async function createZipArchive(
     .filter(r => r.file !== null)
     .map(r => r.file as DownloadedFile);
 
-  logger.info('Dosyalar indirildi', {
+  // Dosya boyutları özeti
+  const audioFiles = downloadedFiles.filter(f => f.type === 'audio');
+  const imageFiles = downloadedFiles.filter(f => f.type === 'image');
+  const totalAudioSize = audioFiles.reduce((sum, f) => sum + f.buffer.length, 0);
+  const totalImageSize = imageFiles.reduce((sum, f) => sum + f.buffer.length, 0);
+
+  logger.info('Dosyalar indirildi - ÖZET', {
     total: downloadTasks.length,
     successful: downloadedFiles.length,
-    failed: downloadTasks.length - downloadedFiles.length
+    failed: downloadTasks.length - downloadedFiles.length,
+    audioCount: audioFiles.length,
+    imageCount: imageFiles.length,
+    totalAudioSizeMB: (totalAudioSize / 1024 / 1024).toFixed(2),
+    totalImageSizeMB: (totalImageSize / 1024 / 1024).toFixed(2),
+    avgAudioSizeKB: audioFiles.length > 0 ? Math.round(totalAudioSize / audioFiles.length / 1024) : 0,
+    avgImageSizeKB: imageFiles.length > 0 ? Math.round(totalImageSize / imageFiles.length / 1024) : 0
   });
 
   // --- 2. ARŞIV OLUŞTUR ---
@@ -255,12 +309,24 @@ Video editörünüzde kullanabilirsiniz.
 
     // --- 5. İNDİRİLEN DOSYALARI SIRALI OLARAK EKLE ---
     // ÖNEMLİ: Sıralı ekleme yaparak stream karışmasını önle
+    // MP3 dosyaları için store mode kullan (sıkıştırma yok - zaten sıkıştırılmış)
     for (const file of downloadedFiles) {
-      archive.append(file.buffer, { name: file.filename });
+      if (file.type === 'audio') {
+        // MP3 için sıkıştırma yapma - store mode
+        archive.append(file.buffer, { 
+          name: file.filename,
+          store: true  // Sıkıştırma yok, olduğu gibi sakla
+        });
+      } else {
+        // Görseller için normal sıkıştırma
+        archive.append(file.buffer, { name: file.filename });
+      }
+      
       logger.debug("Dosya arşive eklendi", {
         filename: file.filename,
         size: file.buffer.length,
-        type: file.type
+        type: file.type,
+        store: file.type === 'audio'
       });
     }
 

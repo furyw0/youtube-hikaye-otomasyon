@@ -221,7 +221,8 @@ function StoryDetailContent() {
       const data = await response.json();
       
       if (data.success) {
-        alert(`✅ ZIP başarıyla yeniden oluşturuldu!\n\nBoyut: ${(data.zipSize / 1024 / 1024).toFixed(2)} MB`);
+        const stats = data.stats || {};
+        alert(`✅ ZIP başarıyla yeniden oluşturuldu!\n\nBoyut: ${(data.zipSize / 1024 / 1024).toFixed(2)} MB\nSahneler: ${stats.totalScenes || 'N/A'}\nSes dosyaları: ${stats.scenesWithAudio || 'N/A'}\nGörseller: ${stats.scenesWithImages || 'N/A'}`);
         fetchStory(); // Story'yi yeniden yükle
       } else {
         alert('Hata: ' + (data.error || 'Bilinmeyen hata'));
