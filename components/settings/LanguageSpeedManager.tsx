@@ -76,7 +76,7 @@ export default function LanguageSpeedManager({
 
   const handlePreview = async (lang: LanguageSpeed) => {
     if (!tunnelUrl || !voiceId) {
-      setPreviewError('Önizleme için Coqui TTS ayarlarını yapılandırın');
+      setPreviewError('Önizleme için Coqui TTS ayarlarını yapılandırın (Tunnel URL ve Ses seçimi gerekli)');
       return;
     }
 
@@ -90,7 +90,7 @@ export default function LanguageSpeedManager({
     setPreviewError(null);
 
     try {
-      const response = await fetch('/api/coqui/test', {
+      const response = await fetch('/api/coqui/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,7 +101,8 @@ export default function LanguageSpeedManager({
       });
 
       if (!response.ok) {
-        throw new Error('Önizleme oluşturulamadı');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Önizleme oluşturulamadı');
       }
 
       const blob = await response.blob();

@@ -10,6 +10,13 @@ import { useTranslations } from 'next-intl';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { VisualStyleManager } from '@/components/settings/VisualStyleManager';
 import { PromptScenarioManager } from '@/components/settings/PromptScenarioManager';
+import LanguageSpeedManager from '@/components/settings/LanguageSpeedManager';
+
+interface LanguageSpeed {
+  code: string;
+  name: string;
+  speed: number;
+}
 
 interface Settings {
   llmProvider: 'openai' | 'claude';
@@ -34,6 +41,7 @@ interface Settings {
   claudeApiKeyMasked?: string;
   elevenlabsApiKeyMasked?: string;
   imagefxCookieMasked?: string;
+  languageSpeeds?: LanguageSpeed[];
 }
 
 interface ElevenLabsVoice {
@@ -101,7 +109,8 @@ function SettingsContent() {
     defaultImagefxModel: 'IMAGEN_4',
     defaultImagefxAspectRatio: 'LANDSCAPE',
     maxDailyStories: 10,
-    maxConcurrentProcessing: 2
+    maxConcurrentProcessing: 2,
+    languageSpeeds: [] as LanguageSpeed[]
   });
 
   // Test states
@@ -195,7 +204,8 @@ function SettingsContent() {
           defaultImagefxModel: data.settings.defaultImagefxModel || 'IMAGEN_4',
           defaultImagefxAspectRatio: data.settings.defaultImagefxAspectRatio || 'LANDSCAPE',
           maxDailyStories: data.settings.maxDailyStories || 10,
-          maxConcurrentProcessing: data.settings.maxConcurrentProcessing || 2
+          maxConcurrentProcessing: data.settings.maxConcurrentProcessing || 2,
+          languageSpeeds: data.settings.languageSpeeds || []
         }));
       }
     } catch (error) {
@@ -559,6 +569,10 @@ function SettingsContent() {
       dataToSend.coquiLanguage = formData.coquiLanguage;
       if (formData.coquiSelectedVoiceId) {
         dataToSend.coquiSelectedVoiceId = formData.coquiSelectedVoiceId;
+      }
+      // Dil konuşma hızları
+      if (formData.languageSpeeds && formData.languageSpeeds.length > 0) {
+        (dataToSend as Record<string, unknown>).languageSpeeds = formData.languageSpeeds;
       }
       
       // LLM Provider
@@ -1030,6 +1044,16 @@ function SettingsContent() {
                     </div>
                   </div>
                 )}
+
+                {/* Dil Konuşma Hızları */}
+                <div className="border-t pt-4 mt-4">
+                  <LanguageSpeedManager
+                    languageSpeeds={formData.languageSpeeds}
+                    onChange={(speeds) => setFormData({ ...formData, languageSpeeds: speeds })}
+                    tunnelUrl={formData.coquiTunnelUrl}
+                    voiceId={formData.coquiSelectedVoiceId}
+                  />
+                </div>
               </div>
             )}
 
