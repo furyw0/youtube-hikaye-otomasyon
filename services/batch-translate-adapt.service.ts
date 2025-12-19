@@ -179,12 +179,18 @@ async function adaptBatch(
   const systemPrompt = `Sen kültürel adaptasyon uzmanısın. Çoklu metin parçalarını hedef ülkeye adapte ediyorsun.
 
 KURALLAR:
-1. Kişi isimlerini ${targetCountry}'de yaygın isimlerle değiştir
-2. Yer isimlerini ${targetCountry}'deki yerlerle değiştir
+1. SIRADAN kişi isimlerini ${targetCountry}'de yaygın isimlerle değiştir
+2. SIRADAN yer isimlerini ${targetCountry}'deki yerlerle değiştir
 3. Para birimi, bayram, yemek gibi kültürel unsurları yerelleştir
 4. Karakter sayısı korunmalı (±%5 tolerans)
 5. ASLA kısaltma veya atlama yapma
 6. Yanıtı JSON formatında ver
+
+🚫 DEĞİŞTİRME - AYNEN BIRAK:
+- Ünlü kişiler: Elon Musk, Bill Gates, Steve Jobs, Einstein, vb.
+- Büyük kurumlar: NASA, FBI, CIA, Google, Apple, Microsoft, Tesla, SpaceX, vb.
+- Dünyaca ünlü yerler: Eyfel Kulesi, Özgürlük Heykeli, vb.
+- Marka isimleri: iPhone, Tesla, Ferrari, vb.
 
 🎙️ SESLENDİRME UYGUNLUĞU:
 - Kısaltmaları aç: "Dr." → "Doktor", "vb." → "ve benzeri"
@@ -327,7 +333,7 @@ export async function batchAdaptScenes(options: BatchAdaptOptions): Promise<Batc
     () => createCompletion({
       provider,
       model,
-      systemPrompt: `Başlığı ${targetCountry} kültürüne adapte et. Kişi ve yer isimlerini ${targetCountry}'de yaygın olanlarla değiştir. Sadece adapte edilmiş başlığı döndür.`,
+      systemPrompt: `Başlığı ${targetCountry} kültürüne adapte et. SIRADAN kişi ve yer isimlerini ${targetCountry}'de yaygın olanlarla değiştir. ÜNLÜ KİŞİLER (Elon Musk, Bill Gates vb.) ve BÜYÜK KURUMLAR (NASA, Google vb.) DEĞİŞTİRİLMEMELİ. Sadece adapte edilmiş başlığı döndür.`,
       messages: [{ role: 'user', content: title }],
       temperature: 0.4
     }),
@@ -413,7 +419,7 @@ export async function batchTranslateAndAdaptScenes(
   // Başlık işlemi
   const titleSystemPrompt = translationOnly
     ? `Başlığı ${sourceLang} dilinden ${targetLang} diline çevir. Sadece çevrilmiş başlığı döndür.`
-    : `Başlığı ${sourceLang} dilinden ${targetLang} diline çevir ve ${targetCountry} kültürüne adapte et. Kişi/yer isimlerini yerelleştir. Sadece sonucu döndür.`;
+    : `Başlığı ${sourceLang} dilinden ${targetLang} diline çevir ve ${targetCountry} kültürüne adapte et. SIRADAN kişi/yer isimlerini yerelleştir. ÜNLÜ KİŞİLER (Elon Musk, Bill Gates vb.) ve BÜYÜK KURUMLAR (NASA, Google vb.) DEĞİŞTİRME. Sadece sonucu döndür.`;
 
   const titleResponse = await retryOpenAI(
     () => createCompletion({
@@ -452,11 +458,16 @@ JSON FORMAT:
 
 KURALLAR:
 1. Her metni BİREBİR çevir
-2. Kişi isimlerini ${targetCountry}'de yaygın isimlerle değiştir
-3. Yer isimlerini ${targetCountry}'deki yerlerle değiştir
+2. SIRADAN kişi isimlerini ${targetCountry}'de yaygın isimlerle değiştir
+3. SIRADAN yer isimlerini ${targetCountry}'deki yerlerle değiştir
 4. Kültürel unsurları (para, bayram, yemek) yerelleştir
 5. ASLA kısaltma yapma
 6. Karakter sayısı ±%5 toleransında kalmalı
+
+🚫 DEĞİŞTİRME - AYNEN BIRAK:
+- Ünlü kişiler: Elon Musk, Bill Gates, Steve Jobs, Einstein, vb.
+- Büyük kurumlar: NASA, FBI, CIA, Google, Apple, Microsoft, Tesla, vb.
+- Dünyaca ünlü yerler ve marka isimleri
 
 🎙️ SESLENDİRME İÇİN:
 - "Dr." → "Doktor", "vb." → "ve benzeri"

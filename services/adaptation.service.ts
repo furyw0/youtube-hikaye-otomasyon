@@ -62,6 +62,14 @@ const DEFAULT_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın.
 3. KÜLTÜREL UNSURLAR → Yemek, bayram, para birimi yerelleştir
 4. DİL STİLİ → {{TARGET_LANGUAGE}} dilinde doğal ifadeler kullan
 
+🚫 DEĞİŞTİRME - AYNEN BIRAK:
+- ÜNLÜ KİŞİLER: Elon Musk, Bill Gates, Steve Jobs, Jeff Bezos, Mark Zuckerberg, Albert Einstein, Leonardo da Vinci, vb.
+- DÜNYA LİDERLERİ: Başkanlar, başbakanlar ve tarihi figürler (gerçek isimler)
+- BÜYÜK KURUMLAR: NASA, FBI, CIA, WHO, UN, EU, NATO, IMF, Google, Apple, Microsoft, Tesla, SpaceX, Amazon, vb.
+- TARİHİ OLAYLAR VE YERLER: II. Dünya Savaşı, Soğuk Savaş, Berlin Duvarı, vb.
+- DÜNYACA ÜNLÜ YERLER: Eyfel Kulesi, Özgürlük Heykeli, Buckingham Sarayı, vb.
+- MARKA İSİMLERİ: iPhone, Tesla, Ferrari, Coca-Cola, vb.
+
 🎙️ SESLENDİRME UYGUNLUĞU:
 1. KISALTMALARI AÇ: "Dr." → "Doktor", "vb." → "ve benzeri"
 2. SAYILARI YAZIYLA YAZ: "3" → "üç", "1990" → "bin dokuz yüz doksan"
@@ -94,16 +102,18 @@ function fillPromptTemplate(
 /**
  * Varsayılan başlık adaptasyonu promptları
  */
-const DEFAULT_TITLE_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne TAMAMEN adapte ediyorsun.
+const DEFAULT_TITLE_ADAPTATION_SYSTEM_PROMPT = `Sen kültürel adaptasyon uzmanısın. Hikaye başlıklarını hedef ülkenin kültürüne adapte ediyorsun.
 
 KURALLAR:
-1. Başlıktaki İSİMLERİ {{TARGET_COUNTRY}}'de yaygın isimlerle DEĞİŞTİR
-2. Başlıktaki YER İSİMLERİNİ {{TARGET_COUNTRY}}'deki yerlerle DEĞİŞTİR
+1. Başlıktaki SIRADAN İSİMLERİ {{TARGET_COUNTRY}}'de yaygın isimlerle DEĞİŞTİR
+2. Başlıktaki SIRADAN YER İSİMLERİNİ {{TARGET_COUNTRY}}'deki yerlerle DEĞİŞTİR
 3. Başlığın temel anlamını ve çekiciliğini koru
 4. {{TARGET_COUNTRY}} kültürüne uygun yerel ifadeler kullan
 5. Uzunluğu benzer tut
 6. Çekici ve merak uyandırıcı olsun
 7. Sadece adapte edilmiş başlığı döndür
+
+🚫 DEĞİŞTİRME: Ünlü kişiler (Elon Musk, Bill Gates, Einstein vb.), büyük kurumlar (NASA, Google, Apple vb.), dünyaca ünlü yerler, marka isimleri AYNEN kalmalı!
 
 🎙️ SESLENDİRME UYGUNLUĞU:
 - Kısaltmaları aç (Dr. → Doktor)
