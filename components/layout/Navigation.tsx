@@ -79,6 +79,17 @@ export function Navigation() {
                   <span className="hidden md:inline">{t('myStories')}</span>
                 </Link>
                 <Link 
+                  href="/channels" 
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all font-medium ${
+                    isActive('/channels') 
+                      ? 'bg-white/25 shadow-inner' 
+                      : 'bg-white/10 hover:bg-white/20'
+                  }`}
+                >
+                  <span className="text-xl">📺</span>
+                  <span className="hidden md:inline">{t('channels')}</span>
+                </Link>
+                <Link 
                   href="/settings" 
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all font-medium ${
                     isActive('/settings') 
