@@ -34,6 +34,14 @@ interface MetadataResult {
   coverText: string;
 }
 
+interface VisualStyleInfo {
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  technicalPrefix?: string;
+  styleSuffix?: string;
+}
+
 interface ThumbnailPromptOptions {
   adaptedTitle: string;
   adaptedContent: string;
@@ -41,6 +49,7 @@ interface ThumbnailPromptOptions {
   targetLanguage: string;
   model: string;
   provider: LLMProvider;
+  visualStyle?: VisualStyleInfo | null;
 }
 
 /**
@@ -290,11 +299,34 @@ export async function generateThumbnailPrompt(
     coverText,
     targetLanguage,
     model,
-    provider
+    provider,
+    visualStyle
   } = options;
 
   // Hikayeden önemli sahneleri çıkar
   const storySummary = adaptedContent.substring(0, 2000);
+
+  // Görsel stili varsa prompt'a ekle
+  const visualStyleSection = visualStyle ? `
+🎨 VISUAL STYLE (MUST FOLLOW):
+Style Name: ${visualStyle.name}
+${visualStyle.description ? `Description: ${visualStyle.description}` : ''}
+${visualStyle.systemPrompt ? `Style: ${visualStyle.systemPrompt}` : ''}
+${visualStyle.technicalPrefix ? `Technical: ${visualStyle.technicalPrefix}` : ''}
+${visualStyle.styleSuffix ? `Style Suffix (add at end): ${visualStyle.styleSuffix}` : ''}
+
+⚠️ IMPORTANT: The thumbnail MUST match this visual style! Incorporate the style elements into the thumbnail design.
+` : '';
+
+  const defaultStyleSection = !visualStyle ? `
+🎨 STYLE GUIDELINES:
+- Cinematic composition with depth
+- Dramatic lighting (golden hour, spotlights, silhouettes)
+- Rich, saturated colors
+- Professional photography or digital art style
+- Clean, uncluttered composition
+- 16:9 aspect ratio optimized
+` : '';
 
   const systemPrompt = `You are a YouTube thumbnail image prompt expert. Create compelling, eye-catching thumbnail image prompts for AI image generation.
 
@@ -307,15 +339,7 @@ export async function generateThumbnailPrompt(
 4. PROFESSIONAL quality - like a movie poster
 5. VIBRANT colors and high contrast
 6. NO TEXT in the image (text will be added separately)
-
-🎨 STYLE GUIDELINES:
-- Cinematic composition with depth
-- Dramatic lighting (golden hour, spotlights, silhouettes)
-- Rich, saturated colors
-- Professional photography or digital art style
-- Clean, uncluttered composition
-- 16:9 aspect ratio optimized
-
+${visualStyleSection}${defaultStyleSection}
 ⛔ AVOID:
 - Multiple confusing elements
 - Dark or muddy images
@@ -329,7 +353,7 @@ Write a detailed English prompt for AI image generation (150-250 words). Include
 2. Scene/setting description
 3. Lighting and atmosphere
 4. Camera angle and composition
-5. Artistic style reference
+5. Artistic style reference${visualStyle ? ' (MUST match the specified visual style!)' : ''}
 6. Color palette
 
 Only return the prompt, no explanations.`;
@@ -337,11 +361,12 @@ Only return the prompt, no explanations.`;
   const userPrompt = `Story Title: "${adaptedTitle}"
 Cover Text: "${coverText}"
 Story Language: ${targetLanguage}
+${visualStyle ? `Visual Style: ${visualStyle.name}` : ''}
 
 Story Summary:
 ${storySummary}
 
-Create a dramatic, click-worthy YouTube thumbnail image prompt for this story.`;
+Create a dramatic, click-worthy YouTube thumbnail image prompt for this story${visualStyle ? ` in ${visualStyle.name} style` : ''}.`;
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -355,7 +380,8 @@ Create a dramatic, click-worthy YouTube thumbnail image prompt for this story.`;
   );
 
   logger.info('Thumbnail prompt oluşturuldu', {
-    promptLength: response.length
+    promptLength: response.length,
+    visualStyle: visualStyle?.name || 'default'
   });
 
   return response.trim();

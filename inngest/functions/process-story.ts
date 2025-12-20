@@ -708,15 +708,34 @@ export const processStory = inngest.createFunction(
 
         const { provider, model } = getLLMConfig(settings);
 
+        // Visual Style'ı yükle (varsa) - Kapak görseli için
+        let visualStyle = null;
+        if (storyData.visualStyleId) {
+          visualStyle = await VisualStyle.findById(storyData.visualStyleId);
+          if (visualStyle) {
+            logger.info('Thumbnail için Visual Style yüklendi', {
+              storyId,
+              styleName: visualStyle.name
+            });
+          }
+        }
+
         try {
-          // 1. Thumbnail için prompt oluştur
+          // 1. Thumbnail için prompt oluştur (görsel stili ile)
           const thumbnailPrompt = await generateThumbnailPrompt({
             adaptedTitle: adaptationData.adaptedTitle,
             adaptedContent: adaptationData.adaptedContent,
             coverText: metadataData?.coverText || adaptationData.adaptedTitle,
             targetLanguage: story.targetLanguage,
             model,
-            provider
+            provider,
+            visualStyle: visualStyle ? {
+              name: visualStyle.name,
+              description: visualStyle.description,
+              systemPrompt: visualStyle.systemPrompt,
+              technicalPrefix: visualStyle.technicalPrefix,
+              styleSuffix: visualStyle.styleSuffix
+            } : null
           });
 
           logger.info('Thumbnail prompt oluşturuldu', {
