@@ -75,47 +75,47 @@ export const TRANSCREATION_PRESETS: TranscreationPreset[] = [
 export const TRANSCREATION_STYLES: TranscreationStyle[] = [
   {
     id: 'philosophical',
-    name: 'Felsefi/Derin',
-    description: 'Derin düşündüren, felsefi anlatım',
-    instructions: `- Derin ve düşündürücü bir ton kullan
-- Varoluşsal ve felsefi sorular sor
-- Metaforlar ve sembolik anlatım kullan
-- İzleyiciyi düşünmeye davet et
-- Evrensel gerçeklere referans ver`,
-    systemPromptAddition: `Anlatım tarzı: Felsefi ve derin düşündüren. İzleyiciyi varoluşsal sorularla yüzleştir. "Peki ya sen?" gibi sorularla içe dönük bir yolculuğa çıkar.`
+    name: 'Philosophical/Deep',
+    description: 'Deep, thought-provoking narration',
+    instructions: `- Use a deep and thought-provoking tone
+- Ask existential and philosophical questions
+- Use metaphors and symbolic language
+- Invite the viewer to reflect
+- Reference universal truths`,
+    systemPromptAddition: `Narration style: Philosophical and deeply thought-provoking. Confront the viewer with existential questions. Use introspective phrases like "What about you?" or "Have you ever wondered..."`
   },
   {
     id: 'storyteller',
-    name: 'Hikaye Anlatıcısı',
-    description: 'Sürükleyici hikaye anlatımı',
-    instructions: `- Sürükleyici bir hikaye anlatıcısı gibi yaz
-- Gerilim ve merak unsurları ekle
-- "Ve işte o an..." gibi geçişler kullan
-- Duygusal bağ kur
-- Dramatik anlarda vurgu yap`,
-    systemPromptAddition: `Anlatım tarzı: Sürükleyici hikaye anlatıcısı. Dinleyiciyi hikayenin içine çek. "Bir düşünün..." "Ve sonra beklenmedik bir şey oldu..." gibi geçişler kullan.`
+    name: 'Storyteller',
+    description: 'Engaging storytelling narration',
+    instructions: `- Write like an engaging storyteller
+- Add suspense and curiosity elements
+- Use transitions like "And then..." or "At that moment..."
+- Create emotional connection
+- Emphasize dramatic moments`,
+    systemPromptAddition: `Narration style: Engaging storyteller. Draw the listener into the story. Use phrases like "Imagine this..." or "And then something unexpected happened..."`
   },
   {
     id: 'documentary',
-    name: 'Belgesel',
-    description: 'Bilgilendirici, profesyonel anlatım',
-    instructions: `- Nesnel ve bilgilendirici ton kullan
-- Gerçekleri akıcı bir şekilde sun
-- Profesyonel belgesel dili kullan
-- Detayları açık ve anlaşılır yap
-- Güvenilir bir anlatıcı ol`,
-    systemPromptAddition: `Anlatım tarzı: Profesyonel belgesel anlatıcısı. David Attenborough tarzında akıcı, bilgilendirici ve güvenilir. Gerçekleri ilgi çekici şekilde sun.`
+    name: 'Documentary',
+    description: 'Informative, professional narration',
+    instructions: `- Use an objective and informative tone
+- Present facts in a flowing manner
+- Use professional documentary language
+- Make details clear and understandable
+- Be a trustworthy narrator`,
+    systemPromptAddition: `Narration style: Professional documentary narrator. David Attenborough style - flowing, informative, and trustworthy. Present facts in an engaging way.`
   },
   {
     id: 'entertaining',
-    name: 'Eğlenceli',
-    description: 'Hafif, eğlenceli anlatım',
-    instructions: `- Enerjik ve eğlenceli ton kullan
-- Hafif espri ve ironi ekle
-- Günlük konuşma dili kullan
-- İzleyiciyle samimi ol
-- Şaşırtıcı ifadeler kullan`,
-    systemPromptAddition: `Anlatım tarzı: Eğlenceli ve samimi. Sanki bir arkadaşına anlatıyor gibi. "İnanmayacaksın ama..." "Şimdi dur, bu kısım çok iyi..." gibi ifadeler kullan.`
+    name: 'Entertaining',
+    description: 'Light, entertaining narration',
+    instructions: `- Use an energetic and entertaining tone
+- Add light humor and irony
+- Use conversational language
+- Be friendly with the viewer
+- Use surprising expressions`,
+    systemPromptAddition: `Narration style: Entertaining and friendly. Like telling a friend. Use phrases like "You won't believe this..." or "Now wait, this part is great..."`
   }
 ];
 
@@ -406,30 +406,33 @@ async function transcrerateBatch(
   }));
 
   const presetInstructions = [];
-  if (preset.settings.rhetoricalQuestions) presetInstructions.push('retorik sorular ekle');
-  if (preset.settings.directAddress) presetInstructions.push('doğrudan hitap kullan');
-  if (preset.settings.dramaticPauses) presetInstructions.push('dramatik duraklamalar ekle');
+  if (preset.settings.rhetoricalQuestions) presetInstructions.push('add rhetorical questions');
+  if (preset.settings.directAddress) presetInstructions.push('use direct address (you/your)');
+  if (preset.settings.dramaticPauses) presetInstructions.push('add dramatic pauses with "..."');
 
-  const systemPrompt = `Sen profesyonel bir içerik yazarı ve çevirmensin. Metin parçalarını ${sourceLang} dilinden ${targetLang} diline çevirirken, anlatımı daha akıcı ve çekici hale getiriyorsun.
+  const systemPrompt = `You are a professional content writer and translator. Translate and creatively rewrite text segments from ${sourceLang} to ${targetLang}, making the narration more engaging and fluent.
 
-KURALLAR:
-1. Her metni BİREBİR çevir ve yeniden yaz
-2. ASLA kısaltma veya özetleme yapma
-3. Karakter sayısı ±%5 toleransında kalmalı (SÜRE KONTROLÜ)
-4. İçerik atlama veya gereksiz uzatma YASAK
+⚠️ CRITICAL: ALL OUTPUT MUST BE IN ${targetLang.toUpperCase()} LANGUAGE!
 
-STİL: ${preset.name} - ${style.name}
+RULES:
+1. Translate and rewrite each text segment
+2. NEVER shorten or summarize - keep ALL content
+3. Character count must stay within ±5% tolerance (DURATION CONTROL)
+4. NO content skipping or unnecessary padding
+
+STYLE: ${preset.name} - ${style.name}
 ${style.instructions}
 ${presetInstructions.length > 0 ? `- ${presetInstructions.join(', ')}` : ''}
 
 ${style.systemPromptAddition}
 
-🎙️ SESLENDİRME İÇİN:
-- "Dr." → "Doktor", "vb." → "ve benzeri"
-- "3" → "üç"
+🎙️ FOR VOICE-OVER (in ${targetLang}):
+- Expand abbreviations for natural speech
+- Write numbers as words
+- Make text flow naturally when spoken aloud
 
 JSON FORMAT:
-{"results": [{"id": 1, "text": "yeniden yazılmış metin"}]}`;
+{"results": [{"id": 1, "text": "rewritten text in ${targetLang}"}]}`;
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -577,9 +580,10 @@ export async function transcreateTitle(
   model: string,
   provider: LLMProvider
 ): Promise<string> {
-  const systemPrompt = `Başlığı ${sourceLang} dilinden ${targetLang} diline çevir ve ${style.name} tarzında daha çekici hale getir. 
+  const systemPrompt = `Translate the title from ${sourceLang} to ${targetLang} and make it more engaging in ${style.name} style.
 ${style.systemPromptAddition}
-Sadece çevrilmiş başlığı döndür.`;
+⚠️ OUTPUT MUST BE IN ${targetLang.toUpperCase()} LANGUAGE!
+Return ONLY the translated title, nothing else.`;
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -589,7 +593,7 @@ Sadece çevrilmiş başlığı döndür.`;
       messages: [{ role: 'user', content: title }],
       temperature: 0.5
     }),
-    'Başlık transcreation'
+    'Title transcreation'
   );
 
   return response.trim().replace(/^["']|["']$/g, '');
