@@ -12,7 +12,7 @@
 export const LENGTH_CONSTRAINTS = {
   MIN_RATIO: 0.95,      // Minimum %95 (max %5 kısalma)
   MAX_RATIO: 1.05,      // Maximum %105 (max %5 uzama)
-  MAX_RETRIES: 3        // Tolerans sağlanamazsa max deneme
+  MAX_RETRIES: 1        // Batch'te retry yok (timeout önleme)
 } as const;
 
 // ============================================

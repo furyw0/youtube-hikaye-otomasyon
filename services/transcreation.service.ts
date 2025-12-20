@@ -344,9 +344,9 @@ interface BatchTranscreateOptions {
 }
 
 /**
- * Sahneleri batch'lere böler
+ * Sahneleri batch'lere böler (export edildi - Inngest step'leri için)
  */
-function splitIntoBatches(
+export function splitIntoBatches(
   scenes: TimestampedScene[],
   maxTokensPerBatch: number = 5000,
   provider: LLMProvider = 'openai'
@@ -562,8 +562,8 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     provider
   });
 
-  // 1. Sahneleri batch'lere böl
-  const batches = splitIntoBatches(scenes, 5000, provider);
+  // 1. Sahneleri batch'lere böl (3000 token - timeout önleme)
+  const batches = splitIntoBatches(scenes, 3000, provider);
   
   logger.info('Sahneler batch\'lere bölündü', {
     totalScenes: scenes.length,
@@ -596,32 +596,20 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     allResults.push(...batchResults);
   }
 
-  // 3. Tolerans dışı kalanları tekrar dene
+  // 3. Tolerans dışı kalanları logla (retry YAPMA - timeout önleme)
   const failedResults = allResults.filter(r => !r.success);
   
   if (failedResults.length > 0) {
-    logger.info('Tolerans dışı sahneler tekrar deneniyor', {
-      failedCount: failedResults.length
+    logger.warn('Tolerans dışı sahneler var (retry atlandı - timeout önleme)', {
+      failedCount: failedResults.length,
+      failedScenes: failedResults.map(r => ({
+        sceneNumber: r.sceneNumber,
+        ratio: r.lengthValidation.ratio.toFixed(3),
+        diff: r.lengthValidation.differencePercent
+      }))
     });
-
-    const retriedResults = await retryFailedScenes(
-      failedResults,
-      scenes,
-      sourceLang,
-      targetLang,
-      preset,
-      style,
-      model,
-      provider
-    );
-
-    // Sonuçları güncelle
-    for (const retried of retriedResults) {
-      const index = allResults.findIndex(r => r.sceneNumber === retried.sceneNumber);
-      if (index !== -1) {
-        allResults[index] = retried;
-      }
-    }
+    // NOT: retryFailedScenes() çağrısı kaldırıldı - Vercel timeout sorununu önlemek için
+    // Başarısız sahneler batch sonucuyla devam eder
   }
 
   // 4. İstatistikleri hesapla
