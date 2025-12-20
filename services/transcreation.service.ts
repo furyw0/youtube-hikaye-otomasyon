@@ -420,6 +420,15 @@ RULES:
 3. Character count must stay within ±5% tolerance (DURATION CONTROL)
 4. NO content skipping or unnecessary padding
 
+🔒 LOGICAL CONSISTENCY (VERY IMPORTANT):
+- If the original uses gender-neutral terms (parent, child, person), keep them neutral OR be consistent throughout
+- NEVER mix genders: if you say "father" in one sentence, don't switch to "mother" in the next
+- Keep character relationships consistent within the same segment
+- If original says "parent" and you choose "father", the quoted speech must also reference "father" (not "mother")
+- Example ERROR: "A father's heart... 'Mom, you're not my real mother'" ❌
+- Example CORRECT: "A parent's heart... 'You're not my real parent'" ✅
+- Example CORRECT: "A father's heart... 'Dad, you're not my real father'" ✅
+
 STYLE: ${preset.name} - ${style.name}
 ${style.instructions}
 ${presetInstructions.length > 0 ? `- ${presetInstructions.join(', ')}` : ''}
