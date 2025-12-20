@@ -29,9 +29,7 @@ import {
 import { batchTranslateAndAdaptScenes, batchAdaptScenes } from '@/services/batch-translate-adapt.service';
 import { 
   batchTranscreateScenes, 
-  applyTranscreationResults,
   transcreateTitle,
-  getPresetById,
   getStyleById
 } from '@/services/transcreation.service';
 import type { TranscreationPresetId, TranscreationStyleId } from '@/types/transcreation.types';
@@ -184,6 +182,7 @@ export const processStory = inngest.createFunction(
         // Transcreation modu aktifse farklı işlem yap
         if (storyData.useTranscreation) {
           // --- TRANSCREATION MODU: Akıcı Yeniden Yazım (%5 tolerans) ---
+          // NOT: batchTranslateAndAdaptScenes ile aynı basit yapı kullanılıyor
           translationData = await step.run('transcreate-timestamped-batch', async () => {
             await dbConnect();
             await updateProgress(10, 'Transcreation: Zaman damgalı transkript işleniyor...');
@@ -215,13 +214,13 @@ export const processStory = inngest.createFunction(
               totalDuration: parsedTranscript.totalDuration
             });
 
-            // Orijinal toplam karakter sayısını kaydet (süre kontrolü için)
-            const originalTotalChars = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
+            // Orijinal toplam karakter sayısını kaydet
+            const originalLength = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
 
-            await updateProgress(15, `${parsedTranscript.totalScenes} sahne transcreation yapılıyor (max %5 fark)...`);
+            await updateProgress(15, `${parsedTranscript.totalScenes} sahne transcreation yapılıyor...`);
 
-            // 2. Transcreation: Akıcı Yeniden Yazım + Çeviri (%5 tolerans kontrolü ile)
-            const transcreationResult = await batchTranscreateScenes({
+            // 2. Transcreation: Basit batch işlemi (batchTranslateAndAdaptScenes gibi)
+            const batchResult = await batchTranscreateScenes({
               scenes: parsedTranscript.scenes,
               sourceLang: storyData.originalLanguage,
               targetLang: storyData.targetLanguage,
@@ -242,30 +241,26 @@ export const processStory = inngest.createFunction(
               storyData.llmProvider
             );
 
-            // 4. Sonuçları sahnelere uygula
-            const transcreatedScenes = applyTranscreationResults(parsedTranscript.scenes, transcreationResult.results);
-
-            // 5. Sonuçları hesapla
-            const translatedContent = transcreatedScenes.map(s => s.textAdapted || s.text).join('\n\n');
+            // 4. Sonuçları hesapla (batchResult.scenes zaten textAdapted dolu)
+            const translatedContent = batchResult.scenes.map(s => s.textAdapted || s.text).join('\n\n');
             const translatedLength = translatedContent.length;
 
             // Süre kontrolü logu
-            logger.info('Transcreation tamamlandı - SÜRE KONTROLÜ', {
+            const ratio = translatedLength / originalLength;
+            logger.info('Transcreation tamamlandı', {
               storyId,
-              originalChars: originalTotalChars,
-              newChars: translatedLength,
-              ratio: `${(translatedLength / originalTotalChars * 100).toFixed(1)}%`,
-              withinTolerance: transcreationResult.stats.withinTolerance,
-              successfulScenes: transcreationResult.stats.successfulScenes,
-              failedScenes: transcreationResult.stats.failedScenes,
-              averageAttempts: transcreationResult.stats.averageAttempts.toFixed(1)
+              scenesProcessed: batchResult.scenes.length,
+              originalLength,
+              translatedLength,
+              ratio: `${(ratio * 100).toFixed(1)}%`,
+              withinTolerance: ratio >= 0.95 && ratio <= 1.05
             });
 
             // DB güncelle
             await Story.findByIdAndUpdate(storyId, {
               adaptedTitle: transcreatedTitle,
               adaptedContent: translatedContent,
-              originalContentLength: originalTotalChars,
+              originalContentLength: originalLength,
               translatedContentLength: translatedLength
             });
 
@@ -274,9 +269,9 @@ export const processStory = inngest.createFunction(
             return {
               adaptedTitle: transcreatedTitle,
               adaptedContent: translatedContent,
-              originalLength: originalTotalChars,
+              originalLength,
               translatedLength,
-              timestampedScenes: transcreatedScenes
+              timestampedScenes: batchResult.scenes
             };
           });
         } else {

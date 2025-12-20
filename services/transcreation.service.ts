@@ -386,7 +386,7 @@ export function splitIntoBatches(
 }
 
 /**
- * Tek bir batch'i transcreate eder
+ * Tek bir batch'i transcreate eder (Basitleştirilmiş - batchTranslateAndAdaptScenes gibi)
  */
 async function transcrerateBatch(
   batch: TimestampedScene[],
@@ -398,72 +398,45 @@ async function transcrerateBatch(
   provider: LLMProvider,
   batchIndex: number,
   totalBatches: number
-): Promise<TranscreationResult[]> {
-  // Her sahnenin uzunluk bilgisini hesapla
-  const scenesInput = batch.map((scene, idx) => {
-    const originalLength = scene.text.length;
-    const minChars = Math.round(originalLength * LENGTH_CONSTRAINTS.MIN_RATIO);
-    const maxChars = Math.round(originalLength * LENGTH_CONSTRAINTS.MAX_RATIO);
-    
-    return {
-      id: idx + 1,
-      sceneNumber: scene.sceneNumber,
-      text: scene.text,
-      minChars,
-      maxChars
-    };
-  });
+): Promise<TimestampedScene[]> {
+  // Basit input formatı (batchTranslateAndAdaptScenes gibi)
+  const scenesInput = batch.map((scene, idx) => ({
+    id: idx + 1,
+    text: scene.text
+  }));
 
   const presetInstructions = [];
   if (preset.settings.rhetoricalQuestions) presetInstructions.push('retorik sorular ekle');
   if (preset.settings.directAddress) presetInstructions.push('doğrudan hitap kullan');
   if (preset.settings.dramaticPauses) presetInstructions.push('dramatik duraklamalar ekle');
 
-  const systemPrompt = `Sen profesyonel bir içerik yazarı ve çevirmensin. Çoklu metin parçalarını ${sourceLang} dilinden ${targetLang} diline çevirirken, anlatımı daha akıcı ve çekici hale getiriyorsun.
+  const systemPrompt = `Sen profesyonel bir içerik yazarı ve çevirmensin. Metin parçalarını ${sourceLang} dilinden ${targetLang} diline çevirirken, anlatımı daha akıcı ve çekici hale getiriyorsun.
 
-🎯 KRİTİK - SÜRE KONTROLÜ:
-- Her sahne için verilen min/max karakter sayısına UYULMALI
-- SADECE %5 FARK TOLERANSI VAR!
+KURALLAR:
+1. Her metni BİREBİR çevir ve yeniden yaz
+2. ASLA kısaltma veya özetleme yapma
+3. Karakter sayısı ±%5 toleransında kalmalı (SÜRE KONTROLÜ)
+4. İçerik atlama veya gereksiz uzatma YASAK
 
-⛔ YASAK:
-- ❌ Metni KISALTMA veya ÖZETLEME
-- ❌ İçerik ATLAMA
-- ❌ Gereksiz UZATMA
-
-✅ YAPILACAKLAR (${preset.name} - ${style.name}):
+STİL: ${preset.name} - ${style.name}
 ${style.instructions}
 ${presetInstructions.length > 0 ? `- ${presetInstructions.join(', ')}` : ''}
 
-📝 STİL:
 ${style.systemPromptAddition}
 
 🎙️ SESLENDİRME İÇİN:
-- Kısaltmaları aç
-- Sayıları yazıyla yaz
-- Doğal konuşma akışı
+- "Dr." → "Doktor", "vb." → "ve benzeri"
+- "3" → "üç"
 
-Batch: ${batchIndex + 1}/${totalBatches}
-
-JSON FORMAT (ZORUNLU):
-{
-  "results": [
-    {"id": 1, "text": "yeniden yazılmış metin 1"},
-    {"id": 2, "text": "yeniden yazılmış metin 2"}
-  ]
-}`;
-
-  const userPrompt = `TRANSCREATE ET (${batch.length} sahne):
-
-${JSON.stringify(scenesInput, null, 2)}
-
-⚠️ Her sahne için minChars-maxChars arasında kalmalı!`;
+JSON FORMAT:
+{"results": [{"id": 1, "text": "yeniden yazılmış metin"}]}`;
 
   const response = await retryOpenAI(
     () => createCompletion({
       provider,
       model,
       systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [{ role: 'user', content: JSON.stringify(scenesInput, null, 2) }],
       temperature: 0.4,
       responseFormat: 'json_object'
     }),
@@ -476,77 +449,31 @@ ${JSON.stringify(scenesInput, null, 2)}
 
     return batch.map((scene, idx) => {
       const result = results.find((r: { id: number; text: string }) => r.id === idx + 1);
-      const rewrittenText = result?.text || scene.text;
-      const validation = validateLength(scene.text, rewrittenText);
-
       return {
-        sceneNumber: scene.sceneNumber,
-        originalText: scene.text,
-        rewrittenText,
-        lengthValidation: validation,
-        styleApplied: style.id,
-        presetApplied: preset.id,
-        attempts: 1,
-        success: validation.isValid
+        ...scene,
+        textAdapted: result?.text || scene.text
       };
     });
   } catch (error) {
-    logger.error('Batch transcreation parse hatası', { batchIndex, error });
-    
-    // Fallback: orijinal metinleri kullan
-    return batch.map(scene => ({
-      sceneNumber: scene.sceneNumber,
-      originalText: scene.text,
-      rewrittenText: scene.text,
-      lengthValidation: validateLength(scene.text, scene.text),
-      styleApplied: style.id,
-      presetApplied: preset.id,
-      attempts: 1,
-      success: false
-    }));
+    logger.error('Batch transcreation parse hatası, orijinal metinler kullanılıyor', { batchIndex, error });
+    return batch.map(scene => ({ ...scene, textAdapted: scene.text }));
   }
 }
 
+// NOT: retryFailedScenes kaldırıldı - basitleştirilmiş yapı kullanılıyor
+
 /**
- * Tolerans dışı kalan sahneleri tekrar dene
+ * Basit Batch Sonuç Tipi (batchTranslateAndAdaptScenes ile uyumlu)
  */
-async function retryFailedScenes(
-  failedResults: TranscreationResult[],
-  scenes: TimestampedScene[],
-  sourceLang: string,
-  targetLang: string,
-  preset: TranscreationPreset,
-  style: TranscreationStyle,
-  model: string,
-  provider: LLMProvider
-): Promise<TranscreationResult[]> {
-  const retriedResults: TranscreationResult[] = [];
-
-  for (const failed of failedResults) {
-    const scene = scenes.find(s => s.sceneNumber === failed.sceneNumber);
-    if (!scene) continue;
-
-    // Tek sahne olarak transcreate et (retry mekanizması ile)
-    const result = await transcreateScene({
-      scene,
-      sourceLang,
-      targetLang,
-      preset,
-      style,
-      model,
-      provider
-    });
-
-    retriedResults.push(result);
-  }
-
-  return retriedResults;
+interface SimpleBatchResult {
+  title: string;
+  scenes: TimestampedScene[];
 }
 
 /**
- * Tüm sahneleri batch olarak transcreate eder
+ * Tüm sahneleri batch olarak transcreate eder (Basitleştirilmiş - batchTranslateAndAdaptScenes gibi)
  */
-export async function batchTranscreateScenes(options: BatchTranscreateOptions): Promise<BatchTranscreationResult> {
+export async function batchTranscreateScenes(options: BatchTranscreateOptions): Promise<SimpleBatchResult> {
   const { scenes, sourceLang, targetLang, presetId, styleId, model, provider } = options;
   
   const preset = getPresetById(presetId);
@@ -559,20 +486,23 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     preset: preset.name,
     style: style.name,
     model,
-    provider
+    provider,
+    firstScenePreview: scenes[0]?.text?.substring(0, 100)
   });
 
-  // 1. Sahneleri batch'lere böl (3000 token - timeout önleme)
-  const batches = splitIntoBatches(scenes, 3000, provider);
+  // 1. Sahneleri batch'lere böl (5000 token - batchTranslateAndAdaptScenes ile aynı)
+  const batches = splitIntoBatches(scenes, 5000, provider);
   
-  logger.info('Sahneler batch\'lere bölündü', {
+  logger.info('Batch\'ler oluşturuldu', {
     totalScenes: scenes.length,
-    totalBatches: batches.length,
-    avgBatchSize: Math.round(scenes.length / batches.length)
+    totalBatches: batches.length
   });
 
-  // 2. Her batch'i transcreate et
-  const allResults: TranscreationResult[] = [];
+  // 2. Başlığı transcreate et (boş string döndür - process-story'de ayrı işlenecek)
+  // NOT: Başlık işlemi process-story.ts'de transcreateTitle() ile yapılıyor
+
+  // 3. Her batch'i işle (batchTranslateAndAdaptScenes gibi basit for döngüsü)
+  const processedScenes: TimestampedScene[] = [];
 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
@@ -581,7 +511,7 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
       batchSize: batch.length
     });
 
-    const batchResults = await transcrerateBatch(
+    const processedBatch = await transcrerateBatch(
       batch,
       sourceLang,
       targetLang,
@@ -593,61 +523,34 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
       batches.length
     );
 
-    allResults.push(...batchResults);
+    processedScenes.push(...processedBatch);
+    
+    logger.debug(`Batch ${i + 1}/${batches.length} tamamlandı`);
   }
 
-  // 3. Tolerans dışı kalanları logla (retry YAPMA - timeout önleme)
-  const failedResults = allResults.filter(r => !r.success);
-  
-  if (failedResults.length > 0) {
-    logger.warn('Tolerans dışı sahneler var (retry atlandı - timeout önleme)', {
-      failedCount: failedResults.length,
-      failedScenes: failedResults.map(r => ({
-        sceneNumber: r.sceneNumber,
-        ratio: r.lengthValidation.ratio.toFixed(3),
-        diff: r.lengthValidation.differencePercent
-      }))
-    });
-    // NOT: retryFailedScenes() çağrısı kaldırıldı - Vercel timeout sorununu önlemek için
-    // Başarısız sahneler batch sonucuyla devam eder
-  }
+  // 4. Basit istatistik logu
+  const originalChars = scenes.reduce((sum, s) => sum + s.text.length, 0);
+  const newChars = processedScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
+  const ratio = newChars / originalChars;
 
-  // 4. İstatistikleri hesapla
-  const totalOriginalChars = allResults.reduce((sum, r) => sum + r.originalText.length, 0);
-  const totalNewChars = allResults.reduce((sum, r) => sum + r.rewrittenText.length, 0);
-  const overallRatio = totalNewChars / totalOriginalChars;
-  const successfulScenes = allResults.filter(r => r.success).length;
-  const totalAttempts = allResults.reduce((sum, r) => sum + r.attempts, 0);
-
-  const stats: BatchTranscreationStats = {
-    totalScenes: scenes.length,
-    successfulScenes,
-    failedScenes: scenes.length - successfulScenes,
-    totalOriginalChars,
-    totalNewChars,
-    overallRatio,
-    withinTolerance: overallRatio >= LENGTH_CONSTRAINTS.MIN_RATIO && overallRatio <= LENGTH_CONSTRAINTS.MAX_RATIO,
-    averageAttempts: totalAttempts / scenes.length
-  };
-
-  logger.info('Batch transcreation tamamlandı - SÜRE KONTROLÜ', {
-    totalScenes: scenes.length,
-    successfulScenes,
-    failedScenes: stats.failedScenes,
-    originalChars: totalOriginalChars,
-    newChars: totalNewChars,
-    overallRatio: `${(overallRatio * 100).toFixed(1)}%`,
-    withinTolerance: stats.withinTolerance
+  logger.info('Batch transcreation tamamlandı', {
+    totalScenes: processedScenes.length,
+    originalChars,
+    newChars,
+    ratio: `${(ratio * 100).toFixed(1)}%`,
+    withinTolerance: ratio >= 0.95 && ratio <= 1.05
   });
 
   return {
-    results: allResults,
-    stats
+    title: '', // Başlık process-story'de ayrı işleniyor
+    scenes: processedScenes
   };
 }
 
 /**
  * Transcreation sonuçlarını TimestampedScene'lere uygula
+ * NOT: Artık gerekli değil - batchTranscreateScenes direkt TimestampedScene[] döndürüyor
+ * Geriye uyumluluk için korunuyor
  */
 export function applyTranscreationResults(
   scenes: TimestampedScene[],
