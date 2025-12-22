@@ -401,8 +401,7 @@ async function transcrerateBatch(
   batchIndex: number,
   totalBatches: number,
   applyCulturalAdaptation: boolean = false,
-  targetCharacterCount?: number,
-  originalTotalChars?: number
+  batchTargetChars?: number  // Bu batch için hedef karakter sayısı
 ): Promise<TimestampedScene[]> {
   // Basit input formatı (batchTranslateAndAdaptScenes gibi)
   const scenesInput = batch.map((scene, idx) => ({
@@ -424,17 +423,24 @@ async function transcrerateBatch(
     ? `✅ CULTURAL ADAPTATION ENABLED: You MAY adapt names, places, and cultural references to fit ${targetLang} culture.`
     : `⛔ NO CULTURAL ADAPTATION: Keep ALL original names, places, cities, countries, and cultural references EXACTLY as they are. Only translate them phonetically if needed. Example: "New York" stays "New York", "John" stays "John".`;
 
-  // Karakter hedefi varsa farklı length rule, yoksa ±%5 tolerans
-  const lengthRule = targetCharacterCount && originalTotalChars
-    ? `📏 TARGET TOTAL CHARACTER COUNT:
-- Original content: ${originalTotalChars} characters total
-- YOUR TARGET: Output approximately ${targetCharacterCount} characters total
-- Scale: ${(targetCharacterCount / originalTotalChars * 100).toFixed(0)}% of original length
-- Distribute naturally - keep story flow intact
-- Longer dramatic scenes can stay longer
-- Shorter transition scenes can stay shorter
-- Don't force equal lengths - follow the narrative
-- TOTAL output should be ~${targetCharacterCount} chars (±10%)`
+  // Bu batch için orijinal karakter sayısı
+  const batchOriginalChars = batch.reduce((sum, s) => sum + s.text.length, 0);
+  
+  // Karakter hedefi varsa batch için hedef hesapla
+  const lengthRule = batchTargetChars
+    ? `🚨 STRICT CHARACTER LIMIT - THIS IS MANDATORY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 THIS BATCH: ${batch.length} segments, ${batchOriginalChars} chars original
+🎯 YOUR TARGET: EXACTLY ${batchTargetChars} characters (±5% = ${Math.round(batchTargetChars * 0.95)}-${Math.round(batchTargetChars * 1.05)})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ CRITICAL RULES:
+1. Count your characters BEFORE submitting
+2. Total output MUST be between ${Math.round(batchTargetChars * 0.95)} and ${Math.round(batchTargetChars * 1.05)} chars
+3. If too long → CUT unnecessary words, simplify sentences
+4. If too short → ADD more vivid descriptions, expand ideas
+5. Distribute naturally across segments - not equal lengths
+6. NEVER exceed ${Math.round(batchTargetChars * 1.05)} characters!`
     : `📏 CRITICAL LENGTH RULE (VIDEO SYNC):
 - Each segment's character count must stay within ±5% of original
 - Example: 100 chars original → output must be 95-105 chars
@@ -579,8 +585,23 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
     
+    // Bu batch için orantılı hedef hesapla
+    let batchTargetChars: number | undefined;
+    if (targetCharacterCount) {
+      const batchOriginalChars = batch.reduce((sum, s) => sum + s.text.length, 0);
+      const batchRatio = batchOriginalChars / originalTotalChars;
+      batchTargetChars = Math.round(targetCharacterCount * batchRatio);
+      
+      logger.debug(`Batch ${i + 1}/${batches.length} hedef hesaplandı`, {
+        batchOriginalChars,
+        batchRatio: `${(batchRatio * 100).toFixed(1)}%`,
+        batchTargetChars
+      });
+    }
+    
     logger.debug(`Batch ${i + 1}/${batches.length} transcreate ediliyor...`, {
-      batchSize: batch.length
+      batchSize: batch.length,
+      batchTargetChars: batchTargetChars || 'yok'
     });
 
     const processedBatch = await transcrerateBatch(
@@ -594,8 +615,7 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
       i,
       batches.length,
       applyCulturalAdaptation,
-      targetCharacterCount,
-      originalTotalChars
+      batchTargetChars
     );
 
     processedScenes.push(...processedBatch);
@@ -610,7 +630,7 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
   // Hedef varsa doğrulama yap
   let isWithinTarget = true;
   if (targetCharacterCount) {
-    const tolerance = 0.10; // ±%10 tolerans (hedef için)
+    const tolerance = 0.05; // ±%5 tolerans (sıkı hedef)
     const minAllowed = targetCharacterCount * (1 - tolerance);
     const maxAllowed = targetCharacterCount * (1 + tolerance);
     isWithinTarget = newChars >= minAllowed && newChars <= maxAllowed;
@@ -624,10 +644,11 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     });
 
     if (!isWithinTarget) {
-      logger.warn('Karakter hedefi tam tutturulamadı', {
+      logger.warn('Karakter hedefi tutturulamadı (±%5 dışında)', {
         target: targetCharacterCount,
         actual: newChars,
-        difference: newChars - targetCharacterCount
+        difference: newChars - targetCharacterCount,
+        percentDiff: `${((newChars / targetCharacterCount - 1) * 100).toFixed(1)}%`
       });
     }
   } else {

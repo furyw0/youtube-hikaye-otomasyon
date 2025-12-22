@@ -1201,7 +1201,7 @@ export function StoryForm() {
             <li>Normal mod: Standart adaptasyon</li>
             <li>Zaman damgalı: Video süresine uyum (±%5)</li>
           </ul>
-          <p className="mt-1">ℹ️ <strong>Değer girilirse:</strong> Toplam çıktı bu hedefe yakın (~±%10) olur</p>
+          <p className="mt-1">ℹ️ <strong>Değer girilirse:</strong> Toplam çıktı bu hedefe yakın (~±%5) olur</p>
         </div>
       </div>
 
