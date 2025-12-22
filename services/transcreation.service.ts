@@ -443,10 +443,12 @@ ${presetInstructions.length > 0 ? presetInstructions.map(i => `• ${i}`).join('
 
 ${style.systemPromptAddition}
 
-📏 LENGTH RULE:
-- Output must be within ±5% of original character count (for video timing sync)
-- Don't pad unnecessarily, but don't cut content either
-- Rewrite creatively while respecting length
+📏 CRITICAL LENGTH RULE (VIDEO SYNC):
+- Each segment's character count must stay within ±5% of original
+- Example: 100 chars original → output must be 95-105 chars
+- This ensures the rewritten audio matches the original video timing
+- Be creative with HOW you say it, but keep the SAME length
+- Don't pad with filler words, don't cut important content
 
 🔒 CONTENT INTEGRITY:
 ${culturalAdaptationRule}
