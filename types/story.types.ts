@@ -37,6 +37,10 @@ export interface IStory {
   transcreationStyle?: 'philosophical' | 'storyteller' | 'documentary' | 'entertaining';  // Anlatım stili
   skipAdaptation?: boolean;             // Adaptasyonu atla (sadece yeniden yazım)
   
+  // Hedef Karakter Sayısı (Opsiyonel)
+  targetCharacterCount?: number;        // Hedef toplam karakter sayısı
+  targetCharacterCountAchieved?: boolean; // Hedef tutturuldu mu
+  
   // Uyarlanmış hikaye
   adaptedTitle?: string;
   adaptedContent?: string;
@@ -135,6 +139,8 @@ export interface CreateStoryInput {
   transcreationPreset?: 'light' | 'medium' | 'strong';
   transcreationStyle?: 'philosophical' | 'storyteller' | 'documentary' | 'entertaining';
   skipAdaptation?: boolean;
+  // Hedef Karakter Sayısı (Opsiyonel)
+  targetCharacterCount?: number;
   openaiModel: string;
   // TTS
   ttsProvider?: 'elevenlabs' | 'coqui';

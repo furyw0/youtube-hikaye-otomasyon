@@ -342,6 +342,7 @@ interface BatchTranscreateOptions {
   model: string;
   provider: LLMProvider;
   applyCulturalAdaptation?: boolean;
+  targetCharacterCount?: number;  // Hedef toplam karakter sayısı (opsiyonel)
 }
 
 /**
@@ -399,7 +400,9 @@ async function transcrerateBatch(
   provider: LLMProvider,
   batchIndex: number,
   totalBatches: number,
-  applyCulturalAdaptation: boolean = false
+  applyCulturalAdaptation: boolean = false,
+  targetCharacterCount?: number,
+  originalTotalChars?: number
 ): Promise<TimestampedScene[]> {
   // Basit input formatı (batchTranslateAndAdaptScenes gibi)
   const scenesInput = batch.map((scene, idx) => ({
@@ -420,6 +423,24 @@ async function transcrerateBatch(
   const culturalAdaptationRule = applyCulturalAdaptation
     ? `✅ CULTURAL ADAPTATION ENABLED: You MAY adapt names, places, and cultural references to fit ${targetLang} culture.`
     : `⛔ NO CULTURAL ADAPTATION: Keep ALL original names, places, cities, countries, and cultural references EXACTLY as they are. Only translate them phonetically if needed. Example: "New York" stays "New York", "John" stays "John".`;
+
+  // Karakter hedefi varsa farklı length rule, yoksa ±%5 tolerans
+  const lengthRule = targetCharacterCount && originalTotalChars
+    ? `📏 TARGET TOTAL CHARACTER COUNT:
+- Original content: ${originalTotalChars} characters total
+- YOUR TARGET: Output approximately ${targetCharacterCount} characters total
+- Scale: ${(targetCharacterCount / originalTotalChars * 100).toFixed(0)}% of original length
+- Distribute naturally - keep story flow intact
+- Longer dramatic scenes can stay longer
+- Shorter transition scenes can stay shorter
+- Don't force equal lengths - follow the narrative
+- TOTAL output should be ~${targetCharacterCount} chars (±10%)`
+    : `📏 CRITICAL LENGTH RULE (VIDEO SYNC):
+- Each segment's character count must stay within ±5% of original
+- Example: 100 chars original → output must be 95-105 chars
+- This ensures the rewritten audio matches the original video timing
+- Be creative with HOW you say it, but keep the SAME length
+- Don't pad with filler words, don't cut important content`;
 
   const systemPrompt = `You are an expert TRANSCREATOR (not just translator). Your job is to CREATIVELY REWRITE content to make it more ENGAGING and COMPELLING in ${targetLang}.
 
@@ -443,12 +464,7 @@ ${presetInstructions.length > 0 ? presetInstructions.map(i => `• ${i}`).join('
 
 ${style.systemPromptAddition}
 
-📏 CRITICAL LENGTH RULE (VIDEO SYNC):
-- Each segment's character count must stay within ±5% of original
-- Example: 100 chars original → output must be 95-105 chars
-- This ensures the rewritten audio matches the original video timing
-- Be creative with HOW you say it, but keep the SAME length
-- Don't pad with filler words, don't cut important content
+${lengthRule}
 
 🔒 CONTENT INTEGRITY:
 ${culturalAdaptationRule}
@@ -508,21 +524,29 @@ JSON OUTPUT:
 // NOT: retryFailedScenes kaldırıldı - basitleştirilmiş yapı kullanılıyor
 
 /**
- * Basit Batch Sonuç Tipi (batchTranslateAndAdaptScenes ile uyumlu)
+ * Batch sonuç tipi (validation bilgisi ile)
  */
-interface SimpleBatchResult {
+interface TranscreationBatchResult {
   title: string;
   scenes: TimestampedScene[];
+  validation: {
+    targetCharacterCount?: number;
+    actualCharacterCount: number;
+    isWithinTarget: boolean;
+  };
 }
 
 /**
  * Tüm sahneleri batch olarak transcreate eder (Basitleştirilmiş - batchTranslateAndAdaptScenes gibi)
  */
-export async function batchTranscreateScenes(options: BatchTranscreateOptions): Promise<SimpleBatchResult> {
-  const { scenes, sourceLang, targetLang, presetId, styleId, model, provider, applyCulturalAdaptation = false } = options;
+export async function batchTranscreateScenes(options: BatchTranscreateOptions): Promise<TranscreationBatchResult> {
+  const { scenes, sourceLang, targetLang, presetId, styleId, model, provider, applyCulturalAdaptation = false, targetCharacterCount } = options;
   
   const preset = getPresetById(presetId);
   const style = getStyleById(styleId);
+
+  // Orijinal toplam karakter sayısı
+  const originalTotalChars = scenes.reduce((sum, s) => sum + s.text.length, 0);
 
   logger.info('Batch transcreation başlatılıyor', {
     sceneCount: scenes.length,
@@ -533,6 +557,8 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     model,
     provider,
     applyCulturalAdaptation,
+    targetCharacterCount: targetCharacterCount || 'yok (±%5 tolerans)',
+    originalTotalChars,
     firstScenePreview: scenes[0]?.text?.substring(0, 100)
   });
 
@@ -567,7 +593,9 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
       provider,
       i,
       batches.length,
-      applyCulturalAdaptation
+      applyCulturalAdaptation,
+      targetCharacterCount,
+      originalTotalChars
     );
 
     processedScenes.push(...processedBatch);
@@ -575,22 +603,55 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     logger.debug(`Batch ${i + 1}/${batches.length} tamamlandı`);
   }
 
-  // 4. Basit istatistik logu
-  const originalChars = scenes.reduce((sum, s) => sum + s.text.length, 0);
+  // 4. İstatistik ve doğrulama
   const newChars = processedScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
-  const ratio = newChars / originalChars;
+  const ratio = newChars / originalTotalChars;
+
+  // Hedef varsa doğrulama yap
+  let isWithinTarget = true;
+  if (targetCharacterCount) {
+    const tolerance = 0.10; // ±%10 tolerans (hedef için)
+    const minAllowed = targetCharacterCount * (1 - tolerance);
+    const maxAllowed = targetCharacterCount * (1 + tolerance);
+    isWithinTarget = newChars >= minAllowed && newChars <= maxAllowed;
+
+    logger.info('Karakter hedefi doğrulaması', {
+      target: targetCharacterCount,
+      actual: newChars,
+      difference: `${((newChars / targetCharacterCount - 1) * 100).toFixed(1)}%`,
+      withinTarget: isWithinTarget,
+      allowedRange: `${Math.round(minAllowed)}-${Math.round(maxAllowed)}`
+    });
+
+    if (!isWithinTarget) {
+      logger.warn('Karakter hedefi tam tutturulamadı', {
+        target: targetCharacterCount,
+        actual: newChars,
+        difference: newChars - targetCharacterCount
+      });
+    }
+  } else {
+    // Hedef yoksa ±%5 tolerans kontrolü
+    isWithinTarget = ratio >= 0.95 && ratio <= 1.05;
+  }
 
   logger.info('Batch transcreation tamamlandı', {
     totalScenes: processedScenes.length,
-    originalChars,
+    originalChars: originalTotalChars,
     newChars,
     ratio: `${(ratio * 100).toFixed(1)}%`,
-    withinTolerance: ratio >= 0.95 && ratio <= 1.05
+    targetCharacterCount: targetCharacterCount || 'yok',
+    isWithinTarget
   });
 
   return {
     title: '', // Başlık process-story'de ayrı işleniyor
-    scenes: processedScenes
+    scenes: processedScenes,
+    validation: {
+      targetCharacterCount,
+      actualCharacterCount: newChars,
+      isWithinTarget
+    }
   };
 }
 

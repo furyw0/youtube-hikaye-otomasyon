@@ -38,6 +38,8 @@ const createStorySchema = z.object({
   transcreationPreset: z.enum(['light', 'medium', 'strong']).optional().default('medium'),
   transcreationStyle: z.enum(['philosophical', 'storyteller', 'documentary', 'entertaining']).optional().default('storyteller'),
   skipAdaptation: z.boolean().optional().default(false),
+  // Hedef Karakter Sayısı (Opsiyonel)
+  targetCharacterCount: z.number().int().min(500).max(100000).optional(),
   openaiModel: z.string(),
   // TTS Provider
   ttsProvider: z.enum(['elevenlabs', 'coqui']).optional().default('elevenlabs'),
@@ -205,6 +207,8 @@ export async function POST(request: NextRequest) {
       transcreationPreset: validated.transcreationPreset,
       transcreationStyle: validated.transcreationStyle,
       skipAdaptation: validated.skipAdaptation || false,
+      // Hedef Karakter Sayısı
+      targetCharacterCount: validated.targetCharacterCount || undefined,
       openaiModel: validated.openaiModel,
       // TTS Ayarları
       ttsProvider: validated.ttsProvider || 'elevenlabs',

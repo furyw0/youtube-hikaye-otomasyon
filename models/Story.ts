@@ -97,6 +97,18 @@ const StorySchema = new Schema<IStory>(
       default: false
     },
     
+    // Hedef Karakter Sayısı (Opsiyonel)
+    targetCharacterCount: {
+      type: Number,
+      min: 500,
+      max: 100000,
+      required: false
+    },
+    targetCharacterCountAchieved: {
+      type: Boolean,
+      required: false
+    },
+    
     // Uyarlanmış hikaye
     adaptedTitle: {
       type: String

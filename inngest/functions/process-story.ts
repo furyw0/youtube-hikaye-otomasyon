@@ -141,6 +141,7 @@ export const processStory = inngest.createFunction(
           transcreationPreset: story.transcreationPreset || 'medium',
           transcreationStyle: story.transcreationStyle || 'storyteller',
           skipAdaptation: story.skipAdaptation || false,
+          targetCharacterCount: story.targetCharacterCount || undefined,
           openaiModel: story.openaiModel,
           llmProvider: llmConfig.provider,
           llmModel: llmConfig.model,
@@ -229,7 +230,8 @@ export const processStory = inngest.createFunction(
               styleId: (storyData.transcreationStyle || 'storyteller') as TranscreationStyleId,
               model: storyData.llmModel,
               provider: storyData.llmProvider,
-              applyCulturalAdaptation: storyData.skipAdaptation // UI checkbox: "Kültürel adaptasyon da uygula"
+              applyCulturalAdaptation: storyData.skipAdaptation, // UI checkbox: "Kültürel adaptasyon da uygula"
+              targetCharacterCount: storyData.targetCharacterCount // Hedef karakter sayısı (opsiyonel)
             });
 
             // 3. Başlığı transcreate et
@@ -245,7 +247,7 @@ export const processStory = inngest.createFunction(
 
             // 4. Sonuçları hesapla (batchResult.scenes zaten textAdapted dolu)
             const translatedContent = batchResult.scenes.map(s => s.textAdapted || s.text).join('\n\n');
-            const translatedLength = translatedContent.length;
+            const translatedLength = batchResult.validation.actualCharacterCount;
 
             // Süre kontrolü logu
             const ratio = translatedLength / originalLength;
@@ -255,15 +257,17 @@ export const processStory = inngest.createFunction(
               originalLength,
               translatedLength,
               ratio: `${(ratio * 100).toFixed(1)}%`,
-              withinTolerance: ratio >= 0.95 && ratio <= 1.05
+              targetCharacterCount: storyData.targetCharacterCount || 'yok',
+              isWithinTarget: batchResult.validation.isWithinTarget
             });
 
-            // DB güncelle
+            // DB güncelle (targetCharacterCountAchieved dahil)
             await Story.findByIdAndUpdate(storyId, {
               adaptedTitle: transcreatedTitle,
               adaptedContent: translatedContent,
               originalContentLength: originalLength,
-              translatedContentLength: translatedLength
+              translatedContentLength: translatedLength,
+              targetCharacterCountAchieved: batchResult.validation.isWithinTarget
             });
 
             await updateProgress(20, 'Transcreation tamamlandı');
@@ -273,7 +277,8 @@ export const processStory = inngest.createFunction(
               adaptedContent: translatedContent,
               originalLength,
               translatedLength,
-              timestampedScenes: batchResult.scenes
+              timestampedScenes: batchResult.scenes,
+              targetCharacterCountAchieved: batchResult.validation.isWithinTarget
             };
           });
         } else {

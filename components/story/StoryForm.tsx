@@ -85,6 +85,8 @@ export function StoryForm() {
     transcreationPreset: 'medium' as 'light' | 'medium' | 'strong',
     transcreationStyle: 'storyteller' as 'philosophical' | 'storyteller' | 'documentary' | 'entertaining',
     skipAdaptation: false,
+    // Hedef Karakter Sayısı (Opsiyonel - Tüm modlarda)
+    targetCharacterCount: '' as string | number,
     // LLM
     openaiModel: 'gpt-4o-mini',
     claudeModel: 'claude-sonnet-4-20250514',
@@ -400,6 +402,8 @@ export function StoryForm() {
         transcreationPreset: formData.useTranscreation ? formData.transcreationPreset : undefined,
         transcreationStyle: formData.useTranscreation ? formData.transcreationStyle : undefined,
         skipAdaptation: formData.useTranscreation ? formData.skipAdaptation : undefined,
+        // Hedef Karakter Sayısı (Opsiyonel - Tüm modlarda)
+        targetCharacterCount: formData.targetCharacterCount ? Number(formData.targetCharacterCount) : undefined,
         // Zaman damgalı modda content boş olabilir, transkriptten üretilecek
         content: formData.useTimestampedContent ? '' : formData.content,
         ttsProvider,
@@ -1172,6 +1176,33 @@ export function StoryForm() {
           min={0}
           max={2147483647}
         />
+      </div>
+
+      {/* Hedef Karakter Sayısı (Opsiyonel - Tüm Modlar) */}
+      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          📏 Hedef Karakter Sayısı (Opsiyonel)
+        </label>
+        <input
+          type="number"
+          value={formData.targetCharacterCount || ''}
+          onChange={(e) => setFormData({ 
+            ...formData, 
+            targetCharacterCount: e.target.value ? parseInt(e.target.value) : '' 
+          })}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 placeholder:text-gray-400"
+          placeholder="Örn: 5000, 10000, 20000..."
+          min={500}
+          max={100000}
+        />
+        <div className="mt-2 text-xs text-gray-500 space-y-1">
+          <p>ℹ️ <strong>Boş bırakılırsa:</strong></p>
+          <ul className="list-disc list-inside ml-2">
+            <li>Normal mod: Standart adaptasyon</li>
+            <li>Zaman damgalı: Video süresine uyum (±%5)</li>
+          </ul>
+          <p className="mt-1">ℹ️ <strong>Değer girilirse:</strong> Toplam çıktı bu hedefe yakın (~±%10) olur</p>
+        </div>
       </div>
 
       {/* Submit Button */}
