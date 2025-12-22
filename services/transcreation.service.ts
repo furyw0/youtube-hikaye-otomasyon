@@ -341,6 +341,7 @@ interface BatchTranscreateOptions {
   styleId: TranscreationStyleId;
   model: string;
   provider: LLMProvider;
+  applyCulturalAdaptation?: boolean;
 }
 
 /**
@@ -397,7 +398,8 @@ async function transcrerateBatch(
   model: string,
   provider: LLMProvider,
   batchIndex: number,
-  totalBatches: number
+  totalBatches: number,
+  applyCulturalAdaptation: boolean = false
 ): Promise<TimestampedScene[]> {
   // Basit input formatı (batchTranslateAndAdaptScenes gibi)
   const scenesInput = batch.map((scene, idx) => ({
@@ -405,43 +407,72 @@ async function transcrerateBatch(
     text: scene.text
   }));
 
+  // Yaratıcılık seviyesine göre talimatlar
+  const creativityLevel = Math.round(preset.settings.creativeFreedom * 100);
+  const structurePreserve = Math.round(preset.settings.preserveStructure * 100);
+
   const presetInstructions = [];
-  if (preset.settings.rhetoricalQuestions) presetInstructions.push('add rhetorical questions');
-  if (preset.settings.directAddress) presetInstructions.push('use direct address (you/your)');
-  if (preset.settings.dramaticPauses) presetInstructions.push('add dramatic pauses with "..."');
+  if (preset.settings.rhetoricalQuestions) presetInstructions.push('Add rhetorical questions to engage the audience');
+  if (preset.settings.directAddress) presetInstructions.push('Use direct address (you/your) to connect with viewers');
+  if (preset.settings.dramaticPauses) presetInstructions.push('Add dramatic pauses with "..." for suspense');
 
-  const systemPrompt = `You are a professional content writer and translator. Translate and creatively rewrite text segments from ${sourceLang} to ${targetLang}, making the narration more engaging and fluent.
+  // Kültürel adaptasyon seçeneğine göre talimat
+  const culturalAdaptationRule = applyCulturalAdaptation
+    ? `✅ CULTURAL ADAPTATION ENABLED: You MAY adapt names, places, and cultural references to fit ${targetLang} culture.`
+    : `⛔ NO CULTURAL ADAPTATION: Keep ALL original names, places, cities, countries, and cultural references EXACTLY as they are. Only translate them phonetically if needed. Example: "New York" stays "New York", "John" stays "John".`;
 
-⚠️ CRITICAL: ALL OUTPUT MUST BE IN ${targetLang.toUpperCase()} LANGUAGE!
+  const systemPrompt = `You are an expert TRANSCREATOR (not just translator). Your job is to CREATIVELY REWRITE content to make it more ENGAGING and COMPELLING in ${targetLang}.
 
-RULES:
-1. Translate and rewrite each text segment
-2. NEVER shorten or summarize - keep ALL content
-3. Character count must stay within ±5% tolerance (DURATION CONTROL)
-4. NO content skipping or unnecessary padding
+⚠️ CRITICAL OUTPUT LANGUAGE: ${targetLang.toUpperCase()} ONLY!
 
-🔒 LOGICAL CONSISTENCY (VERY IMPORTANT):
-- If the original uses gender-neutral terms (parent, child, person), keep them neutral OR be consistent throughout
-- NEVER mix genders: if you say "father" in one sentence, don't switch to "mother" in the next
-- Keep character relationships consistent within the same segment
-- If original says "parent" and you choose "father", the quoted speech must also reference "father" (not "mother")
-- Example ERROR: "A father's heart... 'Mom, you're not my real mother'" ❌
-- Example CORRECT: "A parent's heart... 'You're not my real parent'" ✅
-- Example CORRECT: "A father's heart... 'Dad, you're not my real father'" ✅
+🎯 YOUR MISSION - TRANSCREATION (NOT Translation):
+This is TRANSCREATION, not plain translation. You must:
+1. REWRITE sentences to be more dramatic, engaging, and captivating
+2. TRANSFORM boring narration into compelling storytelling
+3. ADD emotional weight, suspense, and flow
+4. MAINTAIN the same meaning but EXPRESS it more powerfully
 
-STYLE: ${preset.name} - ${style.name}
+📊 CREATIVITY SETTINGS:
+- Creative Freedom: ${creativityLevel}% (${creativityLevel >= 50 ? 'BE BOLD with rewrites!' : 'Moderate changes'})
+- Structure Preservation: ${structurePreserve}%
+- Style: ${style.name}
+
+✨ REWRITING TECHNIQUES TO USE:
 ${style.instructions}
-${presetInstructions.length > 0 ? `- ${presetInstructions.join(', ')}` : ''}
+${presetInstructions.length > 0 ? presetInstructions.map(i => `• ${i}`).join('\n') : ''}
 
 ${style.systemPromptAddition}
 
-🎙️ FOR VOICE-OVER (in ${targetLang}):
-- Expand abbreviations for natural speech
-- Write numbers as words
-- Make text flow naturally when spoken aloud
+📏 LENGTH RULE:
+- Output must be within ±5% of original character count (for video timing sync)
+- Don't pad unnecessarily, but don't cut content either
+- Rewrite creatively while respecting length
 
-JSON FORMAT:
-{"results": [{"id": 1, "text": "rewritten text in ${targetLang}"}]}`;
+🔒 CONTENT INTEGRITY:
+${culturalAdaptationRule}
+- Keep the MEANING and STORY intact
+- Keep character genders consistent
+- Keep relationships and facts accurate
+
+🎙️ VOICE-OVER OPTIMIZATION:
+- Expand abbreviations naturally
+- Write numbers as words
+- Ensure smooth, speakable flow
+
+❌ DON'T:
+- Don't do word-for-word translation
+- Don't be boring or flat
+- Don't change the story's facts
+- Don't skip or summarize content
+
+✅ DO:
+- Rewrite to captivate the audience
+- Add emotion and drama
+- Use vivid, engaging language
+- Make it sound like a skilled storyteller wrote it
+
+JSON OUTPUT:
+{"results": [{"id": 1, "text": "creatively rewritten text in ${targetLang}"}]}`;
 
   const response = await retryOpenAI(
     () => createCompletion({
@@ -486,7 +517,7 @@ interface SimpleBatchResult {
  * Tüm sahneleri batch olarak transcreate eder (Basitleştirilmiş - batchTranslateAndAdaptScenes gibi)
  */
 export async function batchTranscreateScenes(options: BatchTranscreateOptions): Promise<SimpleBatchResult> {
-  const { scenes, sourceLang, targetLang, presetId, styleId, model, provider } = options;
+  const { scenes, sourceLang, targetLang, presetId, styleId, model, provider, applyCulturalAdaptation = false } = options;
   
   const preset = getPresetById(presetId);
   const style = getStyleById(styleId);
@@ -499,6 +530,7 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     style: style.name,
     model,
     provider,
+    applyCulturalAdaptation,
     firstScenePreview: scenes[0]?.text?.substring(0, 100)
   });
 
@@ -532,7 +564,8 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
       model,
       provider,
       i,
-      batches.length
+      batches.length,
+      applyCulturalAdaptation
     );
 
     processedScenes.push(...processedBatch);

@@ -220,6 +220,7 @@ export const processStory = inngest.createFunction(
             await updateProgress(15, `${parsedTranscript.totalScenes} sahne transcreation yapılıyor...`);
 
             // 2. Transcreation: Basit batch işlemi (batchTranslateAndAdaptScenes gibi)
+            // NOT: skipAdaptation = true ise kültürel adaptasyon UYGULANIR (UI'da "Kültürel adaptasyon da uygula" checkbox'ı)
             const batchResult = await batchTranscreateScenes({
               scenes: parsedTranscript.scenes,
               sourceLang: storyData.originalLanguage,
@@ -227,7 +228,8 @@ export const processStory = inngest.createFunction(
               presetId: (storyData.transcreationPreset || 'medium') as TranscreationPresetId,
               styleId: (storyData.transcreationStyle || 'storyteller') as TranscreationStyleId,
               model: storyData.llmModel,
-              provider: storyData.llmProvider
+              provider: storyData.llmProvider,
+              applyCulturalAdaptation: storyData.skipAdaptation // UI checkbox: "Kültürel adaptasyon da uygula"
             });
 
             // 3. Başlığı transcreate et
