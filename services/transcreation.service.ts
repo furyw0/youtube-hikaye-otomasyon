@@ -426,21 +426,100 @@ async function transcrerateBatch(
   // Bu batch için orijinal karakter sayısı
   const batchOriginalChars = batch.reduce((sum, s) => sum + s.text.length, 0);
   
-  // Karakter hedefi varsa batch için hedef hesapla
-  const lengthRule = batchTargetChars
-    ? `🚨 STRICT CHARACTER LIMIT - THIS IS MANDATORY:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 THIS BATCH: ${batch.length} segments, ${batchOriginalChars} chars original
-🎯 YOUR TARGET: EXACTLY ${batchTargetChars} characters (±5% = ${Math.round(batchTargetChars * 0.95)}-${Math.round(batchTargetChars * 1.05)})
+  // Ölçek hesapla ve modu belirle
+  const scale = batchTargetChars ? batchTargetChars / batchOriginalChars : 1;
+  const isCondensing = scale < 0.95;  // Kısaltma modu
+  const isExpanding = scale > 1.05;   // Uzatma modu
+  const scalePercent = Math.round(scale * 100);
+  
+  // Dinamik mod talimatları
+  let adaptationModeInstructions = '';
+  
+  if (batchTargetChars) {
+    if (isCondensing) {
+      // KIŞALTMA MODU
+      adaptationModeInstructions = `
+📉 MODE: CONDENSING (${scalePercent}% of original - making it shorter)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ CRITICAL RULES:
-1. Count your characters BEFORE submitting
-2. Total output MUST be between ${Math.round(batchTargetChars * 0.95)} and ${Math.round(batchTargetChars * 1.05)} chars
-3. If too long → CUT unnecessary words, simplify sentences
-4. If too short → ADD more vivid descriptions, expand ideas
-5. Distribute naturally across segments - not equal lengths
-6. NEVER exceed ${Math.round(batchTargetChars * 1.05)} characters!`
+✅ HOW TO CONDENSE WITHOUT LOSING MEANING:
+• Keep the CORE MESSAGE of every sentence - just say it more concisely
+• Remove redundant adjectives: "very beautiful, amazing, wonderful house" → "stunning house"
+• Combine related sentences into one powerful statement
+• Remove filler words: "actually, basically, really, very, just"
+• Use stronger single words instead of phrases: "at this point in time" → "now"
+• Keep ALL important plot points, events, and dialogue
+• Preserve emotional beats - just express them more efficiently
+
+❌ NEVER DO THESE WHEN CONDENSING:
+• DON'T skip any story events or plot points
+• DON'T remove character dialogue (shorten it, don't delete it)
+• DON'T lose the emotional arc of the story
+• DON'T cut transitions that maintain story flow
+• DON'T remove context that readers need to understand
+
+🎯 EXAMPLE:
+Original: "The old man slowly walked down the long, winding road, thinking about all the many memories he had accumulated over his very long and eventful life."
+Condensed: "The old man walked the winding road, lost in a lifetime of memories."
+(Same meaning, same emotion, fewer characters)`;
+
+    } else if (isExpanding) {
+      // UZATMA MODU
+      adaptationModeInstructions = `
+📈 MODE: EXPANDING (${scalePercent}% of original - making it richer)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ HOW TO EXPAND WITHOUT CHANGING THE STORY:
+• Add sensory details: sights, sounds, smells, textures
+• Deepen emotional descriptions: show feelings more vividly
+• Expand scene-setting: describe the environment more richly
+• Add internal thoughts that match character's established personality
+• Use more vivid metaphors and comparisons
+• Slow down dramatic moments with more detail
+• Add natural speech patterns to dialogue
+
+❌ NEVER DO THESE WHEN EXPANDING:
+• DON'T add new plot events that weren't in the original
+• DON'T introduce new characters
+• DON'T change character motivations or relationships
+• DON'T add information that contradicts the original
+• DON'T pad with meaningless filler - every addition should enhance
+
+🎯 EXAMPLE:
+Original: "She opened the door and saw him standing there."
+Expanded: "Her hand trembled as she turned the cold brass handle. The door creaked open, and there he stood—silhouetted against the amber glow of the streetlight, rain dripping from his coat."
+(Same event, richer experience, more characters)`;
+
+    } else {
+      // KORUMA MODU (yaklaşık aynı uzunluk)
+      adaptationModeInstructions = `
+📊 MODE: BALANCED (${scalePercent}% - similar length, better expression)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ REWRITE WITH SAME LENGTH:
+• Replace weak words with stronger equivalents
+• Restructure sentences for better flow
+• Keep approximately the same character count per segment
+• Focus on making it more engaging, not longer or shorter`;
+    }
+  }
+  
+  // Karakter hedefi kuralı
+  const lengthRule = batchTargetChars
+    ? `🚨 STRICT CHARACTER LIMIT - MANDATORY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 THIS BATCH: ${batch.length} segments, ${batchOriginalChars} chars original
+🎯 YOUR TARGET: ${batchTargetChars} characters (±5% = ${Math.round(batchTargetChars * 0.95)}-${Math.round(batchTargetChars * 1.05)})
+📐 SCALE: ${scalePercent}% of original
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${adaptationModeInstructions}
+
+⚠️ FINAL CHECK:
+1. Count total characters BEFORE submitting
+2. Must be between ${Math.round(batchTargetChars * 0.95)} and ${Math.round(batchTargetChars * 1.05)} chars
+3. Distribute naturally - some segments longer, some shorter
+4. Story flow and meaning MUST remain intact`
     : `📏 CRITICAL LENGTH RULE (VIDEO SYNC):
 - Each segment's character count must stay within ±5% of original
 - Example: 100 chars original → output must be 95-105 chars
@@ -452,51 +531,39 @@ async function transcrerateBatch(
 
 ⚠️ CRITICAL OUTPUT LANGUAGE: ${targetLang.toUpperCase()} ONLY!
 
-🎯 YOUR MISSION - TRANSCREATION (NOT Translation):
-This is TRANSCREATION, not plain translation. You must:
-1. REWRITE sentences to be more dramatic, engaging, and captivating
-2. TRANSFORM boring narration into compelling storytelling
-3. ADD emotional weight, suspense, and flow
-4. MAINTAIN the same meaning but EXPRESS it more powerfully
-
-📊 CREATIVITY SETTINGS:
-- Creative Freedom: ${creativityLevel}% (${creativityLevel >= 50 ? 'BE BOLD with rewrites!' : 'Moderate changes'})
-- Structure Preservation: ${structurePreserve}%
-- Style: ${style.name}
-
-✨ REWRITING TECHNIQUES TO USE:
-${style.instructions}
-${presetInstructions.length > 0 ? presetInstructions.map(i => `• ${i}`).join('\n') : ''}
-
-${style.systemPromptAddition}
+🎯 YOUR MISSION - TRANSCREATION:
+Transform the content while PRESERVING its soul:
+1. Keep ALL story events, plot points, and character moments
+2. Maintain the emotional journey and narrative arc
+3. Express the same ideas more powerfully in ${targetLang}
+4. Adapt length as instructed while keeping meaning intact
 
 ${lengthRule}
 
-🔒 CONTENT INTEGRITY:
-${culturalAdaptationRule}
-- Keep the MEANING and STORY intact
-- Keep character genders consistent
-- Keep relationships and facts accurate
+📊 CREATIVITY SETTINGS:
+- Creative Freedom: ${creativityLevel}%
+- Structure Preservation: ${structurePreserve}%
+- Style: ${style.name}
 
-🎙️ VOICE-OVER OPTIMIZATION:
+✨ STYLE TECHNIQUES:
+${style.instructions}
+${presetInstructions.length > 0 ? presetInstructions.map(i => `• ${i}`).join('\n') : ''}
+${style.systemPromptAddition}
+
+🔒 ABSOLUTE RULES - NEVER BREAK:
+${culturalAdaptationRule}
+• STORY INTEGRITY: Every event in the original must appear in the output
+• CHARACTER CONSISTENCY: Keep genders, names, relationships accurate
+• LOGICAL FLOW: Cause and effect must make sense
+• EMOTIONAL TRUTH: The feelings conveyed must match the original intent
+
+🎙️ VOICE-OVER READY:
 - Expand abbreviations naturally
 - Write numbers as words
-- Ensure smooth, speakable flow
-
-❌ DON'T:
-- Don't do word-for-word translation
-- Don't be boring or flat
-- Don't change the story's facts
-- Don't skip or summarize content
-
-✅ DO:
-- Rewrite to captivate the audience
-- Add emotion and drama
-- Use vivid, engaging language
-- Make it sound like a skilled storyteller wrote it
+- Ensure smooth, speakable rhythm
 
 JSON OUTPUT:
-{"results": [{"id": 1, "text": "creatively rewritten text in ${targetLang}"}]}`;
+{"results": [{"id": 1, "text": "rewritten text"}]}`;
 
   const response = await retryOpenAI(
     () => createCompletion({
