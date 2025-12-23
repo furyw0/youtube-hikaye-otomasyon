@@ -388,7 +388,7 @@ export function splitIntoBatches(
 }
 
 /**
- * Tek bir batch'i transcreate eder (Basitleştirilmiş - batchTranslateAndAdaptScenes gibi)
+ * Tek bir batch'i transcreate eder (Retry mekanizması ile)
  */
 async function transcrerateBatch(
   batch: TimestampedScene[],
@@ -403,42 +403,98 @@ async function transcrerateBatch(
   applyCulturalAdaptation: boolean = false,
   batchTargetChars?: number  // Bu batch için hedef karakter sayısı
 ): Promise<TimestampedScene[]> {
-  // Basit input formatı (batchTranslateAndAdaptScenes gibi)
-  const scenesInput = batch.map((scene, idx) => ({
-    id: idx + 1,
-    text: scene.text
-  }));
-
-  // Yaratıcılık seviyesine göre talimatlar
-  const creativityLevel = Math.round(preset.settings.creativeFreedom * 100);
-  const structurePreserve = Math.round(preset.settings.preserveStructure * 100);
-
-  const presetInstructions = [];
-  if (preset.settings.rhetoricalQuestions) presetInstructions.push('Add rhetorical questions to engage the audience');
-  if (preset.settings.directAddress) presetInstructions.push('Use direct address (you/your) to connect with viewers');
-  if (preset.settings.dramaticPauses) presetInstructions.push('Add dramatic pauses with "..." for suspense');
-
-  // Kültürel adaptasyon seçeneğine göre talimat
-  const culturalAdaptationRule = applyCulturalAdaptation
-    ? `✅ CULTURAL ADAPTATION ENABLED: You MAY adapt names, places, and cultural references to fit ${targetLang} culture.`
-    : `⛔ NO CULTURAL ADAPTATION: Keep ALL original names, places, cities, countries, and cultural references EXACTLY as they are. Only translate them phonetically if needed. Example: "New York" stays "New York", "John" stays "John".`;
-
+  const MAX_BATCH_RETRIES = 3;
+  const TOLERANCE = 0.05; // %5 tolerans
+  
   // Bu batch için orijinal karakter sayısı
   const batchOriginalChars = batch.reduce((sum, s) => sum + s.text.length, 0);
   
-  // Ölçek hesapla ve modu belirle
-  const scale = batchTargetChars ? batchTargetChars / batchOriginalChars : 1;
-  const isCondensing = scale < 0.95;  // Kısaltma modu
-  const isExpanding = scale > 1.05;   // Uzatma modu
-  const scalePercent = Math.round(scale * 100);
+  // Hedef hesapla
+  const effectiveTarget = batchTargetChars || batchOriginalChars;
+  const minAllowed = Math.round(effectiveTarget * (1 - TOLERANCE));
+  const maxAllowed = Math.round(effectiveTarget * (1 + TOLERANCE));
   
-  // Dinamik mod talimatları
-  let adaptationModeInstructions = '';
+  let lastResult: TimestampedScene[] = [];
+  let lastTotalChars = 0;
+  let bestResult: TimestampedScene[] = [];
+  let bestDiff = Infinity;
   
-  if (batchTargetChars) {
-    if (isCondensing) {
-      // KIŞALTMA MODU
-      adaptationModeInstructions = `
+  for (let attempt = 1; attempt <= MAX_BATCH_RETRIES; attempt++) {
+    // Basit input formatı (batchTranslateAndAdaptScenes gibi)
+    const scenesInput = batch.map((scene, idx) => ({
+      id: idx + 1,
+      text: scene.text,
+      charCount: scene.text.length
+    }));
+
+    // Yaratıcılık seviyesine göre talimatlar
+    const creativityLevel = Math.round(preset.settings.creativeFreedom * 100);
+    const structurePreserve = Math.round(preset.settings.preserveStructure * 100);
+
+    const presetInstructions = [];
+    if (preset.settings.rhetoricalQuestions) presetInstructions.push('Add rhetorical questions to engage the audience');
+    if (preset.settings.directAddress) presetInstructions.push('Use direct address (you/your) to connect with viewers');
+    if (preset.settings.dramaticPauses) presetInstructions.push('Add dramatic pauses with "..." for suspense');
+
+    // Kültürel adaptasyon seçeneğine göre talimat
+    const culturalAdaptationRule = applyCulturalAdaptation
+      ? `✅ CULTURAL ADAPTATION ENABLED: You MAY adapt names, places, and cultural references to fit ${targetLang} culture.`
+      : `⛔ NO CULTURAL ADAPTATION: Keep ALL original names, places, cities, countries, and cultural references EXACTLY as they are. Only translate them phonetically if needed. Example: "New York" stays "New York", "John" stays "John".`;
+
+    // Ölçek hesapla ve modu belirle
+    const scale = batchTargetChars ? batchTargetChars / batchOriginalChars : 1;
+    const isCondensing = scale < 0.95;  // Kısaltma modu
+    const isExpanding = scale > 1.05;   // Uzatma modu
+    const scalePercent = Math.round(scale * 100);
+    
+    // Önceki deneme uyarısı
+    let retryWarning = '';
+    if (attempt > 1 && lastTotalChars > 0) {
+      const wasShort = lastTotalChars < minAllowed;
+      const wasLong = lastTotalChars > maxAllowed;
+      const diff = lastTotalChars - effectiveTarget;
+      const diffPercent = ((lastTotalChars / effectiveTarget - 1) * 100).toFixed(1);
+      
+      if (wasShort) {
+        retryWarning = `
+⚠️⚠️⚠️ PREVIOUS ATTEMPT FAILED - TEXT WAS TOO SHORT! ⚠️⚠️⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Previous output: ${lastTotalChars} chars (${diffPercent}% vs target)
+NEEDED: ${effectiveTarget} chars (range: ${minAllowed}-${maxAllowed})
+SHORTFALL: ${Math.abs(diff)} characters too short!
+
+🔥 YOU MUST ADD MORE CONTENT THIS TIME:
+• Expand descriptions with sensory details
+• Add emotional depth to key moments  
+• Use longer, more elaborate phrases
+• Include rhetorical flourishes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+      } else if (wasLong) {
+        retryWarning = `
+⚠️⚠️⚠️ PREVIOUS ATTEMPT FAILED - TEXT WAS TOO LONG! ⚠️⚠️⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Previous output: ${lastTotalChars} chars (${diffPercent}% vs target)
+NEEDED: ${effectiveTarget} chars (range: ${minAllowed}-${maxAllowed})
+EXCESS: ${Math.abs(diff)} characters too long!
+
+🔥 YOU MUST WRITE MORE CONCISELY THIS TIME:
+• Remove redundant words and filler
+• Use shorter, punchier phrases
+• Combine sentences where possible
+• Be direct - no unnecessary elaboration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+      }
+    }
+    
+    // Dinamik mod talimatları
+    let adaptationModeInstructions = '';
+    
+    if (batchTargetChars) {
+      if (isCondensing) {
+        // KIŞALTMA MODU
+        adaptationModeInstructions = `
 📉 MODE: CONDENSING (${scalePercent}% of original - making it shorter)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -456,16 +512,11 @@ async function transcrerateBatch(
 • DON'T remove character dialogue (shorten it, don't delete it)
 • DON'T lose the emotional arc of the story
 • DON'T cut transitions that maintain story flow
-• DON'T remove context that readers need to understand
+• DON'T remove context that readers need to understand`;
 
-🎯 EXAMPLE:
-Original: "The old man slowly walked down the long, winding road, thinking about all the many memories he had accumulated over his very long and eventful life."
-Condensed: "The old man walked the winding road, lost in a lifetime of memories."
-(Same meaning, same emotion, fewer characters)`;
-
-    } else if (isExpanding) {
-      // UZATMA MODU
-      adaptationModeInstructions = `
+      } else if (isExpanding) {
+        // UZATMA MODU
+        adaptationModeInstructions = `
 📈 MODE: EXPANDING (${scalePercent}% of original - making it richer)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -483,16 +534,11 @@ Condensed: "The old man walked the winding road, lost in a lifetime of memories.
 • DON'T introduce new characters
 • DON'T change character motivations or relationships
 • DON'T add information that contradicts the original
-• DON'T pad with meaningless filler - every addition should enhance
+• DON'T pad with meaningless filler - every addition should enhance`;
 
-🎯 EXAMPLE:
-Original: "She opened the door and saw him standing there."
-Expanded: "Her hand trembled as she turned the cold brass handle. The door creaked open, and there he stood—silhouetted against the amber glow of the streetlight, rain dripping from his coat."
-(Same event, richer experience, more characters)`;
-
-    } else {
-      // KORUMA MODU (yaklaşık aynı uzunluk)
-      adaptationModeInstructions = `
+      } else {
+        // KORUMA MODU (yaklaşık aynı uzunluk)
+        adaptationModeInstructions = `
 📊 MODE: BALANCED (${scalePercent}% - similar length, better expression)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -501,44 +547,48 @@ Expanded: "Her hand trembled as she turned the cold brass handle. The door creak
 • Restructure sentences for better flow
 • Keep approximately the same character count per segment
 • Focus on making it more engaging, not longer or shorter`;
+      }
     }
-  }
-  
-  // Karakter hedefi kuralı
-  const lengthRule = batchTargetChars
-    ? `🚨 STRICT CHARACTER LIMIT - MANDATORY:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 THIS BATCH: ${batch.length} segments, ${batchOriginalChars} chars original
-🎯 YOUR TARGET: ${batchTargetChars} characters (±5% = ${Math.round(batchTargetChars * 0.95)}-${Math.round(batchTargetChars * 1.05)})
-📐 SCALE: ${scalePercent}% of original
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    // Karakter hedefi kuralı - daha güçlü vurgu
+    const lengthRule = batchTargetChars
+      ? `
+🚨🚨🚨 MANDATORY CHARACTER COUNT - THIS IS YOUR PRIMARY CONSTRAINT 🚨🚨🚨
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 INPUT: ${batch.length} segments totaling ${batchOriginalChars} characters
+🎯 OUTPUT TARGET: ${batchTargetChars} characters TOTAL
+📐 SCALE FACTOR: ${scalePercent}% (${isCondensing ? 'SHORTEN' : isExpanding ? 'EXPAND' : 'MAINTAIN'})
+✅ ACCEPTABLE RANGE: ${minAllowed} to ${maxAllowed} characters
+
+${retryWarning}
 
 ${adaptationModeInstructions}
 
-⚠️ FINAL CHECK:
-1. Count total characters BEFORE submitting
-2. Must be between ${Math.round(batchTargetChars * 0.95)} and ${Math.round(batchTargetChars * 1.05)} chars
-3. Distribute naturally - some segments longer, some shorter
-4. Story flow and meaning MUST remain intact`
-    : `📏 CRITICAL LENGTH RULE (VIDEO SYNC):
-- Each segment's character count must stay within ±5% of original
-- Example: 100 chars original → output must be 95-105 chars
+⚡ TECHNIQUE: For each segment, multiply original char count by ${(scale).toFixed(2)}
+   Example: 500 char segment → aim for ${Math.round(500 * scale)} chars in output
+
+🔢 BEFORE SUBMITTING, COUNT YOUR TOTAL OUTPUT CHARACTERS!
+   Your total MUST be between ${minAllowed} and ${maxAllowed} chars.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+      : `📏 CRITICAL LENGTH RULE (VIDEO SYNC):
+- Each segment's character count must stay within ±10% of original
+- Example: 100 chars original → output must be 90-110 chars
 - This ensures the rewritten audio matches the original video timing
 - Be creative with HOW you say it, but keep the SAME length
 - Don't pad with filler words, don't cut important content`;
 
-  const systemPrompt = `You are an expert TRANSCREATOR (not just translator). Your job is to CREATIVELY REWRITE content to make it more ENGAGING and COMPELLING in ${targetLang}.
+    const systemPrompt = `You are an expert TRANSCREATOR (not just translator). Your job is to CREATIVELY REWRITE content to make it more ENGAGING and COMPELLING in ${targetLang}.
 
 ⚠️ CRITICAL OUTPUT LANGUAGE: ${targetLang.toUpperCase()} ONLY!
+
+${lengthRule}
 
 🎯 YOUR MISSION - TRANSCREATION:
 Transform the content while PRESERVING its soul:
 1. Keep ALL story events, plot points, and character moments
 2. Maintain the emotional journey and narrative arc
 3. Express the same ideas more powerfully in ${targetLang}
-4. Adapt length as instructed while keeping meaning intact
-
-${lengthRule}
+4. STRICTLY respect the character count target
 
 📊 CREATIVITY SETTINGS:
 - Creative Freedom: ${creativityLevel}%
@@ -563,35 +613,92 @@ ${culturalAdaptationRule}
 - Ensure smooth, speakable rhythm
 
 JSON OUTPUT:
-{"results": [{"id": 1, "text": "rewritten text"}]}`;
+{"results": [{"id": 1, "text": "rewritten text"}], "totalChars": <number>}`;
 
-  const response = await retryOpenAI(
-    () => createCompletion({
-      provider,
-      model,
-      systemPrompt,
-      messages: [{ role: 'user', content: JSON.stringify(scenesInput, null, 2) }],
-      temperature: 0.4,
-      responseFormat: 'json_object'
-    }),
-    `Transcreation batch ${batchIndex + 1}/${totalBatches}`
-  );
+    try {
+      const response = await retryOpenAI(
+        () => createCompletion({
+          provider,
+          model,
+          systemPrompt,
+          messages: [{ role: 'user', content: JSON.stringify(scenesInput, null, 2) }],
+          temperature: 0.3 + (attempt * 0.1), // Her denemede biraz daha yaratıcı
+          responseFormat: 'json_object'
+        }),
+        `Transcreation batch ${batchIndex + 1}/${totalBatches} (attempt ${attempt})`
+      );
 
-  try {
-    const parsed = JSON.parse(response);
-    const results = parsed.results || [];
+      const parsed = JSON.parse(response);
+      const results = parsed.results || [];
 
-    return batch.map((scene, idx) => {
-      const result = results.find((r: { id: number; text: string }) => r.id === idx + 1);
-      return {
-        ...scene,
-        textAdapted: result?.text || scene.text
-      };
-    });
-  } catch (error) {
-    logger.error('Batch transcreation parse hatası, orijinal metinler kullanılıyor', { batchIndex, error });
-    return batch.map(scene => ({ ...scene, textAdapted: scene.text }));
+      const processedBatch = batch.map((scene, idx) => {
+        const result = results.find((r: { id: number; text: string }) => r.id === idx + 1);
+        return {
+          ...scene,
+          textAdapted: result?.text || scene.text
+        };
+      });
+      
+      // Toplam karakter sayısını hesapla
+      const totalChars = processedBatch.reduce((sum, s) => sum + (s.textAdapted?.length || 0), 0);
+      lastResult = processedBatch;
+      lastTotalChars = totalChars;
+      
+      // En iyi sonucu kaydet (hedefe en yakın)
+      const currentDiff = Math.abs(totalChars - effectiveTarget);
+      if (currentDiff < bestDiff) {
+        bestDiff = currentDiff;
+        bestResult = processedBatch;
+      }
+      
+      // Tolerans kontrolü
+      const isWithinRange = totalChars >= minAllowed && totalChars <= maxAllowed;
+      const diffPercent = ((totalChars / effectiveTarget - 1) * 100).toFixed(1);
+      
+      if (isWithinRange) {
+        logger.info(`Batch ${batchIndex + 1} karakter hedefi tutturuldu ✅`, {
+          attempt,
+          target: effectiveTarget,
+          actual: totalChars,
+          diff: `${diffPercent}%`
+        });
+        return processedBatch;
+      }
+      
+      logger.warn(`Batch ${batchIndex + 1} karakter hedefi tutturulamadı (${attempt}/${MAX_BATCH_RETRIES})`, {
+        target: effectiveTarget,
+        actual: totalChars,
+        diff: `${diffPercent}%`,
+        range: `${minAllowed}-${maxAllowed}`,
+        shortOrLong: totalChars < minAllowed ? 'SHORT' : 'LONG'
+      });
+      
+    } catch (error) {
+      logger.error(`Batch ${batchIndex + 1} transcreation hatası (${attempt}/${MAX_BATCH_RETRIES})`, {
+        error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+      });
+      
+      // Son denemede hata olursa orijinal metinleri kullan
+      if (attempt === MAX_BATCH_RETRIES) {
+        return batch.map(scene => ({ ...scene, textAdapted: scene.text }));
+      }
+    }
   }
+  
+  // Tüm denemeler bittikten sonra en iyi sonucu döndür
+  if (bestResult.length > 0) {
+    const bestTotalChars = bestResult.reduce((sum, s) => sum + (s.textAdapted?.length || 0), 0);
+    logger.warn(`Batch ${batchIndex + 1}: ${MAX_BATCH_RETRIES} denemede hedef tutturulamadı, en iyi sonuç kullanılıyor`, {
+      target: effectiveTarget,
+      bestResult: bestTotalChars,
+      diff: `${((bestTotalChars / effectiveTarget - 1) * 100).toFixed(1)}%`
+    });
+    return bestResult;
+  }
+  
+  // Fallback: orijinal metinleri kullan
+  logger.error(`Batch ${batchIndex + 1}: Tüm denemeler başarısız, orijinal metinler kullanılıyor`);
+  return batch.map(scene => ({ ...scene, textAdapted: scene.text }));
 }
 
 // NOT: retryFailedScenes kaldırıldı - basitleştirilmiş yapı kullanılıyor
@@ -610,7 +717,7 @@ interface TranscreationBatchResult {
 }
 
 /**
- * Tüm sahneleri batch olarak transcreate eder (Basitleştirilmiş - batchTranslateAndAdaptScenes gibi)
+ * Tüm sahneleri batch olarak transcreate eder (Retry ve düzeltme mekanizması ile)
  */
 export async function batchTranscreateScenes(options: BatchTranscreateOptions): Promise<TranscreationBatchResult> {
   const { scenes, sourceLang, targetLang, presetId, styleId, model, provider, applyCulturalAdaptation = false, targetCharacterCount } = options;
@@ -620,6 +727,12 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
 
   // Orijinal toplam karakter sayısı
   const originalTotalChars = scenes.reduce((sum, s) => sum + s.text.length, 0);
+  
+  // Hedef karakter sayısı (verilmediyse orijinal)
+  const effectiveTarget = targetCharacterCount || originalTotalChars;
+  const TOLERANCE = 0.05; // %5 tolerans
+  const minAllowed = Math.round(effectiveTarget * (1 - TOLERANCE));
+  const maxAllowed = Math.round(effectiveTarget * (1 + TOLERANCE));
 
   logger.info('Batch transcreation başlatılıyor', {
     sceneCount: scenes.length,
@@ -630,8 +743,10 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     model,
     provider,
     applyCulturalAdaptation,
-    targetCharacterCount: targetCharacterCount || 'yok (±%5 tolerans)',
+    targetCharacterCount: targetCharacterCount || 'yok (orijinal uzunluk korunacak)',
     originalTotalChars,
+    effectiveTarget,
+    allowedRange: `${minAllowed}-${maxAllowed}`,
     firstScenePreview: scenes[0]?.text?.substring(0, 100)
   });
 
@@ -647,7 +762,7 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
   // NOT: Başlık işlemi process-story.ts'de transcreateTitle() ile yapılıyor
 
   // 3. Her batch'i işle (batchTranslateAndAdaptScenes gibi basit for döngüsü)
-  const processedScenes: TimestampedScene[] = [];
+  let processedScenes: TimestampedScene[] = [];
 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
@@ -690,46 +805,145 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     logger.debug(`Batch ${i + 1}/${batches.length} tamamlandı`);
   }
 
-  // 4. İstatistik ve doğrulama
-  const newChars = processedScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
-  const ratio = newChars / originalTotalChars;
+  // 4. İlk geçiş sonrası toplam karakter kontrolü
+  let currentChars = processedScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
+  let isWithinTarget = currentChars >= minAllowed && currentChars <= maxAllowed;
+  
+  logger.info('İlk geçiş sonucu', {
+    target: effectiveTarget,
+    actual: currentChars,
+    diff: `${((currentChars / effectiveTarget - 1) * 100).toFixed(1)}%`,
+    isWithinTarget
+  });
 
-  // Hedef varsa doğrulama yap
-  let isWithinTarget = true;
-  if (targetCharacterCount) {
-    const tolerance = 0.05; // ±%5 tolerans (sıkı hedef)
-    const minAllowed = targetCharacterCount * (1 - tolerance);
-    const maxAllowed = targetCharacterCount * (1 + tolerance);
-    isWithinTarget = newChars >= minAllowed && newChars <= maxAllowed;
-
-    logger.info('Karakter hedefi doğrulaması', {
-      target: targetCharacterCount,
-      actual: newChars,
-      difference: `${((newChars / targetCharacterCount - 1) * 100).toFixed(1)}%`,
-      withinTarget: isWithinTarget,
-      allowedRange: `${Math.round(minAllowed)}-${Math.round(maxAllowed)}`
+  // 5. Hedef tutmadıysa düzeltme geçişi yap (en çok 2 ek deneme)
+  const MAX_CORRECTION_ATTEMPTS = 2;
+  let correctionAttempt = 0;
+  
+  while (!isWithinTarget && correctionAttempt < MAX_CORRECTION_ATTEMPTS) {
+    correctionAttempt++;
+    
+    const isShort = currentChars < minAllowed;
+    const diff = Math.abs(currentChars - effectiveTarget);
+    const diffPercent = ((currentChars / effectiveTarget - 1) * 100);
+    
+    logger.warn(`Toplam hedef tutmadı, düzeltme geçişi ${correctionAttempt}/${MAX_CORRECTION_ATTEMPTS}`, {
+      target: effectiveTarget,
+      current: currentChars,
+      diff: `${diffPercent.toFixed(1)}%`,
+      direction: isShort ? 'KISA - uzatılacak' : 'UZUN - kısaltılacak'
     });
-
-    if (!isWithinTarget) {
-      logger.warn('Karakter hedefi tutturulamadı (±%5 dışında)', {
-        target: targetCharacterCount,
-        actual: newChars,
-        difference: newChars - targetCharacterCount,
-        percentDiff: `${((newChars / targetCharacterCount - 1) * 100).toFixed(1)}%`
+    
+    // En çok sapan batch'leri bul ve yeniden işle
+    const batchStats = batches.map((batch, idx) => {
+      const batchScenes = processedScenes.filter((_, sceneIdx) => {
+        let count = 0;
+        for (let i = 0; i <= idx; i++) {
+          count += batches[i].length;
+        }
+        const startIdx = idx === 0 ? 0 : count - batches[idx].length;
+        const endIdx = count;
+        return sceneIdx >= startIdx && sceneIdx < endIdx;
       });
+      
+      const batchOriginalChars = batch.reduce((sum, s) => sum + s.text.length, 0);
+      const batchCurrentChars = batchScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
+      const batchTargetChars = targetCharacterCount 
+        ? Math.round(targetCharacterCount * (batchOriginalChars / originalTotalChars))
+        : batchOriginalChars;
+      const batchDiff = (batchCurrentChars / batchTargetChars - 1) * 100;
+      
+      return {
+        idx,
+        batch,
+        batchOriginalChars,
+        batchCurrentChars,
+        batchTargetChars,
+        batchDiff,
+        needsCorrection: isShort 
+          ? batchCurrentChars < batchTargetChars * 0.95 // %5'den fazla kısa
+          : batchCurrentChars > batchTargetChars * 1.05  // %5'den fazla uzun
+      };
+    });
+    
+    // Düzeltme gereken batch'leri seç
+    const batchesToCorrect = batchStats
+      .filter(b => b.needsCorrection)
+      .sort((a, b) => Math.abs(b.batchDiff) - Math.abs(a.batchDiff))
+      .slice(0, 3); // En fazla 3 batch
+    
+    if (batchesToCorrect.length === 0) {
+      logger.info('Düzeltilecek batch bulunamadı, mevcut sonuç kabul ediliyor');
+      break;
     }
-  } else {
-    // Hedef yoksa ±%5 tolerans kontrolü
-    isWithinTarget = ratio >= 0.95 && ratio <= 1.05;
+    
+    logger.info(`${batchesToCorrect.length} batch düzeltilecek`, {
+      batchIndices: batchesToCorrect.map(b => b.idx + 1)
+    });
+    
+    // Seçilen batch'leri yeniden işle
+    for (const batchInfo of batchesToCorrect) {
+      // Düzeltilmiş hedef: eksik/fazla farkı telafi et
+      const correctionFactor = isShort ? 1.15 : 0.85; // Daha agresif düzeltme
+      const correctedTarget = Math.round(batchInfo.batchTargetChars * correctionFactor);
+      
+      logger.debug(`Batch ${batchInfo.idx + 1} yeniden işleniyor`, {
+        originalTarget: batchInfo.batchTargetChars,
+        correctedTarget,
+        currentChars: batchInfo.batchCurrentChars
+      });
+      
+      const correctedBatch = await transcrerateBatch(
+        batchInfo.batch,
+        sourceLang,
+        targetLang,
+        preset,
+        style,
+        model,
+        provider,
+        batchInfo.idx,
+        batches.length,
+        applyCulturalAdaptation,
+        correctedTarget
+      );
+      
+      // İlgili sahneleri güncelle
+      let sceneOffset = 0;
+      for (let i = 0; i < batchInfo.idx; i++) {
+        sceneOffset += batches[i].length;
+      }
+      
+      for (let j = 0; j < correctedBatch.length; j++) {
+        processedScenes[sceneOffset + j] = correctedBatch[j];
+      }
+    }
+    
+    // Yeni toplam hesapla
+    currentChars = processedScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
+    isWithinTarget = currentChars >= minAllowed && currentChars <= maxAllowed;
+    
+    logger.info(`Düzeltme geçişi ${correctionAttempt} sonucu`, {
+      target: effectiveTarget,
+      actual: currentChars,
+      diff: `${((currentChars / effectiveTarget - 1) * 100).toFixed(1)}%`,
+      isWithinTarget
+    });
   }
+
+  // 6. Final istatistik ve doğrulama
+  const finalChars = processedScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
+  const ratio = finalChars / originalTotalChars;
+  const finalDiff = ((finalChars / effectiveTarget - 1) * 100).toFixed(1);
 
   logger.info('Batch transcreation tamamlandı', {
     totalScenes: processedScenes.length,
     originalChars: originalTotalChars,
-    newChars,
+    targetChars: effectiveTarget,
+    finalChars,
     ratio: `${(ratio * 100).toFixed(1)}%`,
-    targetCharacterCount: targetCharacterCount || 'yok',
-    isWithinTarget
+    diffFromTarget: `${finalDiff}%`,
+    isWithinTarget,
+    correctionAttempts: correctionAttempt
   });
 
   return {
@@ -737,7 +951,7 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     scenes: processedScenes,
     validation: {
       targetCharacterCount,
-      actualCharacterCount: newChars,
+      actualCharacterCount: finalChars,
       isWithinTarget
     }
   };
