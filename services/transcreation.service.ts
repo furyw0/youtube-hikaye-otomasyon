@@ -78,44 +78,53 @@ export const TRANSCREATION_STYLES: TranscreationStyle[] = [
     name: 'Philosophical/Deep',
     description: 'Deep, thought-provoking narration',
     instructions: `- Use a deep and thought-provoking tone
-- Ask existential and philosophical questions
-- Use metaphors and symbolic language
-- Invite the viewer to reflect
-- Reference universal truths`,
-    systemPromptAddition: `Narration style: Philosophical and deeply thought-provoking. Confront the viewer with existential questions. Use introspective phrases like "What about you?" or "Have you ever wondered..."`
+- Ask existential and philosophical questions that make viewers pause
+- Use metaphors and symbolic language that resonate emotionally
+- Invite the viewer to reflect on their own life
+- Reference universal truths everyone can relate to
+- Create "aha moments" that viewers want to share
+- Build tension before revealing insights`,
+    systemPromptAddition: `Narration style: Philosophical and deeply thought-provoking. Make viewers feel like they're discovering profound truths. Use introspective phrases like "What about you?", "Have you ever wondered...", "Think about it for a moment...". Create a sense of shared wisdom. Make them FEEL the depth, don't just tell them.`
   },
   {
     id: 'storyteller',
     name: 'Storyteller',
     description: 'Engaging storytelling narration',
-    instructions: `- Write like an engaging storyteller
-- Add suspense and curiosity elements
-- Use transitions like "And then..." or "At that moment..."
-- Create emotional connection
-- Emphasize dramatic moments`,
-    systemPromptAddition: `Narration style: Engaging storyteller. Draw the listener into the story. Use phrases like "Imagine this..." or "And then something unexpected happened..."`
+    instructions: `- Write like a master storyteller sitting by a campfire
+- Create OPEN LOOPS - hint at what's coming to keep viewers watching
+- Use sensory details: sights, sounds, feelings
+- Build tension and release strategically
+- Use transitions that create anticipation: "But what happened next changed everything..."
+- Make the audience FEEL, not just hear the story
+- Vary sentence rhythm: short punchy sentences for impact, longer for atmosphere
+- End sections with hooks that demand the next part`,
+    systemPromptAddition: `Narration style: Master storyteller. Your job is to make it IMPOSSIBLE for viewers to click away. Use phrases like "But here's where it gets interesting...", "What they didn't know was...", "And then... everything changed.", "Stay with me here, because this part is crucial...". Create emotional peaks and valleys. Short sentence. For impact. Then flow into longer descriptions.`
   },
   {
     id: 'documentary',
     name: 'Documentary',
     description: 'Informative, professional narration',
-    instructions: `- Use an objective and informative tone
-- Present facts in a flowing manner
-- Use professional documentary language
-- Make details clear and understandable
-- Be a trustworthy narrator`,
-    systemPromptAddition: `Narration style: Professional documentary narrator. David Attenborough style - flowing, informative, and trustworthy. Present facts in an engaging way.`
+    instructions: `- Use an authoritative yet warm tone
+- Present information in a way that builds curiosity
+- Layer facts to create "revelation moments"
+- Use professional documentary language without being dry
+- Make complex topics feel accessible and fascinating
+- Create the sense that viewers are learning something valuable
+- Balance information with emotional resonance`,
+    systemPromptAddition: `Narration style: Professional documentary narrator. David Attenborough meets mystery documentary. Present facts as discoveries. Use phrases like "What researchers found was remarkable...", "The truth, as it turned out...", "Few people realize that...". Make information feel exclusive and valuable.`
   },
   {
     id: 'entertaining',
     name: 'Entertaining',
     description: 'Light, entertaining narration',
-    instructions: `- Use an energetic and entertaining tone
-- Add light humor and irony
-- Use conversational language
-- Be friendly with the viewer
-- Use surprising expressions`,
-    systemPromptAddition: `Narration style: Entertaining and friendly. Like telling a friend. Use phrases like "You won't believe this..." or "Now wait, this part is great..."`
+    instructions: `- Use an energetic and relatable tone
+- Add humor that doesn't feel forced
+- Use conversational language - like texting a friend
+- React to the story yourself: express surprise, disbelief
+- Break the fourth wall occasionally
+- Use current, natural expressions
+- Create shareable moments viewers will remember`,
+    systemPromptAddition: `Narration style: Your witty best friend telling you an INSANE story. Use phrases like "Okay but get this...", "I'm not even joking...", "Wait, it gets better...", "Can you even imagine?". Be genuinely entertained by your own story. React naturally.`
   }
 ];
 
@@ -590,6 +599,38 @@ Transform the content while PRESERVING its soul:
 3. Express the same ideas more powerfully in ${targetLang}
 4. STRICTLY respect the character count target
 
+🎬 YOUTUBE RETENTION OPTIMIZATION (CRITICAL):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 OPEN LOOPS (Keep Viewers Watching):
+- Plant curiosity seeds early that pay off later
+- Use phrases like "But that wasn't even the craziest part..."
+- Never reveal everything at once - tease what's coming
+- End segments with mini-cliffhangers when appropriate
+
+🗣️ NATURAL HUMAN SPEECH (NO AI SLOP - THIS IS CRITICAL):
+- Write how REAL people talk, not how AI writes
+- Use contractions naturally: "didn't" not "did not", "wasn't" not "was not"
+- Vary sentence lengths DRAMATICALLY:
+  * Short punch. For impact.
+  * Then flow into longer, more descriptive passages that paint vivid pictures.
+- Include natural reactions: "Crazy, right?", "I know...", "But wait..."
+- AVOID robotic phrases like "It is important to note that" or "Furthermore"
+
+🔧 FIX SOURCE ISSUES (IMPROVE THE ORIGINAL):
+- If the source has awkward phrasing → REWRITE for natural flow
+- If logic doesn't flow → RESTRUCTURE for clarity
+- If emotional beats are missing → ADD them
+- If transitions are abrupt → SMOOTH them out
+- If it sounds robotic → HUMANIZE it
+- Make it BETTER than the original, not just translated
+
+💓 EMOTIONAL CONNECTION:
+- Make viewers FEEL something regularly
+- Use "you" to speak directly to the viewer when appropriate
+- Create empathy: "Imagine being in their shoes..."
+- Build emotional peaks: tension, relief, surprise, satisfaction
+
 📊 CREATIVITY SETTINGS:
 - Creative Freedom: ${creativityLevel}%
 - Structure Preservation: ${structurePreserve}%
@@ -609,8 +650,9 @@ ${culturalAdaptationRule}
 
 🎙️ VOICE-OVER READY:
 - Expand abbreviations naturally
-- Write numbers as words
+- Write numbers as words (3 → three, 1990 → nineteen ninety)
 - Ensure smooth, speakable rhythm
+- No parentheses - integrate that info into the sentence
 
 JSON OUTPUT:
 {"results": [{"id": 1, "text": "rewritten text"}], "totalChars": <number>}`;

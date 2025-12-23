@@ -235,25 +235,25 @@ export const TRANSCREATION_STYLES = [
   { 
     id: 'philosophical', 
     name: 'Felsefi/Derin', 
-    description: 'Derin düşündüren anlatım',
+    description: 'Düşündüren, izleyiciyi derinden etkileyen',
     emoji: '🔮'
   },
   { 
     id: 'storyteller', 
     name: 'Hikaye Anlatıcısı', 
-    description: 'Sürükleyici hikaye anlatımı',
+    description: 'Sürükleyici, bırakamayacağın anlatım',
     emoji: '📖'
   },
   { 
     id: 'documentary', 
     name: 'Belgesel', 
-    description: 'Bilgilendirici, profesyonel',
+    description: 'Güvenilir, merak uyandıran profesyonel',
     emoji: '🎬'
   },
   { 
     id: 'entertaining', 
     name: 'Eğlenceli', 
-    description: 'Hafif, eğlenceli anlatım',
+    description: 'Arkadaşınla sohbet eder gibi samimi',
     emoji: '🎉'
   }
 ] as const;
