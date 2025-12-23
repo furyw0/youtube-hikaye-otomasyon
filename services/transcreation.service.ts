@@ -398,8 +398,9 @@ export function splitIntoBatches(
 
 /**
  * Tek bir batch'i transcreate eder (Retry mekanizması ile)
+ * Export edildi - Inngest step'lerinde kullanılıyor
  */
-async function transcrerateBatch(
+export async function transcrerateBatch(
   batch: TimestampedScene[],
   sourceLang: string,
   targetLang: string,

@@ -30,7 +30,10 @@ import { batchTranslateAndAdaptScenes, batchAdaptScenes } from '@/services/batch
 import { 
   batchTranscreateScenes, 
   transcreateTitle,
-  getStyleById
+  getStyleById,
+  getPresetById,
+  splitIntoBatches,
+  transcrerateBatch
 } from '@/services/transcreation.service';
 import type { TranscreationPresetId, TranscreationStyleId } from '@/types/transcreation.types';
 import Settings from '@/models/Settings';
@@ -182,60 +185,115 @@ export const processStory = inngest.createFunction(
         
         // Transcreation modu aktifse farklı işlem yap
         if (storyData.useTranscreation) {
-          // --- TRANSCREATION MODU: Akıcı Yeniden Yazım (%5 tolerans) ---
-          // NOT: batchTranslateAndAdaptScenes ile aynı basit yapı kullanılıyor
-          translationData = await step.run('transcreate-timestamped-batch', async () => {
+          // --- TRANSCREATION MODU: Step'lere bölünmüş versiyon (Timeout önleme) ---
+          
+          // STEP 1: Parse transcript ve batch'lere böl
+          const transcreationSetup = await step.run('transcreate-parse', async () => {
             await dbConnect();
-            await updateProgress(10, 'Transcreation: Zaman damgalı transkript işleniyor...');
+            await updateProgress(10, 'Transcreation: Transkript analiz ediliyor...');
 
-            logger.info('transcreate-timestamped-batch başladı', {
+            logger.info('transcreate-parse başladı', {
               storyId,
-              contentLength: storyData.timestampedContent?.length || 0,
-              originalLanguage: storyData.originalLanguage,
-              targetLanguage: storyData.targetLanguage,
-              transcreationPreset: storyData.transcreationPreset,
-              transcreationStyle: storyData.transcreationStyle,
-              llmModel: storyData.llmModel,
-              llmProvider: storyData.llmProvider
+              contentLength: storyData.timestampedContent?.length || 0
             });
 
-            // 1. Transkripti parse et ve sahnelere ayır
+            // Transkripti parse et
             const parsedTranscript = processTimestampedTranscript(storyData.timestampedContent!);
             
-            // Boş sahne kontrolü
             if (parsedTranscript.scenes.length === 0) {
-              logger.error('transcreate-timestamped-batch: Transkriptten sahne üretilemedi', { storyId });
               throw new Error('Transkriptten sahne üretilemedi. Format kontrol edin.');
             }
-            
-            logger.info('Transkript parse edildi (Transcreation)', {
-              storyId,
-              totalSegments: parsedTranscript.totalSegments,
-              totalScenes: parsedTranscript.totalScenes,
-              totalDuration: parsedTranscript.totalDuration
-            });
 
-            // Orijinal toplam karakter sayısını kaydet
+            // Batch'lere böl
+            const batches = splitIntoBatches(parsedTranscript.scenes, 4000, storyData.llmProvider);
             const originalLength = parsedTranscript.scenes.reduce((sum, s) => sum + s.text.length, 0);
+            
+            // Hedef karakter sayısı hesapla
+            const effectiveTarget = storyData.targetCharacterCount || originalLength;
+            const scaleFactor = effectiveTarget / originalLength;
 
-            await updateProgress(15, `${parsedTranscript.totalScenes} sahne transcreation yapılıyor...`);
-
-            // 2. Transcreation: Basit batch işlemi (batchTranslateAndAdaptScenes gibi)
-            // NOT: skipAdaptation = true ise kültürel adaptasyon UYGULANIR (UI'da "Kültürel adaptasyon da uygula" checkbox'ı)
-            const batchResult = await batchTranscreateScenes({
-              scenes: parsedTranscript.scenes,
-              sourceLang: storyData.originalLanguage,
-              targetLang: storyData.targetLanguage,
-              presetId: (storyData.transcreationPreset || 'medium') as TranscreationPresetId,
-              styleId: (storyData.transcreationStyle || 'storyteller') as TranscreationStyleId,
-              model: storyData.llmModel,
-              provider: storyData.llmProvider,
-              applyCulturalAdaptation: storyData.skipAdaptation, // UI checkbox: "Kültürel adaptasyon da uygula"
-              targetCharacterCount: storyData.targetCharacterCount // Hedef karakter sayısı (opsiyonel)
+            // Her batch için hedef karakter sayısı hesapla
+            const batchTargets = batches.map(batch => {
+              const batchOriginalChars = batch.reduce((sum, s) => sum + s.text.length, 0);
+              return Math.round(batchOriginalChars * scaleFactor);
             });
 
-            // 3. Başlığı transcreate et
-            const style = getStyleById((storyData.transcreationStyle || 'storyteller') as TranscreationStyleId);
+            logger.info('Transcreation setup tamamlandı', {
+              storyId,
+              totalScenes: parsedTranscript.scenes.length,
+              totalBatches: batches.length,
+              originalLength,
+              effectiveTarget
+            });
+
+            return {
+              scenes: parsedTranscript.scenes,
+              batches: batches.map((batch, i) => ({
+                index: i,
+                scenes: batch,
+                targetChars: batchTargets[i]
+              })),
+              originalLength,
+              effectiveTarget,
+              totalBatches: batches.length
+            };
+          });
+
+          // STEP 2-N: Her batch için ayrı step
+          const processedBatches: TimestampedScene[][] = [];
+          const preset = getPresetById((storyData.transcreationPreset || 'medium') as TranscreationPresetId);
+          const style = getStyleById((storyData.transcreationStyle || 'storyteller') as TranscreationStyleId);
+
+          for (let i = 0; i < transcreationSetup.batches.length; i++) {
+            const batchData = transcreationSetup.batches[i];
+            
+            const batchResult = await step.run(`transcreate-batch-${i}`, async () => {
+              await dbConnect();
+              await updateProgress(
+                10 + Math.round((i / transcreationSetup.totalBatches) * 8),
+                `Batch ${i + 1}/${transcreationSetup.totalBatches} işleniyor...`
+              );
+
+              logger.info(`Batch ${i + 1} işleniyor`, {
+                storyId,
+                batchIndex: i,
+                scenesInBatch: batchData.scenes.length,
+                targetChars: batchData.targetChars
+              });
+
+              const result = await transcrerateBatch(
+                batchData.scenes,
+                storyData.originalLanguage,
+                storyData.targetLanguage,
+                preset,
+                style,
+                storyData.llmModel,
+                storyData.llmProvider,
+                i,
+                transcreationSetup.totalBatches,
+                storyData.skipAdaptation || false,
+                batchData.targetChars
+              );
+
+              return result;
+            });
+
+            processedBatches.push(batchResult);
+          }
+
+          // FINAL STEP: Sonuçları birleştir ve başlığı transcreate et
+          translationData = await step.run('transcreate-finalize', async () => {
+            await dbConnect();
+            await updateProgress(18, 'Transcreation sonuçları birleştiriliyor...');
+
+            // Tüm batch sonuçlarını birleştir
+            const allScenes = processedBatches.flat();
+            
+            // Karakter sayısı kontrolü
+            const translatedLength = allScenes.reduce((sum, s) => sum + (s.textAdapted?.length || s.text.length), 0);
+            const isWithinTarget = Math.abs(translatedLength - transcreationSetup.effectiveTarget) / transcreationSetup.effectiveTarget <= 0.05;
+
+            // Başlığı transcreate et
             const transcreatedTitle = await transcreateTitle(
               storyData.originalTitle,
               storyData.originalLanguage,
@@ -245,29 +303,25 @@ export const processStory = inngest.createFunction(
               storyData.llmProvider
             );
 
-            // 4. Sonuçları hesapla (batchResult.scenes zaten textAdapted dolu)
-            const translatedContent = batchResult.scenes.map(s => s.textAdapted || s.text).join('\n\n');
-            const translatedLength = batchResult.validation.actualCharacterCount;
+            const translatedContent = allScenes.map(s => s.textAdapted || s.text).join('\n\n');
 
-            // Süre kontrolü logu
-            const ratio = translatedLength / originalLength;
             logger.info('Transcreation tamamlandı', {
               storyId,
-              scenesProcessed: batchResult.scenes.length,
-              originalLength,
+              scenesProcessed: allScenes.length,
+              originalLength: transcreationSetup.originalLength,
               translatedLength,
-              ratio: `${(ratio * 100).toFixed(1)}%`,
-              targetCharacterCount: storyData.targetCharacterCount || 'yok',
-              isWithinTarget: batchResult.validation.isWithinTarget
+              ratio: `${((translatedLength / transcreationSetup.originalLength) * 100).toFixed(1)}%`,
+              targetCharacterCount: transcreationSetup.effectiveTarget,
+              isWithinTarget
             });
 
-            // DB güncelle (targetCharacterCountAchieved dahil)
+            // DB güncelle
             await Story.findByIdAndUpdate(storyId, {
               adaptedTitle: transcreatedTitle,
               adaptedContent: translatedContent,
-              originalContentLength: originalLength,
+              originalContentLength: transcreationSetup.originalLength,
               translatedContentLength: translatedLength,
-              targetCharacterCountAchieved: batchResult.validation.isWithinTarget
+              targetCharacterCountAchieved: isWithinTarget
             });
 
             await updateProgress(20, 'Transcreation tamamlandı');
@@ -275,10 +329,10 @@ export const processStory = inngest.createFunction(
             return {
               adaptedTitle: transcreatedTitle,
               adaptedContent: translatedContent,
-              originalLength,
+              originalLength: transcreationSetup.originalLength,
               translatedLength,
-              timestampedScenes: batchResult.scenes,
-              targetCharacterCountAchieved: batchResult.validation.isWithinTarget
+              timestampedScenes: allScenes,
+              targetCharacterCountAchieved: isWithinTarget
             };
           });
         } else {
