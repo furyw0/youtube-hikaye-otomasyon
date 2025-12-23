@@ -412,7 +412,7 @@ async function transcrerateBatch(
   applyCulturalAdaptation: boolean = false,
   batchTargetChars?: number  // Bu batch için hedef karakter sayısı
 ): Promise<TimestampedScene[]> {
-  const MAX_BATCH_RETRIES = 3;
+  const MAX_BATCH_RETRIES = 3; // Karakter hedefini tutturmak için 3 deneme
   const TOLERANCE = 0.05; // %5 tolerans
   
   // Bu batch için orijinal karakter sayısı
@@ -586,73 +586,57 @@ ${adaptationModeInstructions}
 - Be creative with HOW you say it, but keep the SAME length
 - Don't pad with filler words, don't cut important content`;
 
-    const systemPrompt = `You are an expert TRANSCREATOR (not just translator). Your job is to CREATIVELY REWRITE content to make it more ENGAGING and COMPELLING in ${targetLang}.
-
-⚠️ CRITICAL OUTPUT LANGUAGE: ${targetLang.toUpperCase()} ONLY!
+    const systemPrompt = `You are an expert TRANSCREATOR. CREATIVELY REWRITE content to be ENGAGING and COMPELLING in ${targetLang.toUpperCase()}.
 
 ${lengthRule}
 
-🎯 YOUR MISSION - TRANSCREATION:
-Transform the content while PRESERVING its soul:
-1. Keep ALL story events, plot points, and character moments
-2. Maintain the emotional journey and narrative arc
-3. Express the same ideas more powerfully in ${targetLang}
-4. STRICTLY respect the character count target
+🎯 MISSION - TRANSCREATION:
+Transform content while PRESERVING its soul:
+1. Keep ALL story events, plot points, character moments
+2. Maintain emotional journey and narrative arc
+3. Express ideas more powerfully in ${targetLang}
+4. STRICTLY respect character count target
 
-🎬 YOUTUBE RETENTION OPTIMIZATION (CRITICAL):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎬 YOUTUBE RETENTION (CRITICAL):
+• OPEN LOOPS: Plant curiosity seeds - "But that wasn't even the craziest part..."
+• Mini-cliffhangers at segment ends when appropriate
+• Tease what's coming - never reveal everything at once
+• Create emotional peaks: tension, relief, surprise
 
-📌 OPEN LOOPS (Keep Viewers Watching):
-- Plant curiosity seeds early that pay off later
-- Use phrases like "But that wasn't even the craziest part..."
-- Never reveal everything at once - tease what's coming
-- End segments with mini-cliffhangers when appropriate
-
-🗣️ NATURAL HUMAN SPEECH (NO AI SLOP - THIS IS CRITICAL):
-- Write how REAL people talk, not how AI writes
-- Use contractions naturally: "didn't" not "did not", "wasn't" not "was not"
-- Vary sentence lengths DRAMATICALLY:
-  * Short punch. For impact.
-  * Then flow into longer, more descriptive passages that paint vivid pictures.
-- Include natural reactions: "Crazy, right?", "I know...", "But wait..."
-- AVOID robotic phrases like "It is important to note that" or "Furthermore"
+🗣️ NATURAL HUMAN SPEECH (NO AI SLOP):
+• Write how REAL people talk, not how AI writes
+• Use contractions: "didn't" not "did not", "wasn't" not "was not"
+• Vary sentence lengths DRAMATICALLY:
+  - Short punch. For impact.
+  - Then flow into longer, descriptive passages that paint vivid pictures.
+• Natural reactions: "Crazy, right?", "I know...", "But wait..."
+• AVOID robotic phrases: "It is important to note", "Furthermore", "In conclusion"
 
 🔧 FIX SOURCE ISSUES (IMPROVE THE ORIGINAL):
-- If the source has awkward phrasing → REWRITE for natural flow
-- If logic doesn't flow → RESTRUCTURE for clarity
-- If emotional beats are missing → ADD them
-- If transitions are abrupt → SMOOTH them out
-- If it sounds robotic → HUMANIZE it
-- Make it BETTER than the original, not just translated
+• Awkward phrasing → REWRITE for natural flow
+• Logic doesn't flow → RESTRUCTURE for clarity
+• Emotional beats missing → ADD them
+• Abrupt transitions → SMOOTH them
+• Sounds robotic → HUMANIZE it
+• Make it BETTER than the original!
 
-💓 EMOTIONAL CONNECTION:
-- Make viewers FEEL something regularly
-- Use "you" to speak directly to the viewer when appropriate
-- Create empathy: "Imagine being in their shoes..."
-- Build emotional peaks: tension, relief, surprise, satisfaction
-
-📊 CREATIVITY SETTINGS:
-- Creative Freedom: ${creativityLevel}%
-- Structure Preservation: ${structurePreserve}%
-- Style: ${style.name}
-
-✨ STYLE TECHNIQUES:
+📊 STYLE: ${style.name} (Creative Freedom: ${creativityLevel}%)
 ${style.instructions}
 ${presetInstructions.length > 0 ? presetInstructions.map(i => `• ${i}`).join('\n') : ''}
 ${style.systemPromptAddition}
 
-🔒 ABSOLUTE RULES - NEVER BREAK:
+🔒 ABSOLUTE RULES:
 ${culturalAdaptationRule}
-• STORY INTEGRITY: Every event in the original must appear in the output
+• STORY INTEGRITY: Every original event must appear in output
 • CHARACTER CONSISTENCY: Keep genders, names, relationships accurate
 • LOGICAL FLOW: Cause and effect must make sense
-• EMOTIONAL TRUTH: The feelings conveyed must match the original intent
+• EMOTIONAL TRUTH: Feelings conveyed must match original intent
 
 🎙️ VOICE-OVER READY:
-- Expand abbreviations naturally
-- Write numbers as words (3 → three, 1990 → nineteen ninety)
-- Ensure smooth, speakable rhythm
-- No parentheses - integrate that info into the sentence
+• Expand abbreviations naturally
+• Numbers as words (3 → three, 1990 → nineteen ninety)
+• Smooth, speakable rhythm
+• No parentheses - integrate info into sentences
 
 JSON OUTPUT:
 {"results": [{"id": 1, "text": "rewritten text"}], "totalChars": <number>}`;
@@ -792,8 +776,8 @@ export async function batchTranscreateScenes(options: BatchTranscreateOptions): 
     firstScenePreview: scenes[0]?.text?.substring(0, 100)
   });
 
-  // 1. Sahneleri batch'lere böl (5000 token - batchTranslateAndAdaptScenes ile aynı)
-  const batches = splitIntoBatches(scenes, 5000, provider);
+  // 1. Sahneleri batch'lere böl (4000 token - kalite ve hız dengesi)
+  const batches = splitIntoBatches(scenes, 4000, provider);
   
   logger.info('Batch\'ler oluşturuldu', {
     totalScenes: scenes.length,

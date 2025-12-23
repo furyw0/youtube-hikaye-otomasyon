@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  // Vercel Pro: Function timeout'u 300 saniyeye çıkar
+  serverExternalPackages: ['mongoose'],
   images: {
     remotePatterns: [
       {
