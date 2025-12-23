@@ -33,7 +33,8 @@ import {
   getStyleById,
   getPresetById,
   splitIntoBatches,
-  transcrerateBatch
+  transcrerateBatch,
+  type BatchContext
 } from '@/services/transcreation.service';
 import type { TranscreationPresetId, TranscreationStyleId } from '@/types/transcreation.types';
 import Settings from '@/models/Settings';
@@ -239,13 +240,31 @@ export const processStory = inngest.createFunction(
             };
           });
 
-          // STEP 2-N: Her batch için ayrı step
+          // STEP 2-N: Her batch için ayrı step (context ile bağlam aktarımı)
           const processedBatches: TimestampedScene[][] = [];
           const preset = getPresetById((storyData.transcreationPreset || 'medium') as TranscreationPresetId);
           const style = getStyleById((storyData.transcreationStyle || 'storyteller') as TranscreationStyleId);
+          
+          // Context: Hikaye bütünlüğü için batch'ler arası bağlam
+          let currentContext: BatchContext = {};
+          let establishedTone = ''; // İlk batch'ten belirlenen ton
 
           for (let i = 0; i < transcreationSetup.batches.length; i++) {
             const batchData = transcreationSetup.batches[i];
+            
+            // Önceki batch'in son 2 sahnesini context olarak hazırla
+            if (i > 0 && processedBatches[i - 1]) {
+              const prevBatch = processedBatches[i - 1];
+              const lastScenes = prevBatch.slice(-2); // Son 2 sahne
+              currentContext = {
+                previousScenes: lastScenes.map(s => ({
+                  original: s.text,
+                  adapted: s.textAdapted || s.text
+                })),
+                storyTone: establishedTone,
+                establishedStyle: style.name
+              };
+            }
             
             const batchResult = await step.run(`transcreate-batch-${i}`, async () => {
               await dbConnect();
@@ -258,7 +277,8 @@ export const processStory = inngest.createFunction(
                 storyId,
                 batchIndex: i,
                 scenesInBatch: batchData.scenes.length,
-                targetChars: batchData.targetChars
+                targetChars: batchData.targetChars,
+                hasContext: !!currentContext.previousScenes
               });
 
               const result = await transcrerateBatch(
@@ -272,13 +292,23 @@ export const processStory = inngest.createFunction(
                 i,
                 transcreationSetup.totalBatches,
                 storyData.skipAdaptation || false,
-                batchData.targetChars
+                batchData.targetChars,
+                currentContext // Context parametresi eklendi
               );
 
               return result;
             });
 
             processedBatches.push(batchResult);
+            
+            // İlk batch'ten hikaye tonunu belirle
+            if (i === 0 && batchResult.length > 0) {
+              // İlk birkaç cümleyi analiz ederek ton belirle
+              const firstText = batchResult[0].textAdapted || batchResult[0].text;
+              establishedTone = firstText.length > 100 
+                ? `Opening style: "${firstText.substring(0, 100)}..."`
+                : `Opening: "${firstText}"`;
+            }
           }
 
           // FINAL STEP: Sonuçları birleştir ve başlığı transcreate et

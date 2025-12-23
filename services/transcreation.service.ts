@@ -397,6 +397,15 @@ export function splitIntoBatches(
 }
 
 /**
+ * Context bilgisi - önceki batch'ten gelen bağlam
+ */
+export interface BatchContext {
+  previousScenes?: { original: string; adapted: string }[];  // Önceki batch'in son 2 sahnesi
+  storyTone?: string;  // İlk batch'ten belirlenen hikaye tonu
+  establishedStyle?: string;  // Kullanılan üslup özellikleri
+}
+
+/**
  * Tek bir batch'i transcreate eder (Retry mekanizması ile)
  * Export edildi - Inngest step'lerinde kullanılıyor
  */
@@ -411,7 +420,8 @@ export async function transcrerateBatch(
   batchIndex: number,
   totalBatches: number,
   applyCulturalAdaptation: boolean = false,
-  batchTargetChars?: number  // Bu batch için hedef karakter sayısı
+  batchTargetChars?: number,  // Bu batch için hedef karakter sayısı
+  context?: BatchContext  // Önceki batch'ten gelen bağlam
 ): Promise<TimestampedScene[]> {
   const MAX_BATCH_RETRIES = 3; // Karakter hedefini tutturmak için 3 deneme
   const TOLERANCE = 0.05; // %5 tolerans
@@ -587,9 +597,45 @@ ${adaptationModeInstructions}
 - Be creative with HOW you say it, but keep the SAME length
 - Don't pad with filler words, don't cut important content`;
 
+    // Context bölümü oluştur (önceki batch'ten gelen bağlam)
+    let contextSection = '';
+    if (context?.previousScenes && context.previousScenes.length > 0) {
+      contextSection = `
+🔗 STORY CONTINUITY - CRITICAL FOR FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This is batch ${batchIndex + 1} of ${totalBatches}. You MUST maintain continuity with previous content.
+
+📖 PREVIOUS SCENES (for context - DO NOT include in your output):
+${context.previousScenes.map((s, i) => `[Scene ${i + 1}] ${s.adapted}`).join('\n')}
+
+${context.storyTone ? `🎭 ESTABLISHED TONE: ${context.storyTone}` : ''}
+${context.establishedStyle ? `✨ STYLE CHARACTERISTICS: ${context.establishedStyle}` : ''}
+
+⚠️ CONTINUITY RULES:
+• Your output MUST flow naturally from the previous scenes above
+• Maintain the SAME tone, voice, and energy level
+• Don't repeat information already covered
+• Ensure smooth transitions - no abrupt topic changes
+• If a character was mentioned before, maintain consistency
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`;
+    } else if (batchIndex === 0) {
+      contextSection = `
+🎬 FIRST BATCH - ESTABLISHING TONE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This is the OPENING of the story. Your choices here set the tone for everything that follows.
+• Establish a compelling voice that hooks the audience
+• Set the emotional baseline for the story
+• Create anticipation for what's coming
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`;
+    }
+
     const systemPrompt = `You are an expert TRANSCREATOR. CREATIVELY REWRITE content to be ENGAGING and COMPELLING in ${targetLang.toUpperCase()}.
 
-${lengthRule}
+${contextSection}${lengthRule}
 
 🎯 MISSION - TRANSCREATION:
 Transform content while PRESERVING its soul:
