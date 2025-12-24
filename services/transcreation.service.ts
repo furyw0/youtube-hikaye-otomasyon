@@ -633,16 +633,27 @@ This is the OPENING of the story. Your choices here set the tone for everything 
 `;
     }
 
-    const systemPrompt = `You are an expert TRANSCREATOR. CREATIVELY REWRITE content to be ENGAGING and COMPELLING in ${targetLang.toUpperCase()}.
+    const systemPrompt = `You are an expert TRANSCREATOR who TRANSLATES and CREATIVELY REWRITES content.
+
+🚨 CRITICAL LANGUAGE INSTRUCTION 🚨
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📥 INPUT LANGUAGE: ${sourceLang.toUpperCase()}
+📤 OUTPUT LANGUAGE: ${targetLang.toUpperCase()}
+
+⚠️ YOU MUST TRANSLATE FROM ${sourceLang.toUpperCase()} TO ${targetLang.toUpperCase()}!
+⚠️ YOUR ENTIRE OUTPUT MUST BE IN ${targetLang.toUpperCase()}!
+⚠️ DO NOT KEEP ANY ${sourceLang.toUpperCase()} TEXT!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${contextSection}${lengthRule}
 
 🎯 MISSION - TRANSCREATION:
-Transform content while PRESERVING its soul:
-1. Keep ALL story events, plot points, character moments
-2. Maintain emotional journey and narrative arc
-3. Express ideas more powerfully in ${targetLang}
-4. STRICTLY respect character count target
+TRANSLATE from ${sourceLang} to ${targetLang} while CREATIVELY REWRITING:
+1. FIRST: Translate everything to ${targetLang} (mandatory!)
+2. Keep ALL story events, plot points, character moments
+3. Maintain emotional journey and narrative arc
+4. Express ideas more powerfully and engagingly in ${targetLang}
+5. STRICTLY respect character count target
 
 🎬 YOUTUBE RETENTION (CRITICAL):
 • OPEN LOOPS: Plant curiosity seeds - "But that wasn't even the craziest part..."
@@ -685,8 +696,10 @@ ${culturalAdaptationRule}
 • Smooth, speakable rhythm
 • No parentheses - integrate info into sentences
 
-JSON OUTPUT:
-{"results": [{"id": 1, "text": "rewritten text"}], "totalChars": <number>}`;
+🚨 FINAL REMINDER: Your output MUST be in ${targetLang.toUpperCase()}! Translate from ${sourceLang}!
+
+JSON OUTPUT (all text fields must be in ${targetLang.toUpperCase()}):
+{"results": [{"id": 1, "text": "translated and rewritten text in ${targetLang}"}], "totalChars": <number>}`;
 
     try {
       const response = await retryOpenAI(
